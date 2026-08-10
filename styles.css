@@ -5,7 +5,9 @@ body { margin: 0; min-height: 100svh; background: radial-gradient(circle at top,
 .setup-card { width: min(100%, 480px); background: #fffdf6; border-radius: 24px; padding: 28px 22px; box-shadow: 0 18px 50px #04160f88; }
 .game-screen { position: relative; width: min(100%, 680px); min-height: min(100svh, 680px); }
 .player-seats { position: absolute; inset: 0; }
-.player-seat { position: absolute; left: var(--x); top: var(--y); display: grid; width: 52px; height: 52px; place-items: center; border: 3px solid #fffdf6; border-radius: 50%; background: #b63f29; color: #fffdf6; font-size: 1.25rem; font-weight: 800; box-shadow: 0 3px 0 #7c2517; transform: translate(-50%, -50%) rotate(var(--rotation)); }
+.player-seat { position: absolute; left: var(--x); top: var(--y); display: grid; width: 52px; height: 52px; place-items: center; border: 3px solid #fffdf6; border-radius: 50%; background: #b63f29; color: #fffdf6; font-size: 1.25rem; font-weight: 800; box-shadow: 0 3px 0 #7c2517; cursor: pointer; transform: translate(-50%, -50%) rotate(var(--rotation)); }
+.player-seat.current-player { border-color: #ffe18a; background: #e34d2f; box-shadow: 0 0 0 5px #ffe18a77, 0 4px 0 #8c2b1b; }
+.player-seat:focus-visible { outline: 4px solid #fffdf6; outline-offset: 4px; }
 .eyebrow { margin: 0 0 5px; color: #b63f29; font-size: .8rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
 h1 { margin: 0; font-size: clamp(2rem, 9vw, 2.7rem); line-height: 1; }
 .intro { margin: 12px 0 27px; color: #557066; line-height: 1.4; }

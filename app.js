@@ -9,6 +9,7 @@ const playerSeats = document.querySelector('#player-seats');
 // This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
 let playersByNumber = {};
+let currentPlayerNumber = 1;
 
 function drawPlayerNames() {
   const existingNames = [...playerNames.querySelectorAll('input')].map((input) => input.value);
@@ -52,13 +53,30 @@ function drawPlayerSeats() {
     const angle = (index / players.length) * Math.PI * 2 - Math.PI / 2;
     const seat = document.createElement('div');
     seat.className = 'player-seat';
+    const isCurrentPlayer = player.number === currentPlayerNumber;
+    if (isCurrentPlayer) seat.classList.add('current-player');
     seat.style.setProperty('--x', `${50 + Math.cos(angle) * 43}%`);
     seat.style.setProperty('--y', `${50 + Math.sin(angle) * 43}%`);
     seat.style.setProperty('--rotation', `${angle - Math.PI / 2}rad`);
     seat.textContent = player.chips;
-    seat.setAttribute('aria-label', `${player.name}: ${player.chips} chips`);
+    seat.setAttribute('aria-label', `${player.name}: ${player.chips} chips${isCurrentPlayer ? ', current turn' : ''}`);
+    seat.setAttribute('role', 'button');
+    seat.tabIndex = 0;
+    seat.addEventListener('click', () => setCurrentPlayer(player.number));
+    seat.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        setCurrentPlayer(player.number);
+      }
+    });
     playerSeats.append(seat);
   });
+}
+
+function setCurrentPlayer(number) {
+  currentPlayerNumber = number;
+  gameSettings.currentPlayerNumber = number;
+  drawPlayerSeats();
 }
 
 playerCount.addEventListener('change', drawPlayerNames);
@@ -71,7 +89,7 @@ form.addEventListener('submit', (event) => {
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
   };
   makePlayers();
-  drawPlayerSeats();
+  setCurrentPlayer(1);
 
   setupScreen.hidden = true;
   gameScreen.hidden = false;
