@@ -1,14 +1,6 @@
-:root { font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif; color: #173329; background: #b98252; -webkit-text-size-adjust: 100%; }
+:root { font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif; color: #173329; background: #0d3b2e; -webkit-text-size-adjust: 100%; }
 * { box-sizing: border-box; }
-body {
-  margin: 0;
-  min-height: 100svh;
-  background-color: #bd8657;
-  background-image:
-    repeating-linear-gradient(88deg, transparent 0 42px, #6f402425 43px 45px, transparent 46px 94px),
-    repeating-linear-gradient(2deg, #f4c98d20 0 2px, #7544211c 3px 5px, transparent 6px 13px),
-    linear-gradient(115deg, #d9a16b, #9b5e37 28%, #e1af78 54%, #a4673e 77%, #d9a16b);
-}
+body { margin: 0; min-height: 100svh; background: radial-gradient(circle at top, #287052, #0b2d23 70%); }
 .app-shell { min-height: 100svh; display: grid; place-items: center; padding: max(22px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(22px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
 .setup-card { width: min(100%, 480px); background: #fffdf6; border-radius: 24px; padding: 28px 22px; box-shadow: 0 18px 50px #04160f88; }
 .game-screen { width: 100%; min-height: 100svh; }
