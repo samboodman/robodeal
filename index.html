@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Table Poker</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="setup-card" aria-labelledby="page-title">
+        <p class="eyebrow">Poker night</p>
+        <h1 id="page-title">Set up the table</h1>
+
+        <form id="setup-form">
+          <label for="player-count">Number of players</label>
+          <select id="player-count" name="playerCount">
+            <option value="2">2 players</option>
+            <option value="3">3 players</option>
+            <option value="4" selected>4 players</option>
+            <option value="5">5 players</option>
+            <option value="6">6 players</option>
+            <option value="7">7 players</option>
+            <option value="8">8 players</option>
+          </select>
+          <div class="money-grid">
+            <div>
+              <label for="starting-money">Starting money</label>
+              <input id="starting-money" name="startingMoney" type="number" min="1" value="100" inputmode="numeric" required />
+            </div>
+            <div>
+              <label for="ante">Ante</label>
+              <input id="ante" name="ante" type="number" min="0" value="5" inputmode="numeric" required />
+            </div>
+          </div>
+
+          <div class="players-heading">
+            <label>Player names <span>(optional)</span></label>
+            <p>Add them now, or leave them blank and fill them in later.</p>
+          </div>
+          <div id="player-names" class="player-names"></div>
+
+          <button type="submit">Start game</button>
+          <p id="message" class="message" role="status"></p>
+        </form>
+      </section>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>

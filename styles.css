@@ -1,0 +1,36 @@
+:root { font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif; color: #173329; background: #0d3b2e; -webkit-text-size-adjust: 100%; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100svh; background: radial-gradient(circle at top, #287052, #0b2d23 70%); }
+.app-shell { min-height: 100svh; display: grid; place-items: center; padding: max(22px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(22px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+.setup-card { width: min(100%, 480px); background: #fffdf6; border-radius: 24px; padding: 28px 22px; box-shadow: 0 18px 50px #04160f88; }
+.eyebrow { margin: 0 0 5px; color: #b63f29; font-size: .8rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
+h1 { margin: 0; font-size: clamp(2rem, 9vw, 2.7rem); line-height: 1; }
+.intro { margin: 12px 0 27px; color: #557066; line-height: 1.4; }
+label { display: block; margin: 18px 0 7px; font-weight: 750; }
+label span, .players-heading p { color: #71857b; font-weight: 500; }
+input, select { width: 100%; min-height: 52px; border: 2px solid #d4dfd8; border-radius: 14px; background: white; color: #173329; font: inherit; font-size: 16px; padding: 0 14px; }
+input:focus, select:focus { outline: 3px solid #f1c565; border-color: #7c5c15; }
+.money-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.money-grid label { font-size: .92rem; }
+.players-heading { margin-top: 27px; }
+.players-heading label { margin-bottom: 3px; }
+.players-heading p { margin: 0 0 10px; font-size: .87rem; line-height: 1.35; }
+.player-names { display: grid; gap: 9px; }
+.player-row { display: grid; grid-template-columns: 42px 1fr; align-items: center; gap: 9px; }
+.seat { color: #b63f29; font-weight: 800; text-align: center; }
+button { width: 100%; min-height: 56px; margin-top: 28px; border: 0; border-radius: 16px; background: #b63f29; color: white; font: inherit; font-weight: 800; font-size: 1.08rem; cursor: pointer; touch-action: manipulation; box-shadow: 0 4px 0 #7c2517; }
+button:active { transform: translateY(2px); box-shadow: 0 2px 0 #7c2517; }
+.message { min-height: 1.2em; margin: 14px 0 0; text-align: center; color: #3b6755; font-weight: 650; }
+@media (max-width: 600px) {
+  .app-shell { display: block; padding: 0; }
+  .setup-card { width: 100%; min-height: 100svh; border-radius: 0; padding: max(28px, env(safe-area-inset-top)) 20px max(30px, env(safe-area-inset-bottom)); box-shadow: none; }
+  h1 { font-size: clamp(2.2rem, 11vw, 3rem); }
+  .intro { max-width: 25rem; margin-bottom: 24px; font-size: 1.03rem; }
+  label { margin-top: 22px; }
+  .players-heading { margin-top: 31px; }
+  .player-names { gap: 12px; }
+  .player-row { grid-template-columns: 36px 1fr; gap: 8px; }
+  button { margin-top: 32px; }
+}
+
+@media (max-width: 360px) { .setup-card { padding-left: 16px; padding-right: 16px; } .money-grid { gap: 9px; } .money-grid label { font-size: .84rem; } }
