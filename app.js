@@ -5,6 +5,7 @@ const message = document.querySelector('#message');
 const setupScreen = document.querySelector('#setup-screen');
 const gameScreen = document.querySelector('#game-screen');
 const playerSeats = document.querySelector('#player-seats');
+const turnIndicator = document.querySelector('#turn-indicator');
 
 // This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
@@ -71,6 +72,12 @@ function drawPlayerSeats() {
     });
     playerSeats.append(seat);
   });
+
+  const activeIndex = players.findIndex((player) => player.number === currentPlayerNumber);
+  const activeAngle = (activeIndex / players.length) * Math.PI * 2 - Math.PI / 2;
+  turnIndicator.textContent = currentPlayerNumber;
+  turnIndicator.style.setProperty('--rotation', `${activeAngle - Math.PI / 2}rad`);
+  turnIndicator.setAttribute('aria-label', `Player ${currentPlayerNumber}'s turn`);
 }
 
 function setCurrentPlayer(number) {
