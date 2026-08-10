@@ -13,6 +13,7 @@ let gameSettings = null;
 let playersByNumber = {};
 let currentPlayerNumber = 1;
 let antePlayerNumber = null;
+let pot = 0;
 
 function drawPlayerNames() {
   const existingNames = [...playerNames.querySelectorAll('input')].map((input) => input.value);
@@ -104,9 +105,9 @@ function drawPlayerSeats() {
 
   const activeIndex = players.findIndex((player) => player.number === currentPlayerNumber);
   const activeAngle = (activeIndex / players.length) * Math.PI * 2 - Math.PI / 2;
-  turnIndicator.textContent = currentPlayerNumber;
+  turnIndicator.textContent = pot;
   turnIndicator.style.setProperty('--rotation', `${activeAngle - Math.PI / 2}rad`);
-  turnIndicator.setAttribute('aria-label', `Player ${currentPlayerNumber}'s turn`);
+  turnIndicator.setAttribute('aria-label', `Pot: ${pot}`);
 }
 
 function setCurrentPlayer(number) {
@@ -128,6 +129,7 @@ form.addEventListener('submit', (event) => {
   makePlayers();
   antePlayerNumber = playerToDealersLeft(gameSettings.dealerNumber);
   gameSettings.antePlayerNumber = antePlayerNumber;
+  gameSettings.pot = pot;
   setCurrentPlayer(antePlayerNumber);
 
   setupScreen.hidden = true;
