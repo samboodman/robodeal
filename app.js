@@ -54,7 +54,7 @@ function drawPlayerSeats() {
     seat.className = 'player-seat';
     seat.style.setProperty('--x', `${50 + Math.cos(angle) * 43}%`);
     seat.style.setProperty('--y', `${50 + Math.sin(angle) * 43}%`);
-    seat.style.setProperty('--rotation', `${angle + Math.PI / 2}rad`);
+    seat.style.setProperty('--rotation', `${angle - Math.PI / 2}rad`);
     seat.textContent = player.chips;
     seat.setAttribute('aria-label', `${player.name}: ${player.chips} chips`);
     playerSeats.append(seat);
