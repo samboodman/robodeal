@@ -12,6 +12,7 @@ const turnIndicator = document.querySelector('#turn-indicator');
 let gameSettings = null;
 let playersByNumber = {};
 let currentPlayerNumber = 1;
+let antePlayerNumber = null;
 
 function drawPlayerNames() {
   const existingNames = [...playerNames.querySelectorAll('input')].map((input) => input.value);
@@ -67,6 +68,12 @@ function makePlayers() {
   });
 }
 
+function playerToDealersLeft(dealerNumber) {
+  const playerNumbers = Object.keys(playersByNumber).map(Number);
+  const dealerIndex = playerNumbers.indexOf(dealerNumber);
+  return playerNumbers[(dealerIndex + 1) % playerNumbers.length];
+}
+
 function drawPlayerSeats() {
   playerSeats.replaceChildren();
   const players = Object.values(playersByNumber);
@@ -119,7 +126,9 @@ form.addEventListener('submit', (event) => {
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
   };
   makePlayers();
-  setCurrentPlayer(1);
+  antePlayerNumber = playerToDealersLeft(gameSettings.dealerNumber);
+  gameSettings.antePlayerNumber = antePlayerNumber;
+  setCurrentPlayer(antePlayerNumber);
 
   setupScreen.hidden = true;
   gameScreen.hidden = false;
