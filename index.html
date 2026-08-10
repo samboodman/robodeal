@@ -8,7 +8,7 @@
   </head>
   <body>
     <main class="app-shell">
-      <section class="setup-card" aria-labelledby="page-title">
+      <section id="setup-screen" class="setup-card" aria-labelledby="page-title">
         <p class="eyebrow">Poker night</p>
         <h1 id="page-title">Set up the table</h1>
 
@@ -44,6 +44,9 @@
           <p id="message" class="message" role="status"></p>
         </form>
       </section>
+
+      <!-- The game screen stays intentionally empty until we add table controls. -->
+      <section id="game-screen" class="game-screen" aria-label="Poker game" hidden></section>
     </main>
     <script src="app.js"></script>
   </body>
