@@ -2,6 +2,7 @@ const playerCount = document.querySelector('#player-count');
 const playerNames = document.querySelector('#player-names');
 const form = document.querySelector('#setup-form');
 const message = document.querySelector('#message');
+const dealerSelect = document.querySelector('#dealer');
 const setupScreen = document.querySelector('#setup-screen');
 const gameScreen = document.querySelector('#game-screen');
 const playerSeats = document.querySelector('#player-seats');
@@ -14,6 +15,7 @@ let currentPlayerNumber = 1;
 
 function drawPlayerNames() {
   const existingNames = [...playerNames.querySelectorAll('input')].map((input) => input.value);
+  const selectedDealer = dealerSelect.value || '1';
   playerNames.replaceChildren();
 
   for (let number = 1; number <= Number(playerCount.value); number += 1) {
@@ -27,9 +29,27 @@ function drawPlayerNames() {
     input.placeholder = `Player ${number}`;
     input.value = existingNames[number - 1] || '';
     input.setAttribute('aria-label', `Name for player ${number}`);
+    input.addEventListener('input', () => drawDealerOptions());
     row.append(seat, input);
     playerNames.append(row);
   }
+
+  drawDealerOptions(selectedDealer);
+}
+
+function drawDealerOptions(selectedDealer = dealerSelect.value || '1') {
+  dealerSelect.replaceChildren();
+  const names = [...playerNames.querySelectorAll('input')];
+
+  names.forEach((input, index) => {
+    const number = index + 1;
+    const option = document.createElement('option');
+    option.value = number;
+    option.textContent = input.value || `Player ${number}`;
+    dealerSelect.append(option);
+  });
+
+  dealerSelect.value = selectedDealer;
 }
 
 function makePlayers() {
@@ -42,6 +62,7 @@ function makePlayers() {
       number,
       name: input.value || `Player ${number}`,
       chips: Number(document.querySelector('#starting-money').value),
+      isDealer: number === Number(dealerSelect.value),
     };
   });
 }
@@ -56,11 +77,12 @@ function drawPlayerSeats() {
     seat.className = 'player-seat';
     const isCurrentPlayer = player.number === currentPlayerNumber;
     if (isCurrentPlayer) seat.classList.add('current-player');
+    if (player.isDealer) seat.classList.add('dealer');
     seat.style.setProperty('--x', `${50 + Math.cos(angle) * 43}%`);
     seat.style.setProperty('--y', `${50 + Math.sin(angle) * 43}%`);
     seat.style.setProperty('--rotation', `${angle - Math.PI / 2}rad`);
     seat.textContent = player.chips;
-    seat.setAttribute('aria-label', `${player.name}: ${player.chips} chips${isCurrentPlayer ? ', current turn' : ''}`);
+    seat.setAttribute('aria-label', `${player.name}: ${player.chips} chips${player.isDealer ? ', dealer' : ''}${isCurrentPlayer ? ', current turn' : ''}`);
     seat.setAttribute('role', 'button');
     seat.tabIndex = 0;
     seat.addEventListener('click', () => setCurrentPlayer(player.number));
@@ -93,6 +115,7 @@ form.addEventListener('submit', (event) => {
     playerCount: Number(playerCount.value),
     startingMoney: Number(document.querySelector('#starting-money').value),
     ante: Number(document.querySelector('#ante').value),
+    dealerNumber: Number(dealerSelect.value),
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
   };
   makePlayers();
