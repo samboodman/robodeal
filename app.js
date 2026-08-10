@@ -4,9 +4,11 @@ const form = document.querySelector('#setup-form');
 const message = document.querySelector('#message');
 const setupScreen = document.querySelector('#setup-screen');
 const gameScreen = document.querySelector('#game-screen');
+const playerSeats = document.querySelector('#player-seats');
 
 // This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
+let playersByNumber = {};
 
 function drawPlayerNames() {
   const existingNames = [...playerNames.querySelectorAll('input')].map((input) => input.value);
@@ -28,6 +30,36 @@ function drawPlayerNames() {
   }
 }
 
+function makePlayers() {
+  playersByNumber = {};
+  const names = [...playerNames.querySelectorAll('input')];
+
+  names.forEach((input, index) => {
+    const number = index + 1;
+    playersByNumber[number] = {
+      number,
+      name: input.value || `Player ${number}`,
+      chips: Number(document.querySelector('#starting-money').value),
+    };
+  });
+}
+
+function drawPlayerSeats() {
+  playerSeats.replaceChildren();
+  const players = Object.values(playersByNumber);
+
+  players.forEach((player, index) => {
+    const angle = (index / players.length) * Math.PI * 2 - Math.PI / 2;
+    const seat = document.createElement('div');
+    seat.className = 'player-seat';
+    seat.style.setProperty('--x', `${50 + Math.cos(angle) * 43}%`);
+    seat.style.setProperty('--y', `${50 + Math.sin(angle) * 43}%`);
+    seat.textContent = player.number;
+    seat.setAttribute('aria-label', `${player.name}, player ${player.number}`);
+    playerSeats.append(seat);
+  });
+}
+
 playerCount.addEventListener('change', drawPlayerNames);
 form.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -37,11 +69,13 @@ form.addEventListener('submit', (event) => {
     ante: Number(document.querySelector('#ante').value),
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
   };
+  makePlayers();
+  drawPlayerSeats();
 
   setupScreen.hidden = true;
   gameScreen.hidden = false;
 
-  // Add the game-table interface here in the next step.
+  // Add the game-table interface inside gameScreen in the next step.
 });
 
 drawPlayerNames();
