@@ -35,7 +35,7 @@ let roundNumber = 1;
 
 function drawPlayerNames() {
   const existingNames = [...playerNames.querySelectorAll('input')].map((input) => input.value);
-  const selectedDealer = dealerSelect.value || String(Math.floor(Number(playerCount.value) / 2) + 1);
+  const selectedDealer = dealerSelect.value || '1';
   playerNames.replaceChildren();
 
   for (let number = 1; number <= Number(playerCount.value); number += 1) {
@@ -101,7 +101,7 @@ function drawPlayerSeats() {
   const players = Object.values(playersByNumber);
 
   players.forEach((player, index) => {
-    const angle = (index / players.length) * Math.PI * 2 - Math.PI / 2;
+    const angle = (index / players.length) * Math.PI * 2 + Math.PI / 2;
     const seat = document.createElement('div');
     seat.className = 'player-seat';
     const isCurrentPlayer = player.number === currentPlayerNumber;
@@ -130,7 +130,7 @@ function drawPlayerSeats() {
   });
 
   const activeIndex = players.findIndex((player) => player.number === currentPlayerNumber);
-  const activeAngle = (activeIndex / players.length) * Math.PI * 2 - Math.PI / 2;
+  const activeAngle = (activeIndex / players.length) * Math.PI * 2 + Math.PI / 2;
   turnIndicator.style.setProperty('--rotation', `${activeAngle - Math.PI / 2}rad`);
   potValue.textContent = pot;
   turnIndicator.setAttribute('aria-label', `Your bet: ${pendingBet}. Pot: ${pot}`);
