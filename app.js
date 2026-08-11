@@ -13,6 +13,10 @@ const betDecrease = document.querySelector('#bet-decrease');
 const foldButton = document.querySelector('#fold-button');
 const confirmButton = document.querySelector('#confirm-button');
 const potValue = document.querySelector('#pot-value');
+const actionButtons = document.querySelector('.action-buttons');
+const winnerPicker = document.querySelector('#winner-picker');
+const winnerQuestion = document.querySelector('#winner-question');
+const winnerOptions = document.querySelector('#winner-options');
 
 // This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
@@ -24,6 +28,7 @@ let highestRoundBet = 0;
 let pendingBet = 0;
 let pendingFold = false;
 let isGameWon = false;
+let roundNumber = 1;
 
 function drawPlayerNames() {
   const existingNames = [...playerNames.querySelectorAll('input')].map((input) => input.value);
@@ -177,6 +182,12 @@ function allActivePlayersHaveMatchedBet() {
 }
 
 function startNextRound() {
+  if (roundNumber >= 4) {
+    showWinnerPicker();
+    return;
+  }
+
+  roundNumber += 1;
   Object.values(playersByNumber).forEach((player) => {
     player.roundBet = 0;
     player.hasActedThisRound = false;
@@ -188,8 +199,44 @@ function startNextRound() {
   if (firstPlayer !== null) setCurrentPlayer(firstPlayer);
 }
 
+function showWinnerPicker() {
+  const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded);
+  turnIndicator.hidden = true;
+  actionButtons.hidden = true;
+  winnerQuestion.textContent = 'Who had the best cards?';
+  winnerOptions.replaceChildren();
+
+  activePlayers.forEach((player) => {
+    const winnerButton = document.createElement('button');
+    winnerButton.type = 'button';
+    winnerButton.textContent = player.name;
+    winnerButton.addEventListener('click', () => awardPot(player.number));
+    winnerOptions.append(winnerButton);
+  });
+
+  winnerPicker.hidden = false;
+}
+
+function awardPot(winnerNumber) {
+  const winner = playersByNumber[winnerNumber];
+  winner.chips += pot;
+  pot = 0;
+  gameSettings.pot = pot;
+  isGameWon = true;
+  turnIndicator.hidden = true;
+  actionButtons.hidden = true;
+  winnerPicker.hidden = false;
+  winnerQuestion.textContent = `${winner.name} wins the hand!`;
+  winnerOptions.replaceChildren();
+  drawPlayerSeats();
+}
+
 function finishTurn() {
-  if (allActivePlayersHaveMatchedBet()) {
+  const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded);
+
+  if (activePlayers.length === 1) {
+    awardPot(activePlayers[0].number);
+  } else if (allActivePlayersHaveMatchedBet()) {
     startNextRound();
   } else {
     nextPlayer();
@@ -251,11 +298,16 @@ form.addEventListener('submit', (event) => {
   pendingBet = 0;
   pendingFold = false;
   pot = 0;
+  roundNumber = 1;
+  isGameWon = false;
   gameSettings.pot = pot;
   setCurrentPlayer(antePlayerNumber);
 
   setupScreen.hidden = true;
   gameScreen.hidden = false;
+  winnerPicker.hidden = true;
+  turnIndicator.hidden = false;
+  actionButtons.hidden = false;
   playersByNumber[antePlayerNumber].chips -= gameSettings.ante;
   playersByNumber[antePlayerNumber].roundBet = gameSettings.ante;
   playersByNumber[antePlayerNumber].hasActedThisRound = true;
