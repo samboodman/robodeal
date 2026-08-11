@@ -140,7 +140,7 @@ function drawPlayerSeats() {
 function setCurrentPlayer(number) {
   currentPlayerNumber = number;
   gameSettings.currentPlayerNumber = number;
-  pendingBet = Math.max(highestRoundBet, playersByNumber[number].roundBet);
+  pendingBet = Math.max(0, highestRoundBet - playersByNumber[number].roundBet);
   pendingFold = false;
   drawPlayerSeats();
 }
@@ -164,8 +164,8 @@ function nextPlayer() {
 
 function updateBetControls() {
   const player = playersByNumber[currentPlayerNumber];
-  const minimumBet = highestRoundBet;
-  const maximumBet = player.chips + player.roundBet;
+  const minimumBet = Math.max(0, highestRoundBet - player.roundBet);
+  const maximumBet = player.chips;
 
   pendingBet = Math.max(minimumBet, Math.min(pendingBet, maximumBet));
   betInput.value = pendingBet;
@@ -270,11 +270,11 @@ function confirmTurn() {
   if (pendingFold) {
     player.folded = true;
   } else {
-    const additionalChips = pendingBet - player.roundBet;
+    const additionalChips = pendingBet;
     player.chips -= additionalChips;
-    player.roundBet = pendingBet;
+    player.roundBet += additionalChips;
     player.hasActedThisRound = true;
-    highestRoundBet = Math.max(highestRoundBet, pendingBet);
+    highestRoundBet = Math.max(highestRoundBet, player.roundBet);
     pot += additionalChips;
     gameSettings.pot = pot;
   }
