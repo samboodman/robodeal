@@ -134,6 +134,10 @@ form.addEventListener('submit', (event) => {
 
   setupScreen.hidden = true;
   gameScreen.hidden = false;
+  playersByNumber[antePlayerNumber].chips -= gameSettings.ante;
+  pot += gameSettings.ante;
+  gameSettings.pot = pot;
+  drawPlayerSeats();
 
   // Add the game-table interface inside gameScreen in the next step.
 });
