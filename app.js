@@ -200,6 +200,9 @@ function updateBetControls() {
 
 function allActivePlayersHaveMatchedBet() {
   const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded && !player.eliminated && player.chips > 0);
+
+  if (activePlayers.length === 1) return activePlayers[0].hasActedThisRound;
+
   return activePlayers.length > 1
     && activePlayers.every((player) => player.hasActedThisRound && player.roundBet === highestRoundBet);
 }
