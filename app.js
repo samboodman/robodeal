@@ -17,6 +17,9 @@ const actionButtons = document.querySelector('.action-buttons');
 const winnerPicker = document.querySelector('#winner-picker');
 const winnerQuestion = document.querySelector('#winner-question');
 const winnerOptions = document.querySelector('#winner-options');
+const dealPrompt = document.querySelector('#deal-prompt');
+const dealMessage = document.querySelector('#deal-message');
+const dealOkButton = document.querySelector('#deal-ok-button');
 
 // This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
@@ -187,6 +190,17 @@ function startNextRound() {
     return;
   }
 
+  const nextCard = ['the flop', 'the turn', 'the river'][roundNumber - 1];
+  turnIndicator.hidden = true;
+  actionButtons.hidden = true;
+  dealMessage.textContent = `Deal ${nextCard}. Press OK to continue.`;
+  dealPrompt.hidden = false;
+}
+
+function beginNextRound() {
+  dealPrompt.hidden = true;
+  turnIndicator.hidden = false;
+  actionButtons.hidden = false;
   roundNumber += 1;
   Object.values(playersByNumber).forEach((player) => {
     player.roundBet = 0;
@@ -289,6 +303,7 @@ foldButton.addEventListener('click', () => {
   updateBetControls();
 });
 confirmButton.addEventListener('click', confirmTurn);
+dealOkButton.addEventListener('click', beginNextRound);
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   gameSettings = {
@@ -313,6 +328,7 @@ form.addEventListener('submit', (event) => {
   setupScreen.hidden = true;
   gameScreen.hidden = false;
   winnerPicker.hidden = true;
+  dealPrompt.hidden = true;
   turnIndicator.hidden = false;
   actionButtons.hidden = false;
   playersByNumber[antePlayerNumber].chips -= gameSettings.ante;
