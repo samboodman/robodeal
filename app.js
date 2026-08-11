@@ -257,9 +257,12 @@ form.addEventListener('submit', (event) => {
   setupScreen.hidden = true;
   gameScreen.hidden = false;
   playersByNumber[antePlayerNumber].chips -= gameSettings.ante;
+  playersByNumber[antePlayerNumber].roundBet = gameSettings.ante;
+  playersByNumber[antePlayerNumber].hasActedThisRound = true;
+  highestRoundBet = gameSettings.ante;
   pot += gameSettings.ante;
   gameSettings.pot = pot;
-  drawPlayerSeats();
+  nextPlayer();
 
 
   // Add the game-table interface inside gameScreen in the next step.
