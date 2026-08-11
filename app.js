@@ -116,6 +116,14 @@ function setCurrentPlayer(number) {
   drawPlayerSeats();
 }
 
+function nextPlayer() {
+  const playerNumbers = Object.keys(playersByNumber).map(Number);
+  const currentIndex = playerNumbers.indexOf(currentPlayerNumber);
+  const nextIndex = (currentIndex + 1) % playerNumbers.length;
+
+  setCurrentPlayer(playerNumbers[nextIndex]);
+}
+
 playerCount.addEventListener('change', drawPlayerNames);
 form.addEventListener('submit', (event) => {
   event.preventDefault();
