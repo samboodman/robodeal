@@ -7,6 +7,12 @@ const setupScreen = document.querySelector('#setup-screen');
 const gameScreen = document.querySelector('#game-screen');
 const playerSeats = document.querySelector('#player-seats');
 const turnIndicator = document.querySelector('#turn-indicator');
+const betInput = document.querySelector('#current-bet');
+const betIncrease = document.querySelector('#bet-increase');
+const betDecrease = document.querySelector('#bet-decrease');
+const foldButton = document.querySelector('#fold-button');
+const confirmButton = document.querySelector('#confirm-button');
+const potValue = document.querySelector('#pot-value');
 
 // This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
@@ -14,6 +20,10 @@ let playersByNumber = {};
 let currentPlayerNumber = 1;
 let antePlayerNumber = null;
 let pot = 0;
+let highestRoundBet = 0;
+let pendingBet = 0;
+let pendingFold = false;
+let isGameWon = false;
 
 function drawPlayerNames() {
   const existingNames = [...playerNames.querySelectorAll('input')].map((input) => input.value);
@@ -65,6 +75,9 @@ function makePlayers() {
       name: input.value || `Player ${number}`,
       chips: Number(document.querySelector('#starting-money').value),
       isDealer: number === Number(dealerSelect.value),
+      roundBet: 0,
+      hasActedThisRound: false,
+      folded: false,
     };
   });
 }
@@ -86,45 +99,142 @@ function drawPlayerSeats() {
     const isCurrentPlayer = player.number === currentPlayerNumber;
     if (isCurrentPlayer) seat.classList.add('current-player');
     if (player.isDealer) seat.classList.add('dealer');
+    if (player.folded) seat.classList.add('folded');
     seat.style.setProperty('--x', `${50 + Math.cos(angle) * 43}%`);
     seat.style.setProperty('--y', `${50 + Math.sin(angle) * 43}%`);
     seat.style.setProperty('--rotation', `${angle - Math.PI / 2}rad`);
     seat.textContent = player.chips;
-    seat.setAttribute('aria-label', `${player.name}: ${player.chips} chips${player.isDealer ? ', dealer' : ''}${isCurrentPlayer ? ', current turn' : ''}`);
+    seat.setAttribute('aria-label', `${player.name}: ${player.chips} chips${player.isDealer ? ', dealer' : ''}${isCurrentPlayer ? ', current turn' : ''}${player.folded ? ', folded' : ''}`);
     seat.setAttribute('role', 'button');
     seat.tabIndex = 0;
-    seat.addEventListener('click', () => setCurrentPlayer(player.number));
-    seat.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        setCurrentPlayer(player.number);
-      }
-    });
+    if (!player.folded) {
+      seat.addEventListener('click', () => setCurrentPlayer(player.number));
+      seat.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          setCurrentPlayer(player.number);
+        }
+      });
+    } else {
+      seat.tabIndex = -1;
+    }
     playerSeats.append(seat);
   });
 
   const activeIndex = players.findIndex((player) => player.number === currentPlayerNumber);
   const activeAngle = (activeIndex / players.length) * Math.PI * 2 - Math.PI / 2;
-  turnIndicator.textContent = pot;
   turnIndicator.style.setProperty('--rotation', `${activeAngle - Math.PI / 2}rad`);
-  turnIndicator.setAttribute('aria-label', `Pot: ${pot}`);
+  potValue.textContent = pot;
+  turnIndicator.setAttribute('aria-label', `Your bet: ${pendingBet}. Pot: ${pot}`);
+  updateBetControls();
 }
 
 function setCurrentPlayer(number) {
   currentPlayerNumber = number;
   gameSettings.currentPlayerNumber = number;
+  pendingBet = Math.max(highestRoundBet, playersByNumber[number].roundBet);
+  pendingFold = false;
   drawPlayerSeats();
 }
 
-function nextPlayer() {
+function nextActivePlayerFrom(number) {
   const playerNumbers = Object.keys(playersByNumber).map(Number);
-  const currentIndex = playerNumbers.indexOf(currentPlayerNumber);
-  const nextIndex = (currentIndex + 1) % playerNumbers.length;
+  const startIndex = playerNumbers.indexOf(number);
 
-  setCurrentPlayer(playerNumbers[nextIndex]);
+  for (let step = 1; step <= playerNumbers.length; step += 1) {
+    const nextNumber = playerNumbers[(startIndex + step) % playerNumbers.length];
+    if (!playersByNumber[nextNumber].folded) return nextNumber;
+  }
+
+  return null;
+}
+
+function nextPlayer() {
+  const nextNumber = nextActivePlayerFrom(currentPlayerNumber);
+  if (nextNumber !== null) setCurrentPlayer(nextNumber);
+}
+
+function updateBetControls() {
+  const player = playersByNumber[currentPlayerNumber];
+  const minimumBet = highestRoundBet;
+  const maximumBet = player.chips + player.roundBet;
+
+  pendingBet = Math.max(minimumBet, Math.min(pendingBet, maximumBet));
+  betInput.value = pendingBet;
+  betInput.min = minimumBet;
+  betInput.max = maximumBet;
+  betIncrease.disabled = pendingFold || pendingBet >= maximumBet;
+  betDecrease.disabled = pendingFold || pendingBet <= minimumBet;
+  betInput.disabled = pendingFold;
+  foldButton.classList.toggle('selected', pendingFold);
+  confirmButton.textContent = pendingFold ? 'Confirm fold' : 'Confirm bet';
+}
+
+function allActivePlayersHaveMatchedBet() {
+  const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded);
+  return activePlayers.length > 1
+    && activePlayers.every((player) => player.hasActedThisRound && player.roundBet === highestRoundBet);
+}
+
+function startNextRound() {
+  Object.values(playersByNumber).forEach((player) => {
+    player.roundBet = 0;
+    player.hasActedThisRound = false;
+  });
+  highestRoundBet = 0;
+  const firstPlayer = playersByNumber[antePlayerNumber].folded
+    ? nextActivePlayerFrom(antePlayerNumber)
+    : antePlayerNumber;
+  if (firstPlayer !== null) setCurrentPlayer(firstPlayer);
+}
+
+function finishTurn() {
+  if (allActivePlayersHaveMatchedBet()) {
+    startNextRound();
+  } else {
+    nextPlayer();
+  }
+}
+
+function confirmTurn() {
+  const player = playersByNumber[currentPlayerNumber];
+
+  if (pendingFold) {
+    player.folded = true;
+  } else {
+    const additionalChips = pendingBet - player.roundBet;
+    player.chips -= additionalChips;
+    player.roundBet = pendingBet;
+    player.hasActedThisRound = true;
+    highestRoundBet = Math.max(highestRoundBet, pendingBet);
+    pot += additionalChips;
+    gameSettings.pot = pot;
+  }
+
+  finishTurn();
 }
 
 playerCount.addEventListener('change', drawPlayerNames);
+betIncrease.addEventListener('click', () => {
+  pendingFold = false;
+  pendingBet += 1;
+  updateBetControls();
+});
+betDecrease.addEventListener('click', () => {
+  pendingFold = false;
+  pendingBet -= 1;
+  updateBetControls();
+});
+betInput.addEventListener('change', () => {
+  pendingFold = false;
+  pendingBet = Number(betInput.value) || 0;
+  updateBetControls();
+});
+foldButton.addEventListener('click', () => {
+  pendingFold = !pendingFold;
+  updateBetControls();
+});
+confirmButton.addEventListener('click', confirmTurn);
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   gameSettings = {
@@ -137,6 +247,10 @@ form.addEventListener('submit', (event) => {
   makePlayers();
   antePlayerNumber = playerToDealersLeft(gameSettings.dealerNumber);
   gameSettings.antePlayerNumber = antePlayerNumber;
+  highestRoundBet = 0;
+  pendingBet = 0;
+  pendingFold = false;
+  pot = 0;
   gameSettings.pot = pot;
   setCurrentPlayer(antePlayerNumber);
 
@@ -146,6 +260,7 @@ form.addEventListener('submit', (event) => {
   pot += gameSettings.ante;
   gameSettings.pot = pot;
   drawPlayerSeats();
+
 
   // Add the game-table interface inside gameScreen in the next step.
 });

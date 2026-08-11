@@ -50,7 +50,18 @@
 
       <section id="game-screen" class="game-screen" aria-label="Poker game" hidden>
         <div id="player-seats" class="player-seats" aria-label="Players around the table"></div>
-        <div id="turn-indicator" class="turn-indicator" aria-live="polite"></div>
+        <div id="turn-indicator" class="turn-indicator" aria-live="polite">
+          <div class="bet-control">
+            <button id="bet-increase" type="button" aria-label="Increase bet">+</button>
+            <input id="current-bet" type="number" inputmode="numeric" aria-label="Your bet" />
+            <button id="bet-decrease" type="button" aria-label="Decrease bet">−</button>
+          </div>
+          <output id="pot-value" class="pot-value" aria-label="Pot">0</output>
+        </div>
+        <div class="action-buttons">
+          <button id="fold-button" type="button">Fold</button>
+          <button id="confirm-button" type="button">Confirm bet</button>
+        </div>
       </section>
     </main>
     <script src="app.js"></script>
