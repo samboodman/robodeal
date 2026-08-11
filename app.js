@@ -245,11 +245,46 @@ function awardPot(winnerNumber) {
   const closeButton = document.createElement('button');
   closeButton.type = 'button';
   closeButton.textContent = 'Close';
-  closeButton.addEventListener('click', () => {
-    winnerPicker.hidden = true;
-  });
+  closeButton.addEventListener('click', startNewHand);
   winnerOptions.append(closeButton);
   drawPlayerSeats();
+}
+
+function startHand() {
+  isGameWon = false;
+  roundNumber = 1;
+  pot = 0;
+  highestRoundBet = 0;
+  pendingBet = 0;
+  pendingFold = false;
+
+  Object.values(playersByNumber).forEach((player) => {
+    player.folded = false;
+    player.roundBet = 0;
+    player.hasActedThisRound = false;
+    player.isDealer = player.number === gameSettings.dealerNumber;
+  });
+
+  antePlayerNumber = playerToDealersLeft(gameSettings.dealerNumber);
+  gameSettings.antePlayerNumber = antePlayerNumber;
+  playersByNumber[antePlayerNumber].chips -= gameSettings.ante;
+  playersByNumber[antePlayerNumber].roundBet = gameSettings.ante;
+  playersByNumber[antePlayerNumber].hasActedThisRound = true;
+  highestRoundBet = gameSettings.ante;
+  pot += gameSettings.ante;
+  gameSettings.pot = pot;
+
+  setCurrentPlayer(antePlayerNumber);
+  nextPlayer();
+}
+
+function startNewHand() {
+  gameSettings.dealerNumber = playerToDealersLeft(gameSettings.dealerNumber);
+  winnerPicker.hidden = true;
+  dealPrompt.hidden = true;
+  turnIndicator.hidden = false;
+  actionButtons.hidden = false;
+  startHand();
 }
 
 function finishTurn() {
@@ -314,30 +349,13 @@ form.addEventListener('submit', (event) => {
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
   };
   makePlayers();
-  antePlayerNumber = playerToDealersLeft(gameSettings.dealerNumber);
-  gameSettings.antePlayerNumber = antePlayerNumber;
-  highestRoundBet = 0;
-  pendingBet = 0;
-  pendingFold = false;
-  pot = 0;
-  roundNumber = 1;
-  isGameWon = false;
-  gameSettings.pot = pot;
-  setCurrentPlayer(antePlayerNumber);
-
   setupScreen.hidden = true;
   gameScreen.hidden = false;
   winnerPicker.hidden = true;
   dealPrompt.hidden = true;
   turnIndicator.hidden = false;
   actionButtons.hidden = false;
-  playersByNumber[antePlayerNumber].chips -= gameSettings.ante;
-  playersByNumber[antePlayerNumber].roundBet = gameSettings.ante;
-  playersByNumber[antePlayerNumber].hasActedThisRound = true;
-  highestRoundBet = gameSettings.ante;
-  pot += gameSettings.ante;
-  gameSettings.pot = pot;
-  nextPlayer();
+  startHand();
 
 
   // Add the game-table interface inside gameScreen in the next step.
