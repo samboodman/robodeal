@@ -228,6 +228,13 @@ function awardPot(winnerNumber) {
   winnerPicker.hidden = false;
   winnerQuestion.textContent = `${winner.name} wins the hand!`;
   winnerOptions.replaceChildren();
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.textContent = 'Close';
+  closeButton.addEventListener('click', () => {
+    winnerPicker.hidden = true;
+  });
+  winnerOptions.append(closeButton);
   drawPlayerSeats();
 }
 
