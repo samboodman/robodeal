@@ -4,6 +4,9 @@ body { margin: 0; min-height: 100svh; background: radial-gradient(circle at top,
 .app-shell { min-height: 100svh; display: grid; place-items: center; padding: max(22px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(22px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
 .setup-card { width: min(100%, 480px); background: #fffdf6; border-radius: 24px; padding: 28px 22px; box-shadow: 0 18px 50px #04160f88; }
 .game-screen { position: relative; width: min(100%, 680px); min-height: min(100svh, 680px); }
+.game-winner-screen { position: relative; display: grid; width: min(100%, 680px); min-height: min(100svh, 680px); place-items: center; overflow: hidden; border-radius: 24px; background: #06110e; color: #fffdf6; text-align: center; }
+.game-winner-screen img { position: absolute; width: 100%; height: 100%; object-fit: cover; opacity: .78; }
+.game-winner-screen h1 { position: relative; z-index: 1; max-width: 90%; padding: 20px; color: #fffdf6; font-size: clamp(2.7rem, 13vw, 5rem); line-height: .95; text-shadow: 0 3px 14px #000; }
 .player-seats { position: absolute; inset: 0; }
 .turn-indicator { position: absolute; left: 50%; top: 50%; display: grid; width: min(78vw, 360px); grid-template-columns: 1fr 1fr; grid-template-rows: auto 1fr auto; min-height: min(62vw, 280px); place-items: center; border-radius: 12px; background: #fffdf6; color: #173329; box-shadow: 0 9px 26px #04160f66; transform: translate(-50%, -50%) rotate(var(--rotation)); }
 .round-label { grid-column: 1 / -1; margin: 14px 0 0; color: #557066; font-size: .85rem; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
@@ -57,6 +60,7 @@ button:active { transform: translateY(2px); box-shadow: 0 2px 0 #7c2517; }
   .app-shell { display: block; padding: 0; }
   .setup-card { width: 100%; min-height: 100svh; border-radius: 0; padding: max(28px, env(safe-area-inset-top)) 20px max(30px, env(safe-area-inset-bottom)); box-shadow: none; }
   .game-screen { width: 100%; min-height: 100svh; }
+  .game-winner-screen { width: 100%; min-height: 100svh; border-radius: 0; }
   .player-seat { width: 50px; height: 50px; }
   h1 { font-size: clamp(2.2rem, 11vw, 3rem); }
   .intro { max-width: 25rem; margin-bottom: 24px; font-size: 1.03rem; }

@@ -5,6 +5,8 @@ const message = document.querySelector('#message');
 const dealerSelect = document.querySelector('#dealer');
 const setupScreen = document.querySelector('#setup-screen');
 const gameScreen = document.querySelector('#game-screen');
+const gameWinnerScreen = document.querySelector('#game-winner-screen');
+const gameWinnerMessage = document.querySelector('#game-winner-message');
 const playerSeats = document.querySelector('#player-seats');
 const turnIndicator = document.querySelector('#turn-indicator');
 const betInput = document.querySelector('#current-bet');
@@ -287,6 +289,13 @@ function finishHand(winner) {
     if (player.chips === 0) player.eliminated = true;
   });
   isGameWon = true;
+
+  const playersWithMoney = Object.values(playersByNumber).filter((player) => player.chips > 0);
+  if (playersWithMoney.length === 1) {
+    showGameWinner(playersWithMoney[0]);
+    return;
+  }
+
   turnIndicator.hidden = true;
   actionButtons.hidden = true;
   winnerPicker.hidden = false;
@@ -298,6 +307,12 @@ function finishHand(winner) {
   closeButton.addEventListener('click', startNewHand);
   winnerOptions.append(closeButton);
   drawPlayerSeats();
+}
+
+function showGameWinner(winner) {
+  gameScreen.hidden = true;
+  gameWinnerMessage.textContent = `Player ${winner.name} wins!`;
+  gameWinnerScreen.hidden = false;
 }
 
 function addToPot(chips) {
@@ -426,6 +441,7 @@ form.addEventListener('submit', (event) => {
   makePlayers();
   setupScreen.hidden = true;
   gameScreen.hidden = false;
+  gameWinnerScreen.hidden = true;
   winnerPicker.hidden = true;
   dealPrompt.hidden = true;
   turnIndicator.hidden = false;
