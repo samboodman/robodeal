@@ -32,6 +32,8 @@ body { margin: 0; min-height: 100svh; background: radial-gradient(circle at top,
 .player-seat.dealer.current-player { box-shadow: 0 0 0 5px #ffe18a77, 0 4px 0 #174f91; }
 .player-seat.folded { background: #7f2526; color: transparent; box-shadow: 0 3px 0 #541719; }
 .player-seat.folded::after { content: '×'; position: absolute; color: #fffdf6; font-size: 3.4rem; font-weight: 400; line-height: 1; }
+.player-seat.eliminated { background: #d9272e; color: transparent; box-shadow: 0 3px 0 #82171c; }
+.player-seat.eliminated::after { content: ''; }
 .player-seat:focus-visible { outline: 4px solid #fffdf6; outline-offset: 4px; }
 .eyebrow { margin: 0 0 5px; color: #b63f29; font-size: .8rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
 h1 { margin: 0; font-size: clamp(2rem, 9vw, 2.7rem); line-height: 1; }

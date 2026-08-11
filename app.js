@@ -92,6 +92,7 @@ function makePlayers() {
       roundBet: 0,
       hasActedThisRound: false,
       folded: false,
+      eliminated: false,
     };
   });
 }
@@ -99,7 +100,13 @@ function makePlayers() {
 function playerToDealersLeft(dealerNumber) {
   const playerNumbers = Object.keys(playersByNumber).map(Number);
   const dealerIndex = playerNumbers.indexOf(dealerNumber);
-  return playerNumbers[(dealerIndex + 1) % playerNumbers.length];
+
+  for (let step = 1; step <= playerNumbers.length; step += 1) {
+    const nextNumber = playerNumbers[(dealerIndex + step) % playerNumbers.length];
+    if (!playersByNumber[nextNumber].eliminated) return nextNumber;
+  }
+
+  return dealerNumber;
 }
 
 function drawPlayerSeats() {
@@ -114,14 +121,15 @@ function drawPlayerSeats() {
     if (isCurrentPlayer) seat.classList.add('current-player');
     if (player.isDealer) seat.classList.add('dealer');
     if (player.folded) seat.classList.add('folded');
+    if (player.eliminated) seat.classList.add('eliminated');
     seat.style.setProperty('--x', `${50 + Math.cos(angle) * 43}%`);
     seat.style.setProperty('--y', `${50 + Math.sin(angle) * 43}%`);
     seat.style.setProperty('--rotation', `${angle - Math.PI / 2}rad`);
-    seat.textContent = player.chips;
-    seat.setAttribute('aria-label', `${player.name}: ${player.chips} chips${player.isDealer ? ', dealer' : ''}${isCurrentPlayer ? ', current turn' : ''}${player.folded ? ', folded' : ''}`);
+    seat.textContent = player.eliminated ? '' : player.chips;
+    seat.setAttribute('aria-label', `${player.name}${player.eliminated ? ', out of the game' : `: ${player.chips} chips`}${player.isDealer ? ', dealer' : ''}${isCurrentPlayer ? ', current turn' : ''}${player.folded ? ', folded' : ''}`);
     seat.setAttribute('role', 'button');
     seat.tabIndex = 0;
-    if (!player.folded && player.chips > 0) {
+    if (!player.folded && !player.eliminated && player.chips > 0) {
       seat.addEventListener('click', () => setCurrentPlayer(player.number));
       seat.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -161,7 +169,7 @@ function nextActivePlayerFrom(number) {
 
   for (let step = 1; step <= playerNumbers.length; step += 1) {
     const nextNumber = playerNumbers[(startIndex + step) % playerNumbers.length];
-    if (!playersByNumber[nextNumber].folded && playersByNumber[nextNumber].chips > 0) return nextNumber;
+    if (!playersByNumber[nextNumber].folded && !playersByNumber[nextNumber].eliminated && playersByNumber[nextNumber].chips > 0) return nextNumber;
   }
 
   return null;
@@ -189,7 +197,7 @@ function updateBetControls() {
 }
 
 function allActivePlayersHaveMatchedBet() {
-  const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded && player.chips > 0);
+  const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded && !player.eliminated && player.chips > 0);
   return activePlayers.length > 1
     && activePlayers.every((player) => player.hasActedThisRound && player.roundBet === highestRoundBet);
 }
@@ -224,7 +232,7 @@ function beginNextRound() {
 }
 
 function showWinnerPicker() {
-  const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded);
+  const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded && !player.eliminated);
   showPotWinnerPicker('Who had the best cards?', activePlayers, awardMainPot);
 }
 
@@ -253,7 +261,7 @@ function awardMainPot(winnerNumber) {
 
   if (sidePotActive && sidePot > 0) {
     const sidePotPlayers = Object.values(playersByNumber).filter((player) =>
-      !player.folded && sidePotEligiblePlayers.includes(player.number));
+      !player.folded && !player.eliminated && sidePotEligiblePlayers.includes(player.number));
     if (sidePotPlayers.length <= 1) {
       awardSidePot(sidePotPlayers[0]?.number || winnerNumber);
     } else {
@@ -275,6 +283,9 @@ function awardSidePot(winnerNumber) {
 }
 
 function finishHand(winner) {
+  Object.values(playersByNumber).forEach((player) => {
+    if (player.chips === 0) player.eliminated = true;
+  });
   isGameWon = true;
   turnIndicator.hidden = true;
   actionButtons.hidden = true;
@@ -302,8 +313,8 @@ function addToPot(chips) {
 function startSidePotIfNeeded() {
   if (sidePotActive) return;
 
-  const allInPlayers = Object.values(playersByNumber).filter((player) => !player.folded && player.chips === 0);
-  const playersWithChips = Object.values(playersByNumber).filter((player) => !player.folded && player.chips > 0);
+  const allInPlayers = Object.values(playersByNumber).filter((player) => !player.folded && !player.eliminated && player.chips === 0);
+  const playersWithChips = Object.values(playersByNumber).filter((player) => !player.folded && !player.eliminated && player.chips > 0);
 
   if (allInPlayers.length > 0 && playersWithChips.length >= 2) {
     sidePotActive = true;
@@ -324,7 +335,7 @@ function startHand() {
   pendingFold = false;
 
   Object.values(playersByNumber).forEach((player) => {
-    player.folded = false;
+    player.folded = player.eliminated;
     player.roundBet = 0;
     player.hasActedThisRound = false;
     player.isDealer = player.number === gameSettings.dealerNumber;
