@@ -13,6 +13,7 @@ const betDecrease = document.querySelector('#bet-decrease');
 const foldButton = document.querySelector('#fold-button');
 const confirmButton = document.querySelector('#confirm-button');
 const potValue = document.querySelector('#pot-value');
+const roundLabel = document.querySelector('#round-label');
 const actionButtons = document.querySelector('.action-buttons');
 const winnerPicker = document.querySelector('#winner-picker');
 const winnerQuestion = document.querySelector('#winner-question');
@@ -133,6 +134,7 @@ function drawPlayerSeats() {
   const activeAngle = (activeIndex / players.length) * Math.PI * 2 + Math.PI / 2;
   turnIndicator.style.setProperty('--rotation', `${activeAngle - Math.PI / 2}rad`);
   potValue.textContent = pot;
+  roundLabel.textContent = ['Preflop', 'Flop', 'Turn', 'River'][roundNumber - 1];
   turnIndicator.setAttribute('aria-label', `Your bet: ${pendingBet}. Pot: ${pot}`);
   updateBetControls();
 }
