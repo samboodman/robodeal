@@ -35,7 +35,7 @@ let roundNumber = 1;
 
 function drawPlayerNames() {
   const existingNames = [...playerNames.querySelectorAll('input')].map((input) => input.value);
-  const selectedDealer = dealerSelect.value || '1';
+  const selectedDealer = dealerSelect.value || String(Math.floor(Number(playerCount.value) / 2) + 1);
   playerNames.replaceChildren();
 
   for (let number = 1; number <= Number(playerCount.value); number += 1) {
