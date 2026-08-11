@@ -129,6 +129,7 @@ function drawPlayerSeats() {
   const activeIndex = players.findIndex((player) => player.number === currentPlayerNumber);
   const activeAngle = (activeIndex / players.length) * Math.PI * 2 - Math.PI / 2;
   turnIndicator.style.setProperty('--rotation', `${activeAngle - Math.PI / 2}rad`);
+  actionButtons.style.setProperty('--rotation', `${activeAngle - Math.PI / 2}rad`);
   potValue.textContent = pot;
   turnIndicator.setAttribute('aria-label', `Your bet: ${pendingBet}. Pot: ${pot}`);
   updateBetControls();
