@@ -57,7 +57,10 @@
             <input id="current-bet" type="number" inputmode="numeric" aria-label="Chips to add to your bet" />
             <button id="bet-decrease" type="button" aria-label="Decrease bet">−</button>
           </div>
-          <output id="pot-value" class="pot-value" aria-label="Pot">0</output>
+          <div id="pot-display" class="pot-display">
+            <output id="pot-value" class="pot-value" aria-label="Pot">0</output>
+            <output id="side-pot-value" class="side-pot-value" aria-label="Side pot" hidden>0</output>
+          </div>
           <div class="action-buttons">
             <button id="confirm-button" type="button">Confirm bet</button>
             <button id="fold-button" type="button">Fold</button>

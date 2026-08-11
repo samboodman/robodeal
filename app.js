@@ -13,6 +13,8 @@ const betDecrease = document.querySelector('#bet-decrease');
 const foldButton = document.querySelector('#fold-button');
 const confirmButton = document.querySelector('#confirm-button');
 const potValue = document.querySelector('#pot-value');
+const potDisplay = document.querySelector('#pot-display');
+const sidePotValue = document.querySelector('#side-pot-value');
 const roundLabel = document.querySelector('#round-label');
 const actionButtons = document.querySelector('.action-buttons');
 const winnerPicker = document.querySelector('#winner-picker');
@@ -33,6 +35,9 @@ let pendingBet = 0;
 let pendingFold = false;
 let isGameWon = false;
 let roundNumber = 1;
+let sidePot = 0;
+let sidePotActive = false;
+let sidePotEligiblePlayers = [];
 
 function drawPlayerNames() {
   const existingNames = [...playerNames.querySelectorAll('input')].map((input) => input.value);
@@ -116,7 +121,7 @@ function drawPlayerSeats() {
     seat.setAttribute('aria-label', `${player.name}: ${player.chips} chips${player.isDealer ? ', dealer' : ''}${isCurrentPlayer ? ', current turn' : ''}${player.folded ? ', folded' : ''}`);
     seat.setAttribute('role', 'button');
     seat.tabIndex = 0;
-    if (!player.folded) {
+    if (!player.folded && player.chips > 0) {
       seat.addEventListener('click', () => setCurrentPlayer(player.number));
       seat.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -134,6 +139,9 @@ function drawPlayerSeats() {
   const activeAngle = (activeIndex / players.length) * Math.PI * 2 + Math.PI / 2;
   turnIndicator.style.setProperty('--rotation', `${activeAngle - Math.PI / 2}rad`);
   potValue.textContent = pot;
+  sidePotValue.textContent = sidePot;
+  sidePotValue.hidden = !sidePotActive;
+  potDisplay.classList.toggle('side-pot-active', sidePotActive);
   roundLabel.textContent = ['Preflop', 'Flop', 'Turn', 'River'][roundNumber - 1];
   turnIndicator.setAttribute('aria-label', `Your bet: ${pendingBet}. Pot: ${pot}`);
   updateBetControls();
@@ -153,7 +161,7 @@ function nextActivePlayerFrom(number) {
 
   for (let step = 1; step <= playerNumbers.length; step += 1) {
     const nextNumber = playerNumbers[(startIndex + step) % playerNumbers.length];
-    if (!playersByNumber[nextNumber].folded) return nextNumber;
+    if (!playersByNumber[nextNumber].folded && playersByNumber[nextNumber].chips > 0) return nextNumber;
   }
 
   return null;
@@ -181,7 +189,7 @@ function updateBetControls() {
 }
 
 function allActivePlayersHaveMatchedBet() {
-  const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded);
+  const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded && player.chips > 0);
   return activePlayers.length > 1
     && activePlayers.every((player) => player.hasActedThisRound && player.roundBet === highestRoundBet);
 }
@@ -209,7 +217,7 @@ function beginNextRound() {
     player.hasActedThisRound = false;
   });
   highestRoundBet = 0;
-  const firstPlayer = playersByNumber[antePlayerNumber].folded
+  const firstPlayer = playersByNumber[antePlayerNumber].folded || playersByNumber[antePlayerNumber].chips === 0
     ? nextActivePlayerFrom(antePlayerNumber)
     : antePlayerNumber;
   if (firstPlayer !== null) setCurrentPlayer(firstPlayer);
@@ -217,27 +225,56 @@ function beginNextRound() {
 
 function showWinnerPicker() {
   const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded);
+  showPotWinnerPicker('Who had the best cards?', activePlayers, awardMainPot);
+}
+
+function showPotWinnerPicker(question, players, awardFunction) {
   turnIndicator.hidden = true;
   actionButtons.hidden = true;
-  winnerQuestion.textContent = 'Who had the best cards?';
+  winnerQuestion.textContent = question;
   winnerOptions.replaceChildren();
 
-  activePlayers.forEach((player) => {
+  players.forEach((player) => {
     const winnerButton = document.createElement('button');
     winnerButton.type = 'button';
     winnerButton.textContent = player.name;
-    winnerButton.addEventListener('click', () => awardPot(player.number));
+    winnerButton.addEventListener('click', () => awardFunction(player.number));
     winnerOptions.append(winnerButton);
   });
 
   winnerPicker.hidden = false;
 }
 
-function awardPot(winnerNumber) {
+function awardMainPot(winnerNumber) {
   const winner = playersByNumber[winnerNumber];
   winner.chips += pot;
   pot = 0;
   gameSettings.pot = pot;
+
+  if (sidePotActive && sidePot > 0) {
+    const sidePotPlayers = Object.values(playersByNumber).filter((player) =>
+      !player.folded && sidePotEligiblePlayers.includes(player.number));
+    if (sidePotPlayers.length <= 1) {
+      awardSidePot(sidePotPlayers[0]?.number || winnerNumber);
+    } else {
+      showPotWinnerPicker('Who wins the side pot?', sidePotPlayers, awardSidePot);
+    }
+    drawPlayerSeats();
+    return;
+  }
+
+  finishHand(winner);
+}
+
+function awardSidePot(winnerNumber) {
+  const winner = playersByNumber[winnerNumber];
+  winner.chips += sidePot;
+  sidePot = 0;
+  gameSettings.sidePot = sidePot;
+  finishHand(winner);
+}
+
+function finishHand(winner) {
   isGameWon = true;
   turnIndicator.hidden = true;
   actionButtons.hidden = true;
@@ -252,10 +289,36 @@ function awardPot(winnerNumber) {
   drawPlayerSeats();
 }
 
+function addToPot(chips) {
+  if (sidePotActive) {
+    sidePot += chips;
+  } else {
+    pot += chips;
+  }
+  gameSettings.pot = pot;
+  gameSettings.sidePot = sidePot;
+}
+
+function startSidePotIfNeeded() {
+  if (sidePotActive) return;
+
+  const allInPlayers = Object.values(playersByNumber).filter((player) => !player.folded && player.chips === 0);
+  const playersWithChips = Object.values(playersByNumber).filter((player) => !player.folded && player.chips > 0);
+
+  if (allInPlayers.length > 0 && playersWithChips.length >= 2) {
+    sidePotActive = true;
+    sidePotEligiblePlayers = playersWithChips.map((player) => player.number);
+    gameSettings.sidePotEligiblePlayers = sidePotEligiblePlayers;
+  }
+}
+
 function startHand() {
   isGameWon = false;
   roundNumber = 1;
   pot = 0;
+  sidePot = 0;
+  sidePotActive = false;
+  sidePotEligiblePlayers = [];
   highestRoundBet = 0;
   pendingBet = 0;
   pendingFold = false;
@@ -273,8 +336,7 @@ function startHand() {
   playersByNumber[antePlayerNumber].roundBet = gameSettings.ante;
   playersByNumber[antePlayerNumber].hasActedThisRound = true;
   highestRoundBet = gameSettings.ante;
-  pot += gameSettings.ante;
-  gameSettings.pot = pot;
+  addToPot(gameSettings.ante);
 
   setCurrentPlayer(antePlayerNumber);
   nextPlayer();
@@ -293,7 +355,7 @@ function finishTurn() {
   const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded);
 
   if (activePlayers.length === 1) {
-    awardPot(activePlayers[0].number);
+    awardMainPot(activePlayers[0].number);
   } else if (allActivePlayersHaveMatchedBet()) {
     startNextRound();
   } else {
@@ -312,8 +374,8 @@ function confirmTurn() {
     player.roundBet += additionalChips;
     player.hasActedThisRound = true;
     highestRoundBet = Math.max(highestRoundBet, player.roundBet);
-    pot += additionalChips;
-    gameSettings.pot = pot;
+    addToPot(additionalChips);
+    startSidePotIfNeeded();
   }
 
   finishTurn();
