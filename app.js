@@ -564,6 +564,13 @@ function confirm() {
   confirmTurn();
 }
 
+function cardsAreDealt() {
+  if (dealPrompt.hidden) return false;
+
+  beginNextRound();
+  return true;
+}
+
 function spokenNumber(text) {
   const digit = text.match(/\b(\d+)\b/);
   if (digit) return Number(digit[1]);
@@ -583,6 +590,12 @@ function handleSpokenPokerCommand(transcript) {
     // Whisper sometimes confuses the poker word "raise" with "blaze".
     .replace(/\bblaze\b/g, 'raise');
   showVoiceStatus(`Heard: “${transcript}”`);
+
+  const saysCardsAreDealt = /\b(flop|turn|river)\b.{0,18}\b(deal|dealt)\b|\b(deal|dealt)\b.{0,18}\b(flop|turn|river)\b/.test(words);
+  if (saysCardsAreDealt) {
+    if (!cardsAreDealt()) speak('There are no cards waiting to be dealt.');
+    return;
+  }
 
   // This function only calls the six action functions above. It never changes
   // poker variables directly. A recognized legal action is applied right away;
