@@ -14,6 +14,7 @@ const betIncrease = document.querySelector('#bet-increase');
 const betDecrease = document.querySelector('#bet-decrease');
 const foldButton = document.querySelector('#fold-button');
 const confirmButton = document.querySelector('#confirm-button');
+const undoButton = document.querySelector('#undo-button');
 const potValue = document.querySelector('#pot-value');
 const potDisplay = document.querySelector('#pot-display');
 const sidePotValue = document.querySelector('#side-pot-value');
@@ -49,6 +50,7 @@ let audioContext = null;
 let isTranscribing = false;
 let queuedAudioBlob = null;
 let recordingSessionId = 0;
+let lastTurnState = null;
 
 function speak(message) {
   if (!('speechSynthesis' in window)) return;
@@ -217,6 +219,54 @@ function updateBetControls() {
   betInput.disabled = pendingFold;
   foldButton.classList.toggle('selected', pendingFold);
   confirmButton.textContent = pendingFold ? 'Confirm fold' : 'Confirm bet';
+  const undoIsAvailable = canUndoLastTurn();
+  undoButton.hidden = !undoIsAvailable;
+  actionButtons.classList.toggle('has-undo', undoIsAvailable);
+}
+
+function captureTurnState() {
+  return {
+    currentPlayerNumber,
+    pot,
+    sidePot,
+    sidePotActive,
+    sidePotEligiblePlayers: [...sidePotEligiblePlayers],
+    highestRoundBet,
+    players: Object.fromEntries(Object.values(playersByNumber).map((player) => [player.number, {
+      chips: player.chips,
+      roundBet: player.roundBet,
+      hasActedThisRound: player.hasActedThisRound,
+      folded: player.folded,
+    }])),
+  };
+}
+
+function canUndoLastTurn() {
+  const currentPlayer = playersByNumber[currentPlayerNumber];
+  return lastTurnState !== null && currentPlayer && !currentPlayer.hasActedThisRound;
+}
+
+function undoLastTurn() {
+  if (!canUndoLastTurn()) return;
+
+  Object.entries(lastTurnState.players).forEach(([number, playerState]) => {
+    Object.assign(playersByNumber[number], playerState);
+  });
+  currentPlayerNumber = lastTurnState.currentPlayerNumber;
+  pot = lastTurnState.pot;
+  sidePot = lastTurnState.sidePot;
+  sidePotActive = lastTurnState.sidePotActive;
+  sidePotEligiblePlayers = [...lastTurnState.sidePotEligiblePlayers];
+  highestRoundBet = lastTurnState.highestRoundBet;
+  pendingBet = Math.max(0, highestRoundBet - playersByNumber[currentPlayerNumber].roundBet);
+  pendingFold = false;
+  gameSettings.currentPlayerNumber = currentPlayerNumber;
+  gameSettings.pot = pot;
+  gameSettings.sidePot = sidePot;
+  gameSettings.sidePotEligiblePlayers = sidePotEligiblePlayers;
+  lastTurnState = null;
+  speak('Last turn undone.');
+  drawPlayerSeats();
 }
 
 function allActivePlayersHaveMatchedBet() {
@@ -229,6 +279,7 @@ function allActivePlayersHaveMatchedBet() {
 }
 
 function startNextRound() {
+  lastTurnState = null;
   if (roundNumber >= 4) {
     showWinnerPicker();
     return;
@@ -376,6 +427,7 @@ function startHand() {
   highestRoundBet = 0;
   pendingBet = 0;
   pendingFold = false;
+  lastTurnState = null;
 
   Object.values(playersByNumber).forEach((player) => {
     player.folded = player.eliminated;
@@ -409,8 +461,10 @@ function finishTurn() {
   const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded);
 
   if (activePlayers.length === 1) {
+    lastTurnState = null;
     awardMainPot(activePlayers[0].number);
   } else if (allActivePlayersHaveMatchedBet()) {
+    lastTurnState = null;
     startNextRound();
   } else {
     nextPlayer();
@@ -419,6 +473,7 @@ function finishTurn() {
 
 function confirmTurn() {
   const player = playersByNumber[currentPlayerNumber];
+  lastTurnState = captureTurnState();
 
   if (pendingFold) {
     player.folded = true;
@@ -660,6 +715,7 @@ foldButton.addEventListener('click', () => {
   }
 });
 confirmButton.addEventListener('click', confirm);
+undoButton.addEventListener('click', undoLastTurn);
 dealOkButton.addEventListener('click', beginNextRound);
 testVoiceButton.addEventListener('click', () => {
   speak('Voice is ready. Let the poker game begin.');
