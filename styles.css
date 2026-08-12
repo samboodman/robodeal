@@ -5,6 +5,9 @@ body { margin: 0; min-height: 100svh; background: radial-gradient(circle at top,
 .app-shell { min-height: 100svh; display: grid; place-items: center; padding: max(22px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(22px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
 .setup-card { width: min(100%, 480px); background: #fffdf6; border-radius: 24px; padding: 28px 22px; box-shadow: 0 18px 50px #04160f88; }
 .game-screen { position: relative; width: min(100%, 680px); min-height: min(100svh, 680px); }
+.recording-button { position: absolute; z-index: 1; left: 50%; top: calc(7% + 52px); width: 154px; min-height: 42px; margin: 0; padding: 0 12px; border: 2px solid #fffdf6; border-radius: 999px; background: #b63f29; color: #fffdf6; font: inherit; font-size: .9rem; font-weight: 800; box-shadow: 0 3px 0 #7c2517; transform: translateX(-50%); }
+.recording-button:active { transform: translateX(-50%) translateY(2px); }
+.recording-button[aria-pressed="true"] { background: #9b1d26; box-shadow: 0 0 0 4px #ffb5a5aa, 0 3px 0 #66141a; }
 .game-winner-screen { position: relative; display: grid; width: min(100%, 680px); min-height: min(100svh, 680px); place-items: center; overflow: hidden; border-radius: 24px; background: #06110e; color: #fffdf6; text-align: center; }
 .game-winner-screen img { position: absolute; width: 100%; height: 100%; object-fit: cover; opacity: .78; }
 .game-winner-screen h1 { position: relative; z-index: 1; max-width: 90%; padding: 20px; color: #fffdf6; font-size: clamp(2.7rem, 13vw, 5rem); line-height: .95; text-shadow: 0 3px 14px #000; }
