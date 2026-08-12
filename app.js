@@ -28,6 +28,7 @@ const dealMessage = document.querySelector('#deal-message');
 const dealOkButton = document.querySelector('#deal-ok-button');
 const testVoiceButton = document.querySelector('#test-voice-button');
 const recordingButton = document.querySelector('#recording-button');
+const voiceStatus = document.querySelector('#voice-status');
 
 // This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
@@ -60,6 +61,11 @@ function discardOldAudioFiles() {
   recentAudioFiles = recentAudioFiles.filter((audioFile) => audioFile.createdAt >= oneMinuteAgo);
 }
 
+function setVoiceStatus(status) {
+  voiceStatus.textContent = status;
+  voiceStatus.hidden = !status;
+}
+
 function getRealtimeGameState() {
   // This makes a plain copy. The AI can read this copy, but cannot change the
   // real game variables. Only the approved functions below can affect a turn.
@@ -84,7 +90,7 @@ function getRealtimeGameState() {
 }
 
 function realtimeInstructions() {
-  return `You are the voice control for a real-card poker game. The following is a read-only snapshot of the current game state: ${JSON.stringify(getRealtimeGameState())}\n\nNever claim to change the game yourself. To do anything, use only the listed poker action functions. If a player says something unrelated to poker, do nothing. If an action is unclear, ask one short question. Use check only when it is legal. A raise amount is the number of additional chips to bet now. After choosing an action, use confirm only when the player has clearly asked to make it happen.`;
+  return `You are the voice control for a real-card poker game. The following is a read-only snapshot of the current game state: ${JSON.stringify(getRealtimeGameState())}\n\nNever claim to change the game yourself. To do anything, use only the listed poker action functions. If a player says something unrelated to poker, do nothing. If an action is unclear, ask one short question. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Treat clear commands such as "fold", "call", "check", "raise 5", and "all in" as immediately confirmed: call the needed action function and then confirm. Do not speak a reply after a clear poker command.`;
 }
 
 const realtimeTools = [
@@ -106,6 +112,7 @@ function updateRealtimeGameState() {
   sendRealtimeEvent({
     type: 'session.update',
     session: {
+      type: 'realtime',
       instructions: realtimeInstructions(),
       tools: realtimeTools,
       tool_choice: 'auto',
@@ -160,6 +167,7 @@ function stopRealtimeConversation() {
   realtimeDataChannel = null;
   realtimePeerConnection = null;
   realtimeAudio = null;
+  setVoiceStatus('');
 }
 
 async function startRealtimeConversation(stream) {
@@ -180,8 +188,12 @@ async function startRealtimeConversation(stream) {
   });
 
   realtimeDataChannel = realtimePeerConnection.createDataChannel('oai-events');
-  realtimeDataChannel.addEventListener('open', updateRealtimeGameState);
+  realtimeDataChannel.addEventListener('open', () => {
+    updateRealtimeGameState();
+    setVoiceStatus('AI is listening');
+  });
   realtimeDataChannel.addEventListener('message', (event) => handleRealtimeEvent(JSON.parse(event.data)));
+  realtimeDataChannel.addEventListener('close', () => setVoiceStatus('Voice connection ended'));
 
   const offer = await realtimePeerConnection.createOffer();
   await realtimePeerConnection.setLocalDescription(offer);
@@ -243,8 +255,10 @@ async function startRecording() {
     audioCleanupTimer = window.setInterval(discardOldAudioFiles, 1_000);
     recordingButton.setAttribute('aria-pressed', 'true');
     recordingButton.textContent = 'Stop recording';
+    setVoiceStatus('Connecting AI…');
     startRealtimeConversation(newMicrophoneStream).catch((error) => {
       console.error('Realtime voice connection could not start:', error);
+      setVoiceStatus('AI could not connect');
     });
   } catch (error) {
     microphoneRecorder = null;
