@@ -560,28 +560,29 @@ function handleSpokenPokerCommand(transcript) {
   const words = transcript.toLowerCase().replace(/[^a-z0-9\s']/g, ' ');
 
   // This function only calls the six action functions above. It never changes
-  // poker variables directly, and only a spoken "confirm" changes the game.
+  // poker variables directly. A recognized legal action is applied right away;
+  // the next player can use Undo if Whisper heard it wrong.
   if (/\bconfirm\b/.test(words)) {
-    confirm();
+    speak('Voice actions confirm automatically.');
     return;
   }
   if (/\b(all in|all-in)\b/.test(words)) {
     goAllIn();
-    speak('All in selected. Say confirm to place the bet.');
+    confirm();
     return;
   }
   if (/\b(fold|i'?m out|i am out|too rich)\b/.test(words)) {
     foldCurrentPlayer();
-    speak('Fold selected. Say confirm to fold.');
+    confirm();
     return;
   }
   if (/\bcheck\b/.test(words)) {
-    if (checkCurrentPlayer()) speak('Check selected. Say confirm to check.');
+    if (checkCurrentPlayer()) confirm();
     return;
   }
   if (/\bcall\b/.test(words)) {
     callCurrentPlayer();
-    speak('Call selected. Say confirm to call.');
+    confirm();
     return;
   }
   if (/\b(bet|raise)\b/.test(words)) {
@@ -590,8 +591,7 @@ function handleSpokenPokerCommand(transcript) {
       speak('Say bet, then a number.');
       return;
     }
-    betCurrentPlayer(amount);
-    speak(`Bet ${amount} selected. Say confirm to place the bet.`);
+    if (betCurrentPlayer(amount)) confirm();
   }
 }
 
