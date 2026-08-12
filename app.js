@@ -53,6 +53,7 @@ let isTranscribing = false;
 let queuedAudioBlob = null;
 let recordingSessionId = 0;
 let lastTurnState = null;
+let lastRejectedVoiceCommand = null;
 
 function speak(message) {
   if (!('speechSynthesis' in window)) return;
@@ -508,12 +509,12 @@ function foldCurrentPlayer() {
   updateBetControls();
 }
 
-function checkCurrentPlayer() {
+function checkCurrentPlayer(announceProblem = true) {
   const player = playersByNumber[currentPlayerNumber];
   const amountNeededToCall = Math.max(0, highestRoundBet - player.roundBet);
 
   if (amountNeededToCall > 0) {
-    speak(`You cannot check. You need ${amountNeededToCall} more to call.`);
+    if (announceProblem) speak(`You cannot check. You need ${amountNeededToCall} more to call.`);
     return false;
   }
 
@@ -572,24 +573,34 @@ function handleSpokenPokerCommand(transcript) {
   // poker variables directly. A recognized legal action is applied right away;
   // the next player can use Undo if Whisper heard it wrong.
   if (/\bconfirm\b/.test(words)) {
+    lastRejectedVoiceCommand = null;
     speak('Voice actions confirm automatically.');
     return;
   }
   if (/\b(all in|all-in)\b/.test(words)) {
+    lastRejectedVoiceCommand = null;
     goAllIn();
     confirm();
     return;
   }
   if (/\b(fold|i'?m out|i am out|too rich)\b/.test(words)) {
+    lastRejectedVoiceCommand = null;
     foldCurrentPlayer();
     confirm();
     return;
   }
   if (/\bcheck\b/.test(words)) {
-    if (checkCurrentPlayer()) confirm();
+    const shouldAnnounceProblem = lastRejectedVoiceCommand !== 'check';
+    if (checkCurrentPlayer(shouldAnnounceProblem)) {
+      lastRejectedVoiceCommand = null;
+      confirm();
+    } else {
+      lastRejectedVoiceCommand = 'check';
+    }
     return;
   }
   if (/\bcall\b/.test(words)) {
+    lastRejectedVoiceCommand = null;
     callCurrentPlayer();
     confirm();
     return;
@@ -604,7 +615,10 @@ function handleSpokenPokerCommand(transcript) {
     const amountNeededToCall = Math.max(0, highestRoundBet - player.roundBet);
     const isRaise = /\braise\b/.test(words);
     const chipsToAdd = isRaise ? amountNeededToCall + amount : amount;
-    if (betCurrentPlayer(chipsToAdd)) confirm();
+    if (betCurrentPlayer(chipsToAdd)) {
+      lastRejectedVoiceCommand = null;
+      confirm();
+    }
     return;
   }
 
