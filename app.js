@@ -51,10 +51,148 @@ let microphoneStream = null;
 let microphoneRecorder = null;
 let recentAudioFiles = [];
 let audioCleanupTimer = null;
+let realtimePeerConnection = null;
+let realtimeDataChannel = null;
+let realtimeAudio = null;
 
 function discardOldAudioFiles() {
   const oneMinuteAgo = Date.now() - 60_000;
   recentAudioFiles = recentAudioFiles.filter((audioFile) => audioFile.createdAt >= oneMinuteAgo);
+}
+
+function getRealtimeGameState() {
+  // This makes a plain copy. The AI can read this copy, but cannot change the
+  // real game variables. Only the approved functions below can affect a turn.
+  return {
+    gameSettings: gameSettings ? { ...gameSettings } : null,
+    playersByNumber: Object.fromEntries(Object.entries(playersByNumber).map(([number, player]) => [number, { ...player }])),
+    currentPlayerNumber,
+    antePlayerNumber,
+    pot,
+    highestRoundBet,
+    pendingBet,
+    pendingFold,
+    isGameWon,
+    roundNumber,
+    sidePot,
+    sidePotActive,
+    sidePotEligiblePlayers: [...sidePotEligiblePlayers],
+    lastTurnState: lastTurnState ? JSON.parse(JSON.stringify(lastTurnState)) : null,
+    recentAudioFileCount: recentAudioFiles.length,
+    isRecording: microphoneRecorder?.state === 'recording',
+  };
+}
+
+function realtimeInstructions() {
+  return `You are the voice control for a real-card poker game. The following is a read-only snapshot of the current game state: ${JSON.stringify(getRealtimeGameState())}\n\nNever claim to change the game yourself. To do anything, use only the listed poker action functions. If a player says something unrelated to poker, do nothing. If an action is unclear, ask one short question. Use check only when it is legal. A raise amount is the number of additional chips to bet now. After choosing an action, use confirm only when the player has clearly asked to make it happen.`;
+}
+
+const realtimeTools = [
+  { type: 'function', name: 'foldCurrentPlayer', description: 'Select folding for the current player. Call confirm afterwards only when the player clearly means to fold.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'checkCurrentPlayer', description: 'Select checking for the current player, only when checking is legal.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'callCurrentPlayer', description: 'Set the current player to call the current bet.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'betCurrentPlayer', description: 'Set how many additional chips the current player will bet now. This does not confirm the bet.', parameters: { type: 'object', properties: { amount: { type: 'number', description: 'Additional chips to bet now.' } }, required: ['amount'], additionalProperties: false } },
+  { type: 'function', name: 'goAllIn', description: 'Set the current player to bet every chip they have left.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'confirm', description: 'Confirm the currently selected bet or fold. Call only after the player clearly asks to do it.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+];
+
+function sendRealtimeEvent(event) {
+  if (realtimeDataChannel?.readyState === 'open') {
+    realtimeDataChannel.send(JSON.stringify(event));
+  }
+}
+
+function updateRealtimeGameState() {
+  sendRealtimeEvent({
+    type: 'session.update',
+    session: {
+      instructions: realtimeInstructions(),
+      tools: realtimeTools,
+      tool_choice: 'auto',
+    },
+  });
+}
+
+function callRealtimeTool(name, argumentsText) {
+  const args = argumentsText ? JSON.parse(argumentsText) : {};
+  const allowedFunctions = {
+    foldCurrentPlayer,
+    checkCurrentPlayer,
+    callCurrentPlayer,
+    betCurrentPlayer,
+    goAllIn,
+    confirm,
+  };
+  const action = allowedFunctions[name];
+  if (!action) throw new Error(`The AI tried to call an unapproved function: ${name}`);
+
+  // This is the only bridge from OpenAI back into the poker game.
+  // The AI has no direct access to the real variables above.
+  return name === 'betCurrentPlayer' ? action(args.amount) : action();
+}
+
+function handleRealtimeEvent(event) {
+  if (event.type !== 'response.function_call_arguments.done') return;
+
+  let result;
+  try {
+    result = callRealtimeTool(event.name, event.arguments);
+  } catch (error) {
+    result = { error: error.message };
+  }
+
+  sendRealtimeEvent({
+    type: 'conversation.item.create',
+    item: {
+      type: 'function_call_output',
+      call_id: event.call_id,
+      output: JSON.stringify({ result, gameState: getRealtimeGameState() }),
+    },
+  });
+  updateRealtimeGameState();
+  sendRealtimeEvent({ type: 'response.create' });
+}
+
+function stopRealtimeConversation() {
+  realtimeDataChannel?.close();
+  realtimePeerConnection?.close();
+  realtimeAudio?.remove();
+  realtimeDataChannel = null;
+  realtimePeerConnection = null;
+  realtimeAudio = null;
+}
+
+async function startRealtimeConversation(stream) {
+  if (!window.RTCPeerConnection) throw new Error('This browser does not support WebRTC.');
+
+  realtimePeerConnection = new RTCPeerConnection();
+  stream.getTracks().forEach((track) => realtimePeerConnection.addTrack(track, stream));
+  realtimePeerConnection.addEventListener('track', (event) => {
+    if (!realtimeAudio) {
+      realtimeAudio = document.createElement('audio');
+      realtimeAudio.autoplay = true;
+      realtimeAudio.playsInline = true;
+      realtimeAudio.hidden = true;
+      document.body.append(realtimeAudio);
+    }
+    realtimeAudio.srcObject = event.streams[0];
+    realtimeAudio.play().catch(() => {});
+  });
+
+  realtimeDataChannel = realtimePeerConnection.createDataChannel('oai-events');
+  realtimeDataChannel.addEventListener('open', updateRealtimeGameState);
+  realtimeDataChannel.addEventListener('message', (event) => handleRealtimeEvent(JSON.parse(event.data)));
+
+  const offer = await realtimePeerConnection.createOffer();
+  await realtimePeerConnection.setLocalDescription(offer);
+  const callResponse = await fetch('/api/realtime-call', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sdp: offer.sdp }),
+  });
+  const answer = await callResponse.text();
+  if (!callResponse.ok) throw new Error(answer);
+  await realtimePeerConnection.setRemoteDescription({ type: 'answer', sdp: answer });
 }
 
 function stopRecording() {
@@ -63,6 +201,7 @@ function stopRecording() {
   }
 
   microphoneStream?.getTracks().forEach((track) => track.stop());
+  stopRealtimeConversation();
   microphoneRecorder = null;
   microphoneStream = null;
   window.clearInterval(audioCleanupTimer);
@@ -100,6 +239,9 @@ async function startRecording() {
     audioCleanupTimer = window.setInterval(discardOldAudioFiles, 1_000);
     recordingButton.setAttribute('aria-pressed', 'true');
     recordingButton.textContent = 'Stop recording';
+    startRealtimeConversation(microphoneStream).catch((error) => {
+      console.error('Realtime voice connection could not start:', error);
+    });
   } catch (error) {
     microphoneRecorder = null;
     microphoneStream?.getTracks().forEach((track) => track.stop());
@@ -236,6 +378,7 @@ function drawPlayerSeats() {
   roundLabel.textContent = ['Preflop', 'Flop', 'Turn', 'River'][roundNumber - 1];
   turnIndicator.setAttribute('aria-label', `Your bet: ${pendingBet}. Pot: ${pot}`);
   updateBetControls();
+  updateRealtimeGameState();
 }
 
 function setCurrentPlayer(number) {
