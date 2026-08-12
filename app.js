@@ -47,6 +47,7 @@ let sidePotActive = false;
 let sidePotEligiblePlayers = [];
 let microphoneStream = null;
 let speechRecognizer = null;
+let pokerCommandClassifier = null;
 let audioContext = null;
 let microphoneSource = null;
 let voiceCaptureProcessor = null;
@@ -583,7 +584,55 @@ function spokenNumber(text) {
   return word ? numberWords[word] : null;
 }
 
-function handleSpokenPokerCommand(transcript) {
+function runClassifiedPokerAction(action) {
+  if (action === 'fold') {
+    foldCurrentPlayer();
+    confirm();
+  } else if (action === 'call') {
+    callCurrentPlayer();
+    confirm();
+  } else if (action === 'check') {
+    if (checkCurrentPlayer()) confirm();
+  } else if (action === 'all-in') {
+    goAllIn();
+    confirm();
+  } else if (action === 'cards-dealt') {
+    if (!cardsAreDealt()) speak('There are no cards waiting to be dealt.');
+  }
+}
+
+async function classifyVaguePokerCommand(transcript) {
+  showVoiceStatus('Thinking about what that means…');
+  try {
+    // This small classifier downloads once per device, then works offline.
+    pokerCommandClassifier ??= await pipeline(
+      'zero-shot-classification',
+      'Xenova/mobilebert-uncased-mnli',
+    );
+    const choices = {
+      fold: 'fold from the poker hand',
+      call: 'call the current poker bet',
+      check: 'check in poker without betting more',
+      'all-in': 'put all poker chips in the pot',
+      'cards-dealt': 'say the next community cards are dealt',
+      unrelated: 'unrelated conversation, not a poker action',
+    };
+    const result = await pokerCommandClassifier(transcript, Object.values(choices));
+    const bestChoice = result.labels[0];
+    const action = Object.keys(choices).find((key) => choices[key] === bestChoice);
+
+    if (action && action !== 'unrelated' && result.scores[0] >= 0.55) {
+      runClassifiedPokerAction(action);
+    } else {
+      showVoiceStatus(`Heard: “${transcript}” — no poker action.`);
+    }
+  } catch (error) {
+    console.error('Could not classify poker command:', error);
+    showVoiceStatus(`Heard: “${transcript}” — no poker action.`);
+  }
+}
+
+async function handleSpokenPokerCommand(transcript) {
   const words = transcript
     .toLowerCase()
     .replace(/[^a-z0-9\s']/g, ' ')
@@ -607,14 +656,12 @@ function handleSpokenPokerCommand(transcript) {
   }
   if (/\b(all in|all-in)\b/.test(words)) {
     lastRejectedVoiceCommand = null;
-    goAllIn();
-    confirm();
+    runClassifiedPokerAction('all-in');
     return;
   }
   if (/\b(fold|i'?m out|i am out|too rich)\b/.test(words)) {
     lastRejectedVoiceCommand = null;
-    foldCurrentPlayer();
-    confirm();
+    runClassifiedPokerAction('fold');
     return;
   }
   if (/\bcheck\b/.test(words)) {
@@ -629,8 +676,7 @@ function handleSpokenPokerCommand(transcript) {
   }
   if (/\bcall\b/.test(words)) {
     lastRejectedVoiceCommand = null;
-    callCurrentPlayer();
-    confirm();
+    runClassifiedPokerAction('call');
     return;
   }
   if (/\b(bet|raise)\b/.test(words)) {
@@ -650,7 +696,7 @@ function handleSpokenPokerCommand(transcript) {
     return;
   }
 
-  showVoiceStatus(`Heard: “${transcript}” — no poker action.`);
+  classifyVaguePokerCommand(transcript);
 }
 
 async function audioSamplesToWhisperSamples(samples, sampleRate) {
