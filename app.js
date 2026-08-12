@@ -597,7 +597,11 @@ async function startVoiceRecording() {
   try {
     microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     audioContext = new AudioContext();
-    speechRecognizer ??= await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en');
+    // The full-precision files avoid a browser-runtime problem in the
+    // compressed version of this Whisper model.
+    speechRecognizer ??= await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en', {
+      dtype: 'fp32',
+    });
     if (sessionId !== recordingSessionId) return;
 
     mediaRecorder = new MediaRecorder(microphoneStream);
@@ -612,7 +616,7 @@ async function startVoiceRecording() {
   } catch (error) {
     console.error('Could not start voice recording:', error);
     stopVoiceRecording();
-    speak('Voice control could not start. Please allow microphone access.');
+    speak('Voice control could not start because the speech model did not load.');
   }
 }
 
