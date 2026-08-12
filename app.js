@@ -825,7 +825,7 @@ async function startVoiceRecording() {
     audioContext = new AudioContext();
     // The full-precision files avoid a browser-runtime problem in the
     // compressed version of this Whisper model.
-    speechRecognizer ??= await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en', {
+    speechRecognizer ??= await pipeline('automatic-speech-recognition', 'Xenova/whisper-base.en', {
       dtype: 'fp32',
     });
     if (sessionId !== recordingSessionId) return;
