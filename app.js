@@ -559,7 +559,7 @@ async function transcribeAudioBlob(blob) {
   isTranscribing = true;
   try {
     const audio = await audioBlobToWhisperSamples(blob);
-    const result = await speechRecognizer(audio, { language: 'english', task: 'transcribe' });
+    const result = await speechRecognizer(audio);
     const transcript = result.text.trim();
     if (transcript) handleSpokenPokerCommand(transcript);
   } catch (error) {
@@ -588,6 +588,31 @@ function stopVoiceRecording() {
   recordingButton.setAttribute('aria-pressed', 'false');
 }
 
+function recordNextVoiceClip(sessionId) {
+  if (sessionId !== recordingSessionId || !microphoneStream) return;
+
+  const audioChunks = [];
+  const recorder = new MediaRecorder(microphoneStream);
+  mediaRecorder = recorder;
+  recorder.addEventListener('dataavailable', ({ data }) => {
+    if (data.size > 0) audioChunks.push(data);
+  });
+  recorder.addEventListener('stop', () => {
+    if (audioChunks.length > 0) {
+      transcribeAudioBlob(new Blob(audioChunks, { type: recorder.mimeType }));
+    }
+    if (sessionId === recordingSessionId && microphoneStream) {
+      recordNextVoiceClip(sessionId);
+    }
+  });
+  recorder.start();
+  window.setTimeout(() => {
+    if (sessionId === recordingSessionId && recorder.state === 'recording') {
+      recorder.stop();
+    }
+  }, 3500);
+}
+
 async function startVoiceRecording() {
   const sessionId = recordingSessionId + 1;
   recordingSessionId = sessionId;
@@ -604,11 +629,7 @@ async function startVoiceRecording() {
     });
     if (sessionId !== recordingSessionId) return;
 
-    mediaRecorder = new MediaRecorder(microphoneStream);
-    mediaRecorder.addEventListener('dataavailable', ({ data }) => {
-      if (data.size > 0) transcribeAudioBlob(data);
-    });
-    mediaRecorder.start(3500);
+    recordNextVoiceClip(sessionId);
     recordingButton.disabled = false;
     recordingButton.textContent = 'Stop recording';
     recordingButton.setAttribute('aria-pressed', 'true');
