@@ -32,6 +32,10 @@ export default async function handler(request, response) {
   });
   const answer = await openAIResponse.text();
 
+  if (!openAIResponse.ok) {
+    console.error('OpenAI Realtime call failed:', openAIResponse.status, answer);
+  }
+
   response.status(openAIResponse.status);
   response.setHeader('Content-Type', openAIResponse.headers.get('content-type') || 'text/plain');
   response.send(answer);

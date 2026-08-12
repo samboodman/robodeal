@@ -293,7 +293,13 @@ async function startRecording() {
     setVoiceTranscript('');
     startRealtimeConversation(newMicrophoneStream).catch((error) => {
       console.error('Realtime voice connection could not start:', error);
-      setVoiceStatus('AI could not connect');
+      let reason = 'unknown connection problem';
+      try {
+        reason = JSON.parse(error.message).error?.message || reason;
+      } catch {
+        reason = error.message || reason;
+      }
+      setVoiceStatus(`AI could not connect: ${reason}`);
     });
   } catch (error) {
     microphoneRecorder = null;
