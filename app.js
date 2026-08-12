@@ -649,7 +649,7 @@ async function handleSpokenPokerCommand(transcript) {
   // This function only calls the six action functions above. It never changes
   // poker variables directly. A recognized legal action is applied right away;
   // the next player can use Undo if Whisper heard it wrong.
-  if (/\bconfirm\s+(the\s+)?bet\b/.test(words)) {
+  if (/\bconfirm\s+(the\s+)?(bet|that)\b/.test(words)) {
     lastRejectedVoiceCommand = null;
     confirm();
     return;
