@@ -451,7 +451,7 @@ foldButton.addEventListener('click', () => {
 confirmButton.addEventListener('click', confirmTurn);
 dealOkButton.addEventListener('click', beginNextRound);
 testVoiceButton.addEventListener('click', () => {
-  speak('Voice is ready. Let the poker game begin.');
+  speak('Test');
 });
 recordingButton.addEventListener('click', () => {
   const isRecording = recordingButton.textContent === 'Stop recording';
