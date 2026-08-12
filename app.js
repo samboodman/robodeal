@@ -29,6 +29,7 @@ const dealOkButton = document.querySelector('#deal-ok-button');
 const testVoiceButton = document.querySelector('#test-voice-button');
 const recordingButton = document.querySelector('#recording-button');
 const voiceStatus = document.querySelector('#voice-status');
+const showTranscript = document.querySelector('#show-transcript');
 
 // This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
@@ -64,6 +65,8 @@ function speak(message) {
 }
 
 function showVoiceStatus(status) {
+  voiceStatus.hidden = !gameSettings?.showTranscript;
+  if (!gameSettings?.showTranscript) return;
   voiceStatus.textContent = status;
 }
 
@@ -751,12 +754,14 @@ form.addEventListener('submit', (event) => {
     startingMoney: Number(document.querySelector('#starting-money').value),
     ante: Number(document.querySelector('#ante').value),
     dealerNumber: Number(dealerSelect.value),
+    showTranscript: showTranscript.checked,
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
   };
   makePlayers();
   setupScreen.hidden = true;
   gameScreen.hidden = false;
   gameWinnerScreen.hidden = true;
+  voiceStatus.hidden = !gameSettings.showTranscript;
   winnerPicker.hidden = true;
   dealPrompt.hidden = true;
   turnIndicator.hidden = false;

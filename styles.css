@@ -52,6 +52,8 @@ label { display: block; margin: 18px 0 7px; font-weight: 750; }
 label span, .players-heading p { color: #71857b; font-weight: 500; }
 input, select { width: 100%; min-height: 52px; border: 2px solid #d4dfd8; border-radius: 14px; background: white; color: #173329; font: inherit; font-size: 16px; padding: 0 14px; }
 input:focus, select:focus { outline: 3px solid #f1c565; border-color: #7c5c15; }
+.toggle-setting { display: flex; align-items: center; gap: 11px; margin: 22px 0 0; color: #3b6755; font-size: .95rem; }
+.toggle-setting input { width: 22px; min-height: 22px; margin: 0; accent-color: #b63f29; }
 .money-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .money-grid label { font-size: .92rem; }
 .players-heading { margin-top: 27px; }
@@ -73,6 +75,7 @@ button:active { transform: translateY(2px); box-shadow: 0 2px 0 #7c2517; }
   h1 { font-size: clamp(2.2rem, 11vw, 3rem); }
   .intro { max-width: 25rem; margin-bottom: 24px; font-size: 1.03rem; }
   label { margin-top: 22px; }
+  .toggle-setting { margin-top: 26px; }
   .players-heading { margin-top: 31px; }
   .player-names { gap: 12px; }
   .player-row { grid-template-columns: 36px 1fr; gap: 8px; }
