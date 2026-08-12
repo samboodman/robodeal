@@ -47,10 +47,12 @@ let sidePotActive = false;
 let sidePotEligiblePlayers = [];
 let microphoneStream = null;
 let speechRecognizer = null;
-let mediaRecorder = null;
 let audioContext = null;
+let microphoneSource = null;
+let voiceCaptureProcessor = null;
+let silentAudioOutput = null;
 let isTranscribing = false;
-let queuedAudioBlob = null;
+let queuedAudioSamples = null;
 let recordingSessionId = 0;
 let lastTurnState = null;
 let lastRejectedVoiceCommand = null;
@@ -638,9 +640,10 @@ function handleSpokenPokerCommand(transcript) {
   showVoiceStatus(`Heard: “${transcript}” — no poker action.`);
 }
 
-async function audioBlobToWhisperSamples(blob) {
-  const audioBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
-  const offlineContext = new OfflineAudioContext(1, Math.ceil(audioBuffer.duration * 16000), 16000);
+async function audioSamplesToWhisperSamples(samples, sampleRate) {
+  const offlineContext = new OfflineAudioContext(1, Math.ceil((samples.length / sampleRate) * 16000), 16000);
+  const audioBuffer = offlineContext.createBuffer(1, samples.length, sampleRate);
+  audioBuffer.copyToChannel(samples, 0);
   const source = offlineContext.createBufferSource();
   source.buffer = audioBuffer;
   source.connect(offlineContext.destination);
@@ -649,17 +652,17 @@ async function audioBlobToWhisperSamples(blob) {
   return resampledBuffer.getChannelData(0);
 }
 
-async function transcribeAudioBlob(blob) {
+async function transcribeAudioSamples(samples, sampleRate) {
   if (Date.now() < ignoreVoiceUntil) return;
 
   if (isTranscribing) {
-    queuedAudioBlob = blob;
+    queuedAudioSamples = { samples, sampleRate };
     return;
   }
 
   isTranscribing = true;
   try {
-    const audio = await audioBlobToWhisperSamples(blob);
+    const audio = await audioSamplesToWhisperSamples(samples, sampleRate);
     const result = await speechRecognizer(audio);
     const transcript = result.text.trim();
     if (transcript) handleSpokenPokerCommand(transcript);
@@ -669,56 +672,77 @@ async function transcribeAudioBlob(blob) {
     showVoiceStatus('Voice could not understand that clip. Try again.');
   } finally {
     isTranscribing = false;
-    if (queuedAudioBlob) {
-      const nextBlob = queuedAudioBlob;
-      queuedAudioBlob = null;
-      transcribeAudioBlob(nextBlob);
+    if (queuedAudioSamples) {
+      const nextAudio = queuedAudioSamples;
+      queuedAudioSamples = null;
+      transcribeAudioSamples(nextAudio.samples, nextAudio.sampleRate);
     }
   }
 }
 
 function stopVoiceRecording() {
   recordingSessionId += 1;
-  if (mediaRecorder?.state === 'recording') mediaRecorder.stop();
-  mediaRecorder = null;
+  microphoneSource?.disconnect();
+  voiceCaptureProcessor?.disconnect();
+  silentAudioOutput?.disconnect();
+  microphoneSource = null;
+  voiceCaptureProcessor = null;
+  silentAudioOutput = null;
   microphoneStream?.getTracks().forEach((track) => track.stop());
   microphoneStream = null;
   audioContext?.close();
   audioContext = null;
-  queuedAudioBlob = null;
+  queuedAudioSamples = null;
   recordingButton.disabled = false;
   recordingButton.textContent = 'Start recording';
   recordingButton.setAttribute('aria-pressed', 'false');
   showVoiceStatus('Voice control stopped.');
 }
 
-function recordNextVoiceClip(sessionId) {
+function startContinuousVoiceCapture(sessionId) {
   if (sessionId !== recordingSessionId || !microphoneStream) return;
 
-  const clipStartedAt = Date.now();
-  const audioChunks = [];
-  const recorder = new MediaRecorder(microphoneStream);
-  mediaRecorder = recorder;
-  recorder.addEventListener('dataavailable', ({ data }) => {
-    if (data.size > 0) audioChunks.push(data);
+  let speechSamples = [];
+  let speechStartedAt = 0;
+  let lastSpeechAt = 0;
+  microphoneSource = audioContext.createMediaStreamSource(microphoneStream);
+  voiceCaptureProcessor = audioContext.createScriptProcessor(2048, 1, 1);
+  silentAudioOutput = audioContext.createGain();
+  silentAudioOutput.gain.value = 0;
+
+  voiceCaptureProcessor.addEventListener('audioprocess', (event) => {
+    if (sessionId !== recordingSessionId) return;
+    const now = Date.now();
+    if (now < ignoreVoiceUntil) {
+      speechSamples = [];
+      return;
+    }
+
+    const samples = event.inputBuffer.getChannelData(0);
+    const loudness = Math.sqrt(samples.reduce((total, sample) => total + sample * sample, 0) / samples.length);
+    if (loudness > 0.008) {
+      if (speechSamples.length === 0) speechStartedAt = now;
+      speechSamples.push(new Float32Array(samples));
+      lastSpeechAt = now;
+    }
+
+    const hasPause = speechSamples.length > 0 && now - lastSpeechAt > 700;
+    const isTooLong = speechSamples.length > 0 && now - speechStartedAt > 8000;
+    if (hasPause || isTooLong) {
+      const sampleCount = speechSamples.reduce((total, chunk) => total + chunk.length, 0);
+      const utterance = new Float32Array(sampleCount);
+      let position = 0;
+      speechSamples.forEach((chunk) => {
+        utterance.set(chunk, position);
+        position += chunk.length;
+      });
+      speechSamples = [];
+      transcribeAudioSamples(utterance, audioContext.sampleRate);
+    }
   });
-  recorder.addEventListener('stop', () => {
-    // A clip that overlaps the app talking is thrown away. Checking only when
-    // transcription starts was too late, because speech could end mid-clip.
-    const clipContainsAppSpeech = clipStartedAt < ignoreVoiceUntil;
-    if (audioChunks.length > 0 && !clipContainsAppSpeech) {
-      transcribeAudioBlob(new Blob(audioChunks, { type: recorder.mimeType }));
-    }
-    if (sessionId === recordingSessionId && microphoneStream) {
-      recordNextVoiceClip(sessionId);
-    }
-  });
-  recorder.start();
-  window.setTimeout(() => {
-    if (sessionId === recordingSessionId && recorder.state === 'recording') {
-      recorder.stop();
-    }
-  }, 3500);
+  microphoneSource.connect(voiceCaptureProcessor);
+  voiceCaptureProcessor.connect(silentAudioOutput);
+  silentAudioOutput.connect(audioContext.destination);
 }
 
 async function startVoiceRecording() {
@@ -747,7 +771,7 @@ async function startVoiceRecording() {
     });
     if (sessionId !== recordingSessionId) return;
 
-    recordNextVoiceClip(sessionId);
+    startContinuousVoiceCapture(sessionId);
     recordingButton.disabled = false;
     recordingButton.textContent = 'Stop recording';
     recordingButton.setAttribute('aria-pressed', 'true');
