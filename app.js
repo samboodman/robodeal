@@ -29,6 +29,7 @@ const dealOkButton = document.querySelector('#deal-ok-button');
 const testVoiceButton = document.querySelector('#test-voice-button');
 const recordingButton = document.querySelector('#recording-button');
 const voiceStatus = document.querySelector('#voice-status');
+const voiceTranscript = document.querySelector('#voice-transcript');
 
 // This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
@@ -64,6 +65,11 @@ function discardOldAudioFiles() {
 function setVoiceStatus(status) {
   voiceStatus.textContent = status;
   voiceStatus.hidden = !status;
+}
+
+function setVoiceTranscript(transcript) {
+  voiceTranscript.textContent = transcript;
+  voiceTranscript.hidden = !transcript;
 }
 
 function getRealtimeGameState() {
@@ -116,6 +122,14 @@ function updateRealtimeGameState() {
       instructions: realtimeInstructions(),
       tools: realtimeTools,
       tool_choice: 'auto',
+      output_modalities: ['text'],
+      audio: {
+        input: {
+          noise_reduction: { type: 'far_field' },
+          transcription: { model: 'gpt-4o-transcribe', language: 'en' },
+          turn_detection: { type: 'server_vad', create_response: true, interrupt_response: true },
+        },
+      },
     },
   });
 }
@@ -133,12 +147,31 @@ function callRealtimeTool(name, argumentsText) {
   const action = allowedFunctions[name];
   if (!action) throw new Error(`The AI tried to call an unapproved function: ${name}`);
 
+  const actionText = name === 'betCurrentPlayer' ? `AI action: bet ${args.amount}` : `AI action: ${name.replace('CurrentPlayer', '').replace(/([A-Z])/g, ' $1').toLowerCase()}`;
+  setVoiceTranscript(actionText);
+
   // This is the only bridge from OpenAI back into the poker game.
   // The AI has no direct access to the real variables above.
   return name === 'betCurrentPlayer' ? action(args.amount) : action();
 }
 
 function handleRealtimeEvent(event) {
+  if (event.type === 'conversation.item.input_audio_transcription.delta') {
+    setVoiceTranscript(`Hearing: ${event.delta}`);
+    return;
+  }
+
+  if (event.type === 'conversation.item.input_audio_transcription.completed') {
+    setVoiceTranscript(`Heard: “${event.transcript}”`);
+    return;
+  }
+
+  if (event.type === 'error') {
+    console.error('Realtime API error:', event.error);
+    setVoiceStatus(`AI error: ${event.error?.message || 'unknown error'}`);
+    return;
+  }
+
   if (event.type !== 'response.function_call_arguments.done') return;
 
   let result;
@@ -168,6 +201,7 @@ function stopRealtimeConversation() {
   realtimePeerConnection = null;
   realtimeAudio = null;
   setVoiceStatus('');
+  setVoiceTranscript('');
 }
 
 async function startRealtimeConversation(stream) {
@@ -256,6 +290,7 @@ async function startRecording() {
     recordingButton.setAttribute('aria-pressed', 'true');
     recordingButton.textContent = 'Stop recording';
     setVoiceStatus('Connecting AI…');
+    setVoiceTranscript('');
     startRealtimeConversation(newMicrophoneStream).catch((error) => {
       console.error('Realtime voice connection could not start:', error);
       setVoiceStatus('AI could not connect');

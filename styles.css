@@ -9,6 +9,7 @@ body { margin: 0; min-height: 100svh; background: radial-gradient(circle at top,
 .recording-button:active { transform: translateX(-50%) translateY(2px); }
 .recording-button[aria-pressed="true"] { background: #9b1d26; box-shadow: 0 0 0 4px #ffb5a5aa, 0 3px 0 #66141a; }
 .voice-status { position: absolute; z-index: 1; left: 50%; top: calc(7% + 97px); width: min(90%, 280px); margin: 0; color: #fffdf6; font-size: .78rem; font-weight: 750; text-align: center; text-shadow: 0 1px 3px #04160f; transform: translateX(-50%); }
+.voice-transcript { position: absolute; z-index: 1; left: 50%; top: calc(7% + 119px); width: min(90%, 320px); margin: 0; color: #fffdf6; font-size: .78rem; font-weight: 600; line-height: 1.25; text-align: center; text-shadow: 0 1px 3px #04160f; transform: translateX(-50%); }
 .game-winner-screen { position: relative; display: grid; width: min(100%, 680px); min-height: min(100svh, 680px); place-items: center; overflow: hidden; border-radius: 24px; background: #06110e; color: #fffdf6; text-align: center; }
 .game-winner-screen img { position: absolute; width: 100%; height: 100%; object-fit: cover; opacity: .78; }
 .game-winner-screen h1 { position: relative; z-index: 1; max-width: 90%; padding: 20px; color: #fffdf6; font-size: clamp(2.7rem, 13vw, 5rem); line-height: .95; text-shadow: 0 3px 14px #000; }
