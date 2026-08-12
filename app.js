@@ -41,6 +41,15 @@ let sidePot = 0;
 let sidePotActive = false;
 let sidePotEligiblePlayers = [];
 
+function speak(message) {
+  if (!('speechSynthesis' in window)) return;
+
+  window.speechSynthesis.cancel();
+  const speech = new SpeechSynthesisUtterance(message);
+  speech.rate = 1;
+  window.speechSynthesis.speak(speech);
+}
+
 function drawPlayerNames() {
   const existingNames = [...playerNames.querySelectorAll('input')].map((input) => input.value);
   const selectedDealer = dealerSelect.value || '1';
@@ -218,6 +227,7 @@ function startNextRound() {
   actionButtons.hidden = true;
   dealMessage.textContent = `Deal ${nextCard}. Press OK to continue.`;
   dealPrompt.hidden = false;
+  speak(`Deal ${nextCard}. Press OK to continue.`);
 }
 
 function beginNextRound() {
@@ -238,6 +248,7 @@ function beginNextRound() {
 
 function showWinnerPicker() {
   const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded && !player.eliminated);
+  speak('Showdown. Choose the player with the best cards.');
   showPotWinnerPicker('Who had the best cards?', activePlayers, awardMainPot);
 }
 
@@ -303,6 +314,7 @@ function finishHand(winner) {
   actionButtons.hidden = true;
   winnerPicker.hidden = false;
   winnerQuestion.textContent = `${winner.name} wins the hand!`;
+  speak(`${winner.name} wins the hand.`);
   winnerOptions.replaceChildren();
   const closeButton = document.createElement('button');
   closeButton.type = 'button';
@@ -316,6 +328,7 @@ function showGameWinner(winner) {
   gameScreen.hidden = true;
   gameWinnerMessage.textContent = `Player ${winner.name} wins!`;
   gameWinnerScreen.hidden = false;
+  speak(`Player ${winner.name} wins the game!`);
 }
 
 function addToPot(chips) {
@@ -397,6 +410,7 @@ function confirmTurn() {
 
   if (pendingFold) {
     player.folded = true;
+    speak(`${player.name} folds.`);
   } else {
     const additionalChips = pendingBet;
     player.chips -= additionalChips;
@@ -405,6 +419,7 @@ function confirmTurn() {
     highestRoundBet = Math.max(highestRoundBet, player.roundBet);
     addToPot(additionalChips);
     startSidePotIfNeeded();
+    speak(additionalChips === 0 ? `${player.name} checks.` : `${player.name} bets ${additionalChips}.`);
   }
 
   finishTurn();
