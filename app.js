@@ -25,6 +25,7 @@ const winnerOptions = document.querySelector('#winner-options');
 const dealPrompt = document.querySelector('#deal-prompt');
 const dealMessage = document.querySelector('#deal-message');
 const dealOkButton = document.querySelector('#deal-ok-button');
+const testVoiceButton = document.querySelector('#test-voice-button');
 
 // This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
@@ -45,6 +46,7 @@ function speak(message) {
   if (!('speechSynthesis' in window)) return;
 
   window.speechSynthesis.cancel();
+  window.speechSynthesis.resume();
   const speech = new SpeechSynthesisUtterance(message);
   speech.rate = 1;
   window.speechSynthesis.speak(speech);
@@ -447,6 +449,9 @@ foldButton.addEventListener('click', () => {
 });
 confirmButton.addEventListener('click', confirmTurn);
 dealOkButton.addEventListener('click', beginNextRound);
+testVoiceButton.addEventListener('click', () => {
+  speak('Voice is ready. Let the poker game begin.');
+});
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   gameSettings = {
