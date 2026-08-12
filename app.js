@@ -242,8 +242,9 @@ function captureTurnState() {
 }
 
 function canUndoLastTurn() {
-  const currentPlayer = playersByNumber[currentPlayerNumber];
-  return lastTurnState !== null && currentPlayer && !currentPlayer.hasActedThisRound;
+  // An automatic ante counts as a bet, but not as the player's real turn.
+  // Undo stays available until the next player confirms an action.
+  return lastTurnState !== null && currentPlayerNumber !== lastTurnState.currentPlayerNumber;
 }
 
 function undoLastTurn() {
