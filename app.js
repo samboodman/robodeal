@@ -654,7 +654,7 @@ async function handleSpokenPokerCommand(transcript) {
     speak('Voice actions confirm automatically.');
     return;
   }
-  if (/\b(all in|all-in)\b/.test(words)) {
+  if (/\b(all in|all-in)\b|\bscrew it\b.{0,18}\b(i'?m in|i am in)\b/.test(words)) {
     lastRejectedVoiceCommand = null;
     runClassifiedPokerAction('all-in');
     return;
