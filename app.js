@@ -695,6 +695,7 @@ function stopVoiceRecording() {
 function recordNextVoiceClip(sessionId) {
   if (sessionId !== recordingSessionId || !microphoneStream) return;
 
+  const clipStartedAt = Date.now();
   const audioChunks = [];
   const recorder = new MediaRecorder(microphoneStream);
   mediaRecorder = recorder;
@@ -702,7 +703,10 @@ function recordNextVoiceClip(sessionId) {
     if (data.size > 0) audioChunks.push(data);
   });
   recorder.addEventListener('stop', () => {
-    if (audioChunks.length > 0) {
+    // A clip that overlaps the app talking is thrown away. Checking only when
+    // transcription starts was too late, because speech could end mid-clip.
+    const clipContainsAppSpeech = clipStartedAt < ignoreVoiceUntil;
+    if (audioChunks.length > 0 && !clipContainsAppSpeech) {
       transcribeAudioBlob(new Blob(audioChunks, { type: recorder.mimeType }));
     }
     if (sessionId === recordingSessionId && microphoneStream) {
@@ -730,8 +734,11 @@ async function startVoiceRecording() {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
+        channelCount: 1,
       },
     });
+    const microphoneSettings = microphoneStream.getAudioTracks()[0].getSettings();
+    console.info('Microphone settings:', microphoneSettings);
     audioContext = new AudioContext();
     // The full-precision files avoid a browser-runtime problem in the
     // compressed version of this Whisper model.
@@ -744,7 +751,7 @@ async function startVoiceRecording() {
     recordingButton.disabled = false;
     recordingButton.textContent = 'Stop recording';
     recordingButton.setAttribute('aria-pressed', 'true');
-    showVoiceStatus('Listening…');
+    showVoiceStatus(`Listening${microphoneSettings.echoCancellation ? ' with echo cancellation' : ''}…`);
     speak('Voice control is listening.');
   } catch (error) {
     console.error('Could not start voice recording:', error);
