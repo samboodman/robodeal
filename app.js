@@ -199,10 +199,12 @@ function updateBetControls() {
   const player = playersByNumber[currentPlayerNumber];
   const minimumBet = Math.max(0, highestRoundBet - player.roundBet);
   const maximumBet = player.chips;
+  // A player may go all-in even when they cannot completely match the bet.
+  const minimumAllowedBet = Math.min(minimumBet, maximumBet);
 
-  pendingBet = Math.max(minimumBet, Math.min(pendingBet, maximumBet));
+  pendingBet = Math.max(minimumAllowedBet, Math.min(pendingBet, maximumBet));
   betInput.value = pendingBet;
-  betInput.min = minimumBet;
+  betInput.min = minimumAllowedBet;
   betInput.max = maximumBet;
   betIncrease.disabled = pendingFold || pendingBet >= maximumBet;
   betDecrease.disabled = pendingFold || pendingBet <= minimumBet;
@@ -429,27 +431,76 @@ function confirmTurn() {
   finishTurn();
 }
 
+// These functions choose an action for the current player. They do not change
+// the game until confirm() is called, which makes them useful for voice control.
+function foldCurrentPlayer() {
+  pendingFold = true;
+  updateBetControls();
+}
+
+function checkCurrentPlayer() {
+  const player = playersByNumber[currentPlayerNumber];
+  const amountNeededToCall = Math.max(0, highestRoundBet - player.roundBet);
+
+  if (amountNeededToCall > 0) {
+    speak(`You cannot check. You need ${amountNeededToCall} more to call.`);
+    return false;
+  }
+
+  pendingFold = false;
+  pendingBet = 0;
+  updateBetControls();
+  return true;
+}
+
+function callCurrentPlayer() {
+  const player = playersByNumber[currentPlayerNumber];
+  pendingFold = false;
+  // pendingBet means the extra chips to add now, not this round's total bet.
+  pendingBet = Math.min(Math.max(0, highestRoundBet - player.roundBet), player.chips);
+  updateBetControls();
+}
+
+function betCurrentPlayer(amount) {
+  const player = playersByNumber[currentPlayerNumber];
+  const requestedAmount = Number(amount);
+
+  if (!Number.isFinite(requestedAmount) || requestedAmount < 0) return false;
+
+  pendingFold = false;
+  pendingBet = Math.min(requestedAmount, player.chips);
+  updateBetControls();
+  return true;
+}
+
+function goAllIn() {
+  const player = playersByNumber[currentPlayerNumber];
+  return betCurrentPlayer(player.chips);
+}
+
+function confirm() {
+  confirmTurn();
+}
+
 playerCount.addEventListener('change', drawPlayerNames);
 betIncrease.addEventListener('click', () => {
-  pendingFold = false;
-  pendingBet += 1;
-  updateBetControls();
+  betCurrentPlayer(pendingBet + 1);
 });
 betDecrease.addEventListener('click', () => {
-  pendingFold = false;
-  pendingBet -= 1;
-  updateBetControls();
+  betCurrentPlayer(pendingBet - 1);
 });
 betInput.addEventListener('change', () => {
-  pendingFold = false;
-  pendingBet = Number(betInput.value) || 0;
-  updateBetControls();
+  betCurrentPlayer(betInput.value);
 });
 foldButton.addEventListener('click', () => {
-  pendingFold = !pendingFold;
-  updateBetControls();
+  if (pendingFold) {
+    pendingFold = false;
+    updateBetControls();
+  } else {
+    foldCurrentPlayer();
+  }
 });
-confirmButton.addEventListener('click', confirmTurn);
+confirmButton.addEventListener('click', confirm);
 dealOkButton.addEventListener('click', beginNextRound);
 testVoiceButton.addEventListener('click', () => {
   speak('Voice is ready. Let the poker game begin.');
