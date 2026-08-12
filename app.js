@@ -54,10 +54,14 @@ let queuedAudioBlob = null;
 let recordingSessionId = 0;
 let lastTurnState = null;
 let lastRejectedVoiceCommand = null;
+let ignoreVoiceUntil = 0;
 
 function speak(message) {
   if (!('speechSynthesis' in window)) return;
 
+  // Do not let Whisper treat RoboDeal's own spoken reply as a player command.
+  // The little extra time at the end covers speakers that finish slightly late.
+  ignoreVoiceUntil = Date.now() + Math.max(1400, message.length * 85) + 700;
   window.speechSynthesis.cancel();
   window.speechSynthesis.resume();
   const speech = new SpeechSynthesisUtterance(message);
@@ -641,6 +645,8 @@ async function audioBlobToWhisperSamples(blob) {
 }
 
 async function transcribeAudioBlob(blob) {
+  if (Date.now() < ignoreVoiceUntil) return;
+
   if (isTranscribing) {
     queuedAudioBlob = blob;
     return;
@@ -714,7 +720,13 @@ async function startVoiceRecording() {
   showVoiceStatus('Loading Whisper…');
 
   try {
-    microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    microphoneStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
     audioContext = new AudioContext();
     // The full-precision files avoid a browser-runtime problem in the
     // compressed version of this Whisper model.
