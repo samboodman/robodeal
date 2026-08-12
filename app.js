@@ -43,6 +43,12 @@ let sidePot = 0;
 let sidePotActive = false;
 let sidePotEligiblePlayers = [];
 let microphoneStream = null;
+let speechRecognizer = null;
+let mediaRecorder = null;
+let audioContext = null;
+let isTranscribing = false;
+let queuedAudioBlob = null;
+let recordingSessionId = 0;
 
 function speak(message) {
   if (!('speechSynthesis' in window)) return;
@@ -482,6 +488,134 @@ function confirm() {
   confirmTurn();
 }
 
+function spokenNumber(text) {
+  const digit = text.match(/\b(\d+)\b/);
+  if (digit) return Number(digit[1]);
+
+  const numberWords = {
+    one: 1, two: 2, three: 3, four: 4, five: 5,
+    six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  };
+  const word = Object.keys(numberWords).find((name) => new RegExp(`\\b${name}\\b`).test(text));
+  return word ? numberWords[word] : null;
+}
+
+function handleSpokenPokerCommand(transcript) {
+  const words = transcript.toLowerCase().replace(/[^a-z0-9\s']/g, ' ');
+
+  // This function only calls the six action functions above. It never changes
+  // poker variables directly, and only a spoken "confirm" changes the game.
+  if (/\bconfirm\b/.test(words)) {
+    confirm();
+    return;
+  }
+  if (/\b(all in|all-in)\b/.test(words)) {
+    goAllIn();
+    speak('All in selected. Say confirm to place the bet.');
+    return;
+  }
+  if (/\b(fold|i'?m out|i am out|too rich)\b/.test(words)) {
+    foldCurrentPlayer();
+    speak('Fold selected. Say confirm to fold.');
+    return;
+  }
+  if (/\bcheck\b/.test(words)) {
+    if (checkCurrentPlayer()) speak('Check selected. Say confirm to check.');
+    return;
+  }
+  if (/\bcall\b/.test(words)) {
+    callCurrentPlayer();
+    speak('Call selected. Say confirm to call.');
+    return;
+  }
+  if (/\b(bet|raise)\b/.test(words)) {
+    const amount = spokenNumber(words);
+    if (amount === null) {
+      speak('Say bet, then a number.');
+      return;
+    }
+    betCurrentPlayer(amount);
+    speak(`Bet ${amount} selected. Say confirm to place the bet.`);
+  }
+}
+
+async function audioBlobToWhisperSamples(blob) {
+  const audioBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
+  const offlineContext = new OfflineAudioContext(1, Math.ceil(audioBuffer.duration * 16000), 16000);
+  const source = offlineContext.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(offlineContext.destination);
+  source.start();
+  const resampledBuffer = await offlineContext.startRendering();
+  return resampledBuffer.getChannelData(0);
+}
+
+async function transcribeAudioBlob(blob) {
+  if (isTranscribing) {
+    queuedAudioBlob = blob;
+    return;
+  }
+
+  isTranscribing = true;
+  try {
+    const audio = await audioBlobToWhisperSamples(blob);
+    const result = await speechRecognizer(audio, { language: 'english', task: 'transcribe' });
+    const transcript = result.text.trim();
+    if (transcript) handleSpokenPokerCommand(transcript);
+  } catch (error) {
+    console.error('Could not transcribe recording:', error);
+  } finally {
+    isTranscribing = false;
+    if (queuedAudioBlob) {
+      const nextBlob = queuedAudioBlob;
+      queuedAudioBlob = null;
+      transcribeAudioBlob(nextBlob);
+    }
+  }
+}
+
+function stopVoiceRecording() {
+  recordingSessionId += 1;
+  if (mediaRecorder?.state === 'recording') mediaRecorder.stop();
+  mediaRecorder = null;
+  microphoneStream?.getTracks().forEach((track) => track.stop());
+  microphoneStream = null;
+  audioContext?.close();
+  audioContext = null;
+  queuedAudioBlob = null;
+  recordingButton.disabled = false;
+  recordingButton.textContent = 'Start recording';
+  recordingButton.setAttribute('aria-pressed', 'false');
+}
+
+async function startVoiceRecording() {
+  const sessionId = recordingSessionId + 1;
+  recordingSessionId = sessionId;
+  recordingButton.disabled = true;
+  recordingButton.textContent = 'Loading voice…';
+
+  try {
+    microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioContext = new AudioContext();
+    speechRecognizer ??= await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en');
+    if (sessionId !== recordingSessionId) return;
+
+    mediaRecorder = new MediaRecorder(microphoneStream);
+    mediaRecorder.addEventListener('dataavailable', ({ data }) => {
+      if (data.size > 0) transcribeAudioBlob(data);
+    });
+    mediaRecorder.start(3500);
+    recordingButton.disabled = false;
+    recordingButton.textContent = 'Stop recording';
+    recordingButton.setAttribute('aria-pressed', 'true');
+    speak('Voice control is listening.');
+  } catch (error) {
+    console.error('Could not start voice recording:', error);
+    stopVoiceRecording();
+    speak('Voice control could not start. Please allow microphone access.');
+  }
+}
+
 playerCount.addEventListener('change', drawPlayerNames);
 betIncrease.addEventListener('click', () => {
   betCurrentPlayer(pendingBet + 1);
@@ -506,25 +640,8 @@ testVoiceButton.addEventListener('click', () => {
   speak('Voice is ready. Let the poker game begin.');
 });
 recordingButton.addEventListener('click', () => {
-  if (microphoneStream) {
-    microphoneStream.getTracks().forEach((track) => track.stop());
-    microphoneStream = null;
-    recordingButton.textContent = 'Start recording';
-    recordingButton.setAttribute('aria-pressed', 'false');
-    return;
-  }
-
-  navigator.mediaDevices.getUserMedia({ audio: true })
-    .then((stream) => {
-      microphoneStream = stream;
-      recordingButton.textContent = 'Stop recording';
-      recordingButton.setAttribute('aria-pressed', 'true');
-    })
-    .catch(() => {
-      recordingButton.textContent = 'Start recording';
-      recordingButton.setAttribute('aria-pressed', 'false');
-      speak('Microphone permission was not granted.');
-    });
+  if (microphoneStream) stopVoiceRecording();
+  else startVoiceRecording();
 });
 form.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -550,3 +667,4 @@ form.addEventListener('submit', (event) => {
 });
 
 drawPlayerNames();
+import { pipeline } from '@huggingface/transformers';
