@@ -55,6 +55,7 @@ input:focus, select:focus { outline: 3px solid #f1c565; border-color: #7c5c15; }
 .toggle-setting { display: flex; align-items: center; gap: 11px; margin: 22px 0 0; color: #3b6755; font-size: .95rem; }
 .toggle-setting input { width: 22px; min-height: 22px; margin: 0; accent-color: #b63f29; }
 .money-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.ante-increase-field { grid-column: 1 / -1; }
 .money-grid label { font-size: .92rem; }
 .players-heading { margin-top: 27px; }
 .players-heading label { margin-bottom: 3px; }

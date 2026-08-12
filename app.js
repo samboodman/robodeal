@@ -465,7 +465,7 @@ function startHand() {
 function startNewHand() {
   const nextDealerNumber = playerToDealersLeft(gameSettings.dealerNumber);
   if (nextDealerNumber === gameSettings.firstDealerNumber) {
-    gameSettings.ante += 5;
+    gameSettings.ante += gameSettings.anteIncrease;
     speak(`The ante is now ${gameSettings.ante}.`);
   }
   gameSettings.dealerNumber = nextDealerNumber;
@@ -788,6 +788,7 @@ form.addEventListener('submit', (event) => {
     playerCount: Number(playerCount.value),
     startingMoney: Number(document.querySelector('#starting-money').value),
     ante: Number(document.querySelector('#ante').value),
+    anteIncrease: Number(document.querySelector('#ante-increase').value),
     dealerNumber: Number(dealerSelect.value),
     firstDealerNumber: Number(dealerSelect.value),
     showTranscript: showTranscript.checked,
