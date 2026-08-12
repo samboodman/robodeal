@@ -566,7 +566,11 @@ function spokenNumber(text) {
 }
 
 function handleSpokenPokerCommand(transcript) {
-  const words = transcript.toLowerCase().replace(/[^a-z0-9\s']/g, ' ');
+  const words = transcript
+    .toLowerCase()
+    .replace(/[^a-z0-9\s']/g, ' ')
+    // Whisper sometimes confuses the poker word "raise" with "blaze".
+    .replace(/\bblaze\b/g, 'raise');
   showVoiceStatus(`Heard: “${transcript}”`);
 
   // This function only calls the six action functions above. It never changes
