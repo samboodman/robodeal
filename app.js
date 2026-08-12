@@ -28,6 +28,7 @@ const dealMessage = document.querySelector('#deal-message');
 const dealOkButton = document.querySelector('#deal-ok-button');
 const testVoiceButton = document.querySelector('#test-voice-button');
 const recordingButton = document.querySelector('#recording-button');
+const voiceStatus = document.querySelector('#voice-status');
 
 // This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
@@ -60,6 +61,10 @@ function speak(message) {
   const speech = new SpeechSynthesisUtterance(message);
   speech.rate = 1;
   window.speechSynthesis.speak(speech);
+}
+
+function showVoiceStatus(status) {
+  voiceStatus.textContent = status;
 }
 
 function drawPlayerNames() {
@@ -558,6 +563,7 @@ function spokenNumber(text) {
 
 function handleSpokenPokerCommand(transcript) {
   const words = transcript.toLowerCase().replace(/[^a-z0-9\s']/g, ' ');
+  showVoiceStatus(`Heard: “${transcript}”`);
 
   // This function only calls the six action functions above. It never changes
   // poker variables directly. A recognized legal action is applied right away;
@@ -591,8 +597,15 @@ function handleSpokenPokerCommand(transcript) {
       speak('Say bet, then a number.');
       return;
     }
-    if (betCurrentPlayer(amount)) confirm();
+    const player = playersByNumber[currentPlayerNumber];
+    const amountNeededToCall = Math.max(0, highestRoundBet - player.roundBet);
+    const isRaise = /\braise\b/.test(words);
+    const chipsToAdd = isRaise ? amountNeededToCall + amount : amount;
+    if (betCurrentPlayer(chipsToAdd)) confirm();
+    return;
   }
+
+  showVoiceStatus(`Heard: “${transcript}” — no poker action.`);
 }
 
 async function audioBlobToWhisperSamples(blob) {
@@ -618,8 +631,10 @@ async function transcribeAudioBlob(blob) {
     const result = await speechRecognizer(audio);
     const transcript = result.text.trim();
     if (transcript) handleSpokenPokerCommand(transcript);
+    else showVoiceStatus('No words heard. Try speaking closer to the phone.');
   } catch (error) {
     console.error('Could not transcribe recording:', error);
+    showVoiceStatus('Voice could not understand that clip. Try again.');
   } finally {
     isTranscribing = false;
     if (queuedAudioBlob) {
@@ -642,6 +657,7 @@ function stopVoiceRecording() {
   recordingButton.disabled = false;
   recordingButton.textContent = 'Start recording';
   recordingButton.setAttribute('aria-pressed', 'false');
+  showVoiceStatus('Voice control stopped.');
 }
 
 function recordNextVoiceClip(sessionId) {
@@ -674,6 +690,7 @@ async function startVoiceRecording() {
   recordingSessionId = sessionId;
   recordingButton.disabled = true;
   recordingButton.textContent = 'Loading voice…';
+  showVoiceStatus('Loading Whisper…');
 
   try {
     microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -689,10 +706,12 @@ async function startVoiceRecording() {
     recordingButton.disabled = false;
     recordingButton.textContent = 'Stop recording';
     recordingButton.setAttribute('aria-pressed', 'true');
+    showVoiceStatus('Listening…');
     speak('Voice control is listening.');
   } catch (error) {
     console.error('Could not start voice recording:', error);
     stopVoiceRecording();
+    showVoiceStatus('Voice model could not start.');
     speak('Voice control could not start because the speech model did not load.');
   }
 }
