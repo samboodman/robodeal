@@ -212,15 +212,17 @@ function stopRecording() {
 
 async function startRecording() {
   try {
-    microphoneStream = await navigator.mediaDevices.getUserMedia({
+    const newMicrophoneStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
       },
     });
-    microphoneRecorder = new MediaRecorder(microphoneStream);
+    const newMicrophoneRecorder = new MediaRecorder(newMicrophoneStream);
+    microphoneStream = newMicrophoneStream;
+    microphoneRecorder = newMicrophoneRecorder;
 
-    microphoneRecorder.addEventListener('dataavailable', (event) => {
+    newMicrophoneRecorder.addEventListener('dataavailable', (event) => {
       if (event.data.size === 0) return;
 
       // MediaRecorder gives us a fresh Blob about once per second.
@@ -231,15 +233,17 @@ async function startRecording() {
       discardOldAudioFiles();
     });
 
-    microphoneRecorder.addEventListener('stop', () => {
-      microphoneStream?.getTracks().forEach((track) => track.stop());
+    newMicrophoneRecorder.addEventListener('stop', () => {
+      // Use this recording's stream, not the shared variable. The shared
+      // variable may already point at a newer recording session.
+      newMicrophoneStream.getTracks().forEach((track) => track.stop());
     }, { once: true });
 
-    microphoneRecorder.start(1_000);
+    newMicrophoneRecorder.start(1_000);
     audioCleanupTimer = window.setInterval(discardOldAudioFiles, 1_000);
     recordingButton.setAttribute('aria-pressed', 'true');
     recordingButton.textContent = 'Stop recording';
-    startRealtimeConversation(microphoneStream).catch((error) => {
+    startRealtimeConversation(newMicrophoneStream).catch((error) => {
       console.error('Realtime voice connection could not start:', error);
     });
   } catch (error) {
