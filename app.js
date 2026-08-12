@@ -27,9 +27,6 @@ const dealPrompt = document.querySelector('#deal-prompt');
 const dealMessage = document.querySelector('#deal-message');
 const dealOkButton = document.querySelector('#deal-ok-button');
 const testVoiceButton = document.querySelector('#test-voice-button');
-const recordingButton = document.querySelector('#recording-button');
-const voiceStatus = document.querySelector('#voice-status');
-const showTranscript = document.querySelector('#show-transcript');
 
 // This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
@@ -45,36 +42,16 @@ let roundNumber = 1;
 let sidePot = 0;
 let sidePotActive = false;
 let sidePotEligiblePlayers = [];
-let microphoneStream = null;
-let speechRecognizer = null;
-let audioContext = null;
-let microphoneSource = null;
-let voiceCaptureProcessor = null;
-let silentAudioOutput = null;
-let isTranscribing = false;
-let queuedAudioSamples = null;
-let recordingSessionId = 0;
 let lastTurnState = null;
-let lastRejectedVoiceCommand = null;
-let ignoreVoiceUntil = 0;
 
 function speak(message) {
   if (!('speechSynthesis' in window)) return;
 
-  // Do not let Whisper treat RoboDeal's own spoken reply as a player command.
-  // The little extra time at the end covers speakers that finish slightly late.
-  ignoreVoiceUntil = Date.now() + Math.max(1400, message.length * 85) + 700;
   window.speechSynthesis.cancel();
   window.speechSynthesis.resume();
   const speech = new SpeechSynthesisUtterance(message);
   speech.rate = 1;
   window.speechSynthesis.speak(speech);
-}
-
-function showVoiceStatus(status) {
-  voiceStatus.hidden = !gameSettings?.showTranscript;
-  if (!gameSettings?.showTranscript) return;
-  voiceStatus.textContent = status;
 }
 
 function drawPlayerNames() {
@@ -571,237 +548,6 @@ function cardsAreDealt() {
   return true;
 }
 
-function spokenNumber(text) {
-  const digit = text.match(/\b(\d+)\b/);
-  if (digit) return Number(digit[1]);
-
-  const numberWords = {
-    one: 1, two: 2, three: 3, four: 4, five: 5,
-    six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
-  };
-  const word = Object.keys(numberWords).find((name) => new RegExp(`\\b${name}\\b`).test(text));
-  return word ? numberWords[word] : null;
-}
-
-async function handleSpokenPokerCommand(transcript) {
-  const words = transcript
-    .toLowerCase()
-    .replace(/[^a-z0-9\s']/g, ' ')
-    // Whisper sometimes confuses the poker word "raise" with "blaze".
-    .replace(/\bblaze\b/g, 'raise');
-  showVoiceStatus(`Heard: “${transcript}”`);
-
-  const saysCardsAreDealt = /\b(flop|turn|river)\b.{0,18}\b(deal|dealt)\b|\b(deal|dealt)\b.{0,18}\b(flop|turn|river)\b/.test(words);
-  if (saysCardsAreDealt) {
-    if (!cardsAreDealt()) speak('There are no cards waiting to be dealt.');
-    return;
-  }
-
-  // This function only calls the six action functions above. It never changes
-  // poker variables directly. A recognized legal action is applied right away;
-  // the next player can use Undo if Whisper heard it wrong.
-  if (/\bconfirm\s+(the\s+)?(bet|that)\b/.test(words)) {
-    lastRejectedVoiceCommand = null;
-    confirm();
-    return;
-  }
-  if (/\bconfirm\b/.test(words)) {
-    speak('Say confirm bet to use the number already selected.');
-    return;
-  }
-  if (/\b(all in|all-in)\b|\bscrew it\b.{0,18}\b(i'?m in|i am in)\b/.test(words)) {
-    lastRejectedVoiceCommand = null;
-    goAllIn();
-    confirm();
-    return;
-  }
-  if (/\b(fold|i'?m out|i am out|too rich)\b/.test(words)) {
-    lastRejectedVoiceCommand = null;
-    foldCurrentPlayer();
-    confirm();
-    return;
-  }
-  if (/\bcheck\b/.test(words)) {
-    const shouldAnnounceProblem = lastRejectedVoiceCommand !== 'check';
-    if (checkCurrentPlayer(shouldAnnounceProblem)) {
-      lastRejectedVoiceCommand = null;
-      confirm();
-    } else {
-      lastRejectedVoiceCommand = 'check';
-    }
-    return;
-  }
-  if (/\bcall\b/.test(words)) {
-    lastRejectedVoiceCommand = null;
-    callCurrentPlayer();
-    confirm();
-    return;
-  }
-  if (/\b(bet|raise)\b/.test(words)) {
-    const amount = spokenNumber(words);
-    if (amount === null) {
-      speak('Say bet, then a number.');
-      return;
-    }
-    const player = playersByNumber[currentPlayerNumber];
-    const amountNeededToCall = Math.max(0, highestRoundBet - player.roundBet);
-    const isRaise = /\braise\b/.test(words);
-    const chipsToAdd = isRaise ? amountNeededToCall + amount : amount;
-    if (betCurrentPlayer(chipsToAdd)) {
-      lastRejectedVoiceCommand = null;
-      confirm();
-    }
-    return;
-  }
-
-  showVoiceStatus(`Heard: “${transcript}” — no poker action.`);
-}
-
-async function audioSamplesToWhisperSamples(samples, sampleRate) {
-  const offlineContext = new OfflineAudioContext(1, Math.ceil((samples.length / sampleRate) * 16000), 16000);
-  const audioBuffer = offlineContext.createBuffer(1, samples.length, sampleRate);
-  audioBuffer.copyToChannel(samples, 0);
-  const source = offlineContext.createBufferSource();
-  source.buffer = audioBuffer;
-  source.connect(offlineContext.destination);
-  source.start();
-  const resampledBuffer = await offlineContext.startRendering();
-  return resampledBuffer.getChannelData(0);
-}
-
-async function transcribeAudioSamples(samples, sampleRate) {
-  if (Date.now() < ignoreVoiceUntil) return;
-
-  if (isTranscribing) {
-    queuedAudioSamples = { samples, sampleRate };
-    return;
-  }
-
-  isTranscribing = true;
-  try {
-    const audio = await audioSamplesToWhisperSamples(samples, sampleRate);
-    const result = await speechRecognizer(audio);
-    const transcript = result.text.trim();
-    if (transcript) handleSpokenPokerCommand(transcript);
-    else showVoiceStatus('No words heard. Try speaking closer to the phone.');
-  } catch (error) {
-    console.error('Could not transcribe recording:', error);
-    showVoiceStatus('Voice could not understand that clip. Try again.');
-  } finally {
-    isTranscribing = false;
-    if (queuedAudioSamples) {
-      const nextAudio = queuedAudioSamples;
-      queuedAudioSamples = null;
-      transcribeAudioSamples(nextAudio.samples, nextAudio.sampleRate);
-    }
-  }
-}
-
-function stopVoiceRecording() {
-  recordingSessionId += 1;
-  microphoneSource?.disconnect();
-  voiceCaptureProcessor?.disconnect();
-  silentAudioOutput?.disconnect();
-  microphoneSource = null;
-  voiceCaptureProcessor = null;
-  silentAudioOutput = null;
-  microphoneStream?.getTracks().forEach((track) => track.stop());
-  microphoneStream = null;
-  audioContext?.close();
-  audioContext = null;
-  queuedAudioSamples = null;
-  recordingButton.disabled = false;
-  recordingButton.textContent = 'Start recording';
-  recordingButton.setAttribute('aria-pressed', 'false');
-  showVoiceStatus('Voice control stopped.');
-}
-
-function startContinuousVoiceCapture(sessionId) {
-  if (sessionId !== recordingSessionId || !microphoneStream) return;
-
-  let speechSamples = [];
-  let speechStartedAt = 0;
-  let lastSpeechAt = 0;
-  microphoneSource = audioContext.createMediaStreamSource(microphoneStream);
-  voiceCaptureProcessor = audioContext.createScriptProcessor(2048, 1, 1);
-  silentAudioOutput = audioContext.createGain();
-  silentAudioOutput.gain.value = 0;
-
-  voiceCaptureProcessor.addEventListener('audioprocess', (event) => {
-    if (sessionId !== recordingSessionId) return;
-    const now = Date.now();
-    if (now < ignoreVoiceUntil) {
-      speechSamples = [];
-      return;
-    }
-
-    const samples = event.inputBuffer.getChannelData(0);
-    const loudness = Math.sqrt(samples.reduce((total, sample) => total + sample * sample, 0) / samples.length);
-    if (loudness > 0.008) {
-      if (speechSamples.length === 0) speechStartedAt = now;
-      speechSamples.push(new Float32Array(samples));
-      lastSpeechAt = now;
-    }
-
-    const hasPause = speechSamples.length > 0 && now - lastSpeechAt > 700;
-    const isTooLong = speechSamples.length > 0 && now - speechStartedAt > 8000;
-    if (hasPause || isTooLong) {
-      const sampleCount = speechSamples.reduce((total, chunk) => total + chunk.length, 0);
-      const utterance = new Float32Array(sampleCount);
-      let position = 0;
-      speechSamples.forEach((chunk) => {
-        utterance.set(chunk, position);
-        position += chunk.length;
-      });
-      speechSamples = [];
-      transcribeAudioSamples(utterance, audioContext.sampleRate);
-    }
-  });
-  microphoneSource.connect(voiceCaptureProcessor);
-  voiceCaptureProcessor.connect(silentAudioOutput);
-  silentAudioOutput.connect(audioContext.destination);
-}
-
-async function startVoiceRecording() {
-  const sessionId = recordingSessionId + 1;
-  recordingSessionId = sessionId;
-  recordingButton.disabled = true;
-  recordingButton.textContent = 'Loading voice…';
-  showVoiceStatus('Loading Whisper…');
-
-  try {
-    microphoneStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        channelCount: 1,
-      },
-    });
-    const microphoneSettings = microphoneStream.getAudioTracks()[0].getSettings();
-    console.info('Microphone settings:', microphoneSettings);
-    audioContext = new AudioContext();
-    // The full-precision files avoid a browser-runtime problem in the
-    // compressed version of this Whisper model.
-    speechRecognizer ??= await pipeline('automatic-speech-recognition', 'Xenova/whisper-base.en', {
-      dtype: 'fp32',
-    });
-    if (sessionId !== recordingSessionId) return;
-
-    startContinuousVoiceCapture(sessionId);
-    recordingButton.disabled = false;
-    recordingButton.textContent = 'Stop recording';
-    recordingButton.setAttribute('aria-pressed', 'true');
-    showVoiceStatus(`Listening${microphoneSettings.echoCancellation ? ' with echo cancellation' : ''}…`);
-    speak('Voice control is listening.');
-  } catch (error) {
-    console.error('Could not start voice recording:', error);
-    stopVoiceRecording();
-    showVoiceStatus('Voice model could not start.');
-    speak('Voice control could not start because the speech model did not load.');
-  }
-}
-
 playerCount.addEventListener('change', drawPlayerNames);
 betIncrease.addEventListener('click', () => {
   betCurrentPlayer(pendingBet + 1);
@@ -826,10 +572,6 @@ dealOkButton.addEventListener('click', beginNextRound);
 testVoiceButton.addEventListener('click', () => {
   speak('Voice is ready. Let the poker game begin.');
 });
-recordingButton.addEventListener('click', () => {
-  if (microphoneStream) stopVoiceRecording();
-  else startVoiceRecording();
-});
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   gameSettings = {
@@ -839,14 +581,12 @@ form.addEventListener('submit', (event) => {
     anteIncrease: Number(document.querySelector('#ante-increase').value),
     dealerNumber: Number(dealerSelect.value),
     firstDealerNumber: Number(dealerSelect.value),
-    showTranscript: showTranscript.checked,
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
   };
   makePlayers();
   setupScreen.hidden = true;
   gameScreen.hidden = false;
   gameWinnerScreen.hidden = true;
-  voiceStatus.hidden = !gameSettings.showTranscript;
   winnerPicker.hidden = true;
   dealPrompt.hidden = true;
   turnIndicator.hidden = false;
@@ -858,4 +598,3 @@ form.addEventListener('submit', (event) => {
 });
 
 drawPlayerNames();
-import { pipeline } from '@huggingface/transformers';
