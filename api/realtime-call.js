@@ -18,12 +18,10 @@ export default async function handler(request, response) {
   }
 
   const form = new FormData();
-  form.append('sdp', new Blob([sdp], { type: 'application/sdp' }), 'offer.sdp');
-  form.append(
-    'session',
-    new Blob([JSON.stringify({ type: 'realtime', model: 'gpt-realtime' })], { type: 'application/json' }),
-    'session.json',
-  );
+  // The Realtime endpoint expects these multipart fields as text, not as
+  // uploaded files.
+  form.append('sdp', sdp);
+  form.append('session', JSON.stringify({ type: 'realtime', model: 'gpt-realtime' }));
 
   const openAIResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
     method: 'POST',
