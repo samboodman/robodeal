@@ -44,6 +44,73 @@ let sidePot = 0;
 let sidePotActive = false;
 let sidePotEligiblePlayers = [];
 let lastTurnState = null;
+// These are one-second audio files kept only in this browser's memory.
+// The newest minute is useful for a future speech-to-text feature; nothing
+// is saved to the phone's file system.
+let microphoneStream = null;
+let microphoneRecorder = null;
+let recentAudioFiles = [];
+let audioCleanupTimer = null;
+
+function discardOldAudioFiles() {
+  const oneMinuteAgo = Date.now() - 60_000;
+  recentAudioFiles = recentAudioFiles.filter((audioFile) => audioFile.createdAt >= oneMinuteAgo);
+}
+
+function stopRecording() {
+  if (microphoneRecorder && microphoneRecorder.state !== 'inactive') {
+    microphoneRecorder.stop();
+  }
+
+  microphoneStream?.getTracks().forEach((track) => track.stop());
+  microphoneRecorder = null;
+  microphoneStream = null;
+  window.clearInterval(audioCleanupTimer);
+  audioCleanupTimer = null;
+  recordingButton.setAttribute('aria-pressed', 'false');
+  recordingButton.textContent = 'Start recording';
+}
+
+async function startRecording() {
+  try {
+    microphoneStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+      },
+    });
+    microphoneRecorder = new MediaRecorder(microphoneStream);
+
+    microphoneRecorder.addEventListener('dataavailable', (event) => {
+      if (event.data.size === 0) return;
+
+      // MediaRecorder gives us a fresh Blob about once per second.
+      recentAudioFiles.push({
+        audio: event.data,
+        createdAt: Date.now(),
+      });
+      discardOldAudioFiles();
+    });
+
+    microphoneRecorder.addEventListener('stop', () => {
+      microphoneStream?.getTracks().forEach((track) => track.stop());
+    }, { once: true });
+
+    microphoneRecorder.start(1_000);
+    audioCleanupTimer = window.setInterval(discardOldAudioFiles, 1_000);
+    recordingButton.setAttribute('aria-pressed', 'true');
+    recordingButton.textContent = 'Stop recording';
+  } catch (error) {
+    microphoneRecorder = null;
+    microphoneStream?.getTracks().forEach((track) => track.stop());
+    microphoneStream = null;
+    window.clearInterval(audioCleanupTimer);
+    audioCleanupTimer = null;
+    recordingButton.setAttribute('aria-pressed', 'false');
+    recordingButton.textContent = 'Start recording';
+    speak('Recording could not start. Please allow microphone access.');
+  }
+}
 
 function speak(message) {
   if (!('speechSynthesis' in window)) return;
@@ -575,8 +642,11 @@ testVoiceButton.addEventListener('click', () => {
 });
 recordingButton.addEventListener('click', () => {
   const isRecording = recordingButton.getAttribute('aria-pressed') === 'true';
-  recordingButton.setAttribute('aria-pressed', String(!isRecording));
-  recordingButton.textContent = isRecording ? 'Start recording' : 'Stop recording';
+  if (isRecording) {
+    stopRecording();
+  } else {
+    startRecording();
+  }
 });
 form.addEventListener('submit', (event) => {
   event.preventDefault();
