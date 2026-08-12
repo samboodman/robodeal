@@ -26,6 +26,7 @@ const dealPrompt = document.querySelector('#deal-prompt');
 const dealMessage = document.querySelector('#deal-message');
 const dealOkButton = document.querySelector('#deal-ok-button');
 const testVoiceButton = document.querySelector('#test-voice-button');
+const recordingButton = document.querySelector('#recording-button');
 
 // This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
@@ -451,6 +452,11 @@ confirmButton.addEventListener('click', confirmTurn);
 dealOkButton.addEventListener('click', beginNextRound);
 testVoiceButton.addEventListener('click', () => {
   speak('Voice is ready. Let the poker game begin.');
+});
+recordingButton.addEventListener('click', () => {
+  const isRecording = recordingButton.textContent === 'Stop recording';
+  recordingButton.textContent = isRecording ? 'Start recording' : 'Stop recording';
+  recordingButton.setAttribute('aria-pressed', String(!isRecording));
 });
 form.addEventListener('submit', (event) => {
   event.preventDefault();
