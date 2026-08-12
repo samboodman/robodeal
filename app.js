@@ -42,6 +42,7 @@ let roundNumber = 1;
 let sidePot = 0;
 let sidePotActive = false;
 let sidePotEligiblePlayers = [];
+let microphoneStream = null;
 
 function speak(message) {
   if (!('speechSynthesis' in window)) return;
@@ -454,9 +455,25 @@ testVoiceButton.addEventListener('click', () => {
   speak('Voice is ready. Let the poker game begin.');
 });
 recordingButton.addEventListener('click', () => {
-  const isRecording = recordingButton.textContent === 'Stop recording';
-  recordingButton.textContent = isRecording ? 'Start recording' : 'Stop recording';
-  recordingButton.setAttribute('aria-pressed', String(!isRecording));
+  if (microphoneStream) {
+    microphoneStream.getTracks().forEach((track) => track.stop());
+    microphoneStream = null;
+    recordingButton.textContent = 'Start recording';
+    recordingButton.setAttribute('aria-pressed', 'false');
+    return;
+  }
+
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then((stream) => {
+      microphoneStream = stream;
+      recordingButton.textContent = 'Stop recording';
+      recordingButton.setAttribute('aria-pressed', 'true');
+    })
+    .catch(() => {
+      recordingButton.textContent = 'Start recording';
+      recordingButton.setAttribute('aria-pressed', 'false');
+      speak('Microphone permission was not granted.');
+    });
 });
 form.addEventListener('submit', (event) => {
   event.preventDefault();
