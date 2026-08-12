@@ -463,7 +463,12 @@ function startHand() {
 }
 
 function startNewHand() {
-  gameSettings.dealerNumber = playerToDealersLeft(gameSettings.dealerNumber);
+  const nextDealerNumber = playerToDealersLeft(gameSettings.dealerNumber);
+  if (nextDealerNumber === gameSettings.firstDealerNumber) {
+    gameSettings.ante += 5;
+    speak(`The ante is now ${gameSettings.ante}.`);
+  }
+  gameSettings.dealerNumber = nextDealerNumber;
   winnerPicker.hidden = true;
   dealPrompt.hidden = true;
   turnIndicator.hidden = false;
@@ -784,6 +789,7 @@ form.addEventListener('submit', (event) => {
     startingMoney: Number(document.querySelector('#starting-money').value),
     ante: Number(document.querySelector('#ante').value),
     dealerNumber: Number(dealerSelect.value),
+    firstDealerNumber: Number(dealerSelect.value),
     showTranscript: showTranscript.checked,
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
   };
