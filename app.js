@@ -98,13 +98,13 @@ function getRealtimeGameState() {
 }
 
 function realtimeInstructions() {
-  return `You are the voice control for a real-card poker game. The following is a read-only snapshot of the current game state: ${JSON.stringify(getRealtimeGameState())}\n\nNever claim to change the game yourself. To do anything, use only the listed poker action functions. If a player says something unrelated to poker, do nothing. If an action is unclear, ask one short question. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Treat clear commands as immediately confirmed. For "raise 5" or any other bet, call betCurrentPlayer only: it confirms automatically. For fold, call, check, or all in, call the needed action function and then confirm. When the table says the flop, turn, or river has been dealt, call cardsAreDealt. Do not speak a reply after a clear poker command.`;
+  return `You are the voice control for a real-card poker game. The following is a read-only snapshot of the current game state: ${JSON.stringify(getRealtimeGameState())}\n\nNever claim to change the game yourself. To do anything, use only the listed poker action functions. If a player says something unrelated to poker, do nothing. If an action is unclear, ask one short question. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Treat clear commands as immediately confirmed. For "raise 5" or any other bet, call betCurrentPlayer only: it confirms automatically. For "call", call callCurrentPlayer only: it automatically matches the minimum required bet and confirms. For fold, check, or all in, call the needed action function and then confirm. When the table says the flop, turn, or river has been dealt, call cardsAreDealt. Do not speak a reply after a clear poker command.`;
 }
 
 const realtimeTools = [
   { type: 'function', name: 'foldCurrentPlayer', description: 'Select folding for the current player. Call confirm afterwards only when the player clearly means to fold.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'checkCurrentPlayer', description: 'Select checking for the current player, only when checking is legal.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'callCurrentPlayer', description: 'Set the current player to call the current bet.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'callCurrentPlayer', description: 'Make the current player call the current bet. This automatically confirms the minimum amount needed to match, so never call confirm after it.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'betCurrentPlayer', description: 'Bet this many additional chips for the current player. This function immediately confirms the bet, so never call confirm after it.', parameters: { type: 'object', properties: { amount: { type: 'number', description: 'Additional chips to bet now.' } }, required: ['amount'], additionalProperties: false } },
   { type: 'function', name: 'goAllIn', description: 'Set the current player to bet every chip they have left.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'confirm', description: 'Confirm the currently selected bet or fold. Call only after the player clearly asks to do it.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
@@ -156,8 +156,9 @@ function callRealtimeTool(name, argumentsText) {
 
   // This is the only bridge from OpenAI back into the poker game.
   // The AI has no direct access to the real variables above.
-  if (name === 'betCurrentPlayer') {
-    action(args.amount);
+  if (name === 'betCurrentPlayer' || name === 'callCurrentPlayer') {
+    if (name === 'betCurrentPlayer') action(args.amount);
+    else action();
     confirm();
     return true;
   }
