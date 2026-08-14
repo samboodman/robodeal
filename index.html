@@ -52,6 +52,7 @@
             Show voice transcript while playing
           </label>
           <button id="voice-customization-button" class="voice-customization-button" type="button">Voice customization</button>
+          <button id="voice-recognition-button" class="voice-customization-button" type="button">Voice recognition</button>
           <button id="last-game-settings-button" class="last-game-settings-button" type="button" hidden>Use last game's settings</button>
           <button type="submit">Start game</button>
           <p id="message" class="message" role="status"></p>
@@ -105,6 +106,13 @@
         <button id="test-voice-button" class="test-voice-button" type="button">Test voice</button>
         <p id="voice-preview-status" class="message" role="status"></p>
         <button id="voice-customization-back" class="voice-customization-back" type="button">Back to game setup</button>
+      </section>
+
+      <section id="voice-recognition-screen" class="setup-card" aria-labelledby="voice-recognition-title" hidden>
+        <p class="eyebrow">Poker night</p>
+        <h1 id="voice-recognition-title">Voice recognition</h1>
+        <p class="intro">Voice recognition settings will go here.</p>
+        <button id="voice-recognition-back" class="voice-customization-back" type="button">Back to game setup</button>
       </section>
 
       <section id="game-screen" class="game-screen" aria-label="Poker game" hidden>
