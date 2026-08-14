@@ -9,6 +9,7 @@ The project is a learning project for Sam. The game is intentionally one small s
 - Set up two to eight players, player names, starting chips, dealer, ante, and ante increase.
 - Play a hand on one shared phone with physical cards.
 - Track bets, calls, checks, folds, all-ins, main pots, side pots, player elimination, and the dealer moving each hand.
+- Automatically post the configured ante as the small blind, plus a big blind worth twice the ante in games with six to eight players.
 - Show whose turn it is around the table and rotate the controls toward that player.
 - Keep the phone screen awake during an active game when the browser supports it.
 - Remember the latest setup in that browser, including players, chip settings, and voice choices.

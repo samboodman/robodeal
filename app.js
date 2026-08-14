@@ -46,6 +46,7 @@ let gameSettings = null;
 let playersByNumber = {};
 let currentPlayerNumber = 1;
 let antePlayerNumber = null;
+let bigBlindPlayerNumber = null;
 let pot = 0;
 let highestRoundBet = 0;
 let pendingBet = 0;
@@ -216,6 +217,7 @@ function getRealtimeGameState() {
     playersByNumber: Object.fromEntries(Object.entries(playersByNumber).map(([number, player]) => [number, { ...player }])),
     currentPlayerNumber,
     antePlayerNumber,
+    bigBlindPlayerNumber,
     pot,
     highestRoundBet,
     pendingBet,
@@ -900,7 +902,7 @@ function captureTurnState() {
 }
 
 function canUndoLastTurn() {
-  // An automatic ante counts as a bet, but not as the player's real turn.
+  // An automatic blind counts as a bet, but not as the player's real turn.
   // Undo stays available until the next player confirms an action.
   return lastTurnState !== null && currentPlayerNumber !== lastTurnState.currentPlayerNumber;
 }
@@ -1082,6 +1084,17 @@ function startSidePotIfNeeded() {
   }
 }
 
+function postBlind(playerNumber, requestedAmount, blindName) {
+  const player = playersByNumber[playerNumber];
+  const amount = Math.min(requestedAmount, player.chips);
+
+  player.chips -= amount;
+  player.roundBet += amount;
+  highestRoundBet = Math.max(highestRoundBet, player.roundBet);
+  addToPot(amount);
+  logGameEvent(`${player.name} posts the ${blindName} ${amount}.`);
+}
+
 function startHand() {
   gameHandNumber += 1;
   isGameWon = false;
@@ -1094,6 +1107,7 @@ function startHand() {
   pendingBet = 0;
   pendingFold = false;
   lastTurnState = null;
+  bigBlindPlayerNumber = null;
 
   Object.values(playersByNumber).forEach((player) => {
     player.folded = player.eliminated;
@@ -1103,15 +1117,21 @@ function startHand() {
   });
 
   antePlayerNumber = playerToDealersLeft(gameSettings.dealerNumber);
+  if (gameSettings.playerCount >= 6) {
+    bigBlindPlayerNumber = playerToDealersLeft(antePlayerNumber);
+  }
   gameSettings.antePlayerNumber = antePlayerNumber;
-  playersByNumber[antePlayerNumber].chips -= gameSettings.ante;
-  playersByNumber[antePlayerNumber].roundBet = gameSettings.ante;
-  playersByNumber[antePlayerNumber].hasActedThisRound = true;
-  highestRoundBet = gameSettings.ante;
-  addToPot(gameSettings.ante);
-  logGameEvent(`${playersByNumber[antePlayerNumber].name} antes ${gameSettings.ante}.`);
+  gameSettings.bigBlindPlayerNumber = bigBlindPlayerNumber;
+  gameSettings.bigBlind = bigBlindPlayerNumber === null ? null : gameSettings.ante * 2;
 
-  setCurrentPlayer(antePlayerNumber);
+  postBlind(antePlayerNumber, gameSettings.ante, 'small blind');
+  if (bigBlindPlayerNumber !== null) {
+    postBlind(bigBlindPlayerNumber, gameSettings.bigBlind, 'big blind');
+  }
+
+  startSidePotIfNeeded();
+
+  setCurrentPlayer(bigBlindPlayerNumber ?? antePlayerNumber);
   nextPlayer();
 }
 
