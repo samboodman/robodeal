@@ -38,6 +38,8 @@ const voiceChoice = document.querySelector('#voice-choice');
 const voiceAccent = document.querySelector('#voice-accent');
 const voicePersonality = document.querySelector('#voice-personality');
 const voicePace = document.querySelector('#voice-pace');
+const voicePreviewButton = document.querySelector('#voice-preview-button');
+const voicePreviewStatus = document.querySelector('#voice-preview-status');
 
 // This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
@@ -66,6 +68,23 @@ let realtimeDataChannel = null;
 let realtimeAudio = null;
 let realtimeSessionConfigured = false;
 let showVoiceTranscript = false;
+let voicePreviewConnection = null;
+let voicePreviewChannel = null;
+let voicePreviewAudio = null;
+
+function selectedVoiceSettings() {
+  return {
+    name: voiceChoice.value,
+    accent: voiceAccent.value,
+    personality: voicePersonality.value,
+    pace: voicePace.value,
+  };
+}
+
+function voiceStyleInstructions(voiceSettings) {
+  const accentInstruction = voiceSettings.accent === 'neutral' ? 'Use a neutral accent.' : `Use a ${voiceSettings.accent} accent.`;
+  return `Your personality is ${voiceSettings.personality}. ${accentInstruction} Speak at a ${voiceSettings.pace} pace.`;
+}
 
 function discardOldAudioFiles() {
   const oneMinuteAgo = Date.now() - 60_000;
@@ -107,8 +126,7 @@ function getRealtimeGameState() {
 
 function realtimeInstructions() {
   const voiceSettings = gameSettings?.voice || { accent: 'neutral', personality: 'friendly', pace: 'steady' };
-  const accentInstruction = voiceSettings.accent === 'neutral' ? 'Use a neutral accent.' : `Use a ${voiceSettings.accent} accent.`;
-  return `You are the voice control and dealer for a real-card poker game. The following is a read-only snapshot of the current game state: ${JSON.stringify(getRealtimeGameState())}\n\nYour personality is ${voiceSettings.personality}. ${accentInstruction} Speak at a ${voiceSettings.pace} pace. Speak in exactly one very short poker-dealer phrase. After a successful action, say only the player, action, and amount when needed: "Player 1 bets 5." "Player 2 calls." "Player 1 folds." "Deal the flop." Do not add greetings, explanations, commentary, or a second sentence. If an action is unclear, ask only one short question, such as "Call or raise?", and do not call an action function. Never claim to change the game yourself. To do anything, use only the listed poker action functions. If a player says something unrelated to poker, do nothing. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Treat clear commands as immediately confirmed. For "raise 5" or any other bet, call betCurrentPlayer only: it confirms automatically. For "call", call callCurrentPlayer only: it automatically matches the minimum required bet and confirms. For fold, check, or all in, call the needed action function and then confirm. When the table says the flop, turn, or river has been dealt, call cardsAreDealt.`;
+  return `You are the voice control and dealer for a real-card poker game. The following is a read-only snapshot of the current game state: ${JSON.stringify(getRealtimeGameState())}\n\n${voiceStyleInstructions(voiceSettings)} Speak in exactly one very short poker-dealer phrase. After a successful action, say only the player, action, and amount when needed: "Player 1 bets 5." "Player 2 calls." "Player 1 folds." "Deal the flop." Do not add greetings, explanations, commentary, or a second sentence. If an action is unclear, ask only one short question, such as "Call or raise?", and do not call an action function. Never claim to change the game yourself. To do anything, use only the listed poker action functions. If a player says something unrelated to poker, do nothing. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Treat clear commands as immediately confirmed. For "raise 5" or any other bet, call betCurrentPlayer only: it confirms automatically. For "call", call callCurrentPlayer only: it automatically matches the minimum required bet and confirms. For fold, check, or all in, call the needed action function and then confirm. When the table says the flop, turn, or river has been dealt, call cardsAreDealt.`;
 }
 
 const realtimeTools = [
@@ -272,6 +290,82 @@ async function startRealtimeConversation(stream) {
   const answer = await callResponse.text();
   if (!callResponse.ok) throw new Error(answer);
   await realtimePeerConnection.setRemoteDescription({ type: 'answer', sdp: answer });
+}
+
+function stopVoicePreview() {
+  voicePreviewChannel?.close();
+  voicePreviewConnection?.close();
+  voicePreviewAudio?.remove();
+  voicePreviewChannel = null;
+  voicePreviewConnection = null;
+  voicePreviewAudio = null;
+}
+
+async function previewVoice() {
+  stopVoicePreview();
+  voicePreviewButton.disabled = true;
+  voicePreviewStatus.textContent = 'Loading voice…';
+
+  try {
+    const settings = selectedVoiceSettings();
+    const connection = new RTCPeerConnection();
+    voicePreviewConnection = connection;
+    connection.addTransceiver('audio', { direction: 'recvonly' });
+    connection.addEventListener('track', (event) => {
+      if (!voicePreviewAudio) {
+        voicePreviewAudio = document.createElement('audio');
+        voicePreviewAudio.autoplay = true;
+        voicePreviewAudio.playsInline = true;
+        voicePreviewAudio.hidden = true;
+        document.body.append(voicePreviewAudio);
+      }
+      voicePreviewAudio.srcObject = event.streams[0];
+      voicePreviewAudio.play().catch(() => {});
+    });
+
+    const channel = connection.createDataChannel('oai-events');
+    voicePreviewChannel = channel;
+    channel.addEventListener('open', () => {
+      channel.send(JSON.stringify({
+        type: 'session.update',
+        session: {
+          type: 'realtime',
+          instructions: `You are previewing a poker dealer voice. ${voiceStyleInstructions(settings)} Say exactly: "Welcome to RoboDeal. Place your bets."`,
+          output_modalities: ['audio'],
+          audio: { output: { voice: settings.name } },
+        },
+      }));
+      channel.send(JSON.stringify({ type: 'response.create' }));
+    });
+    channel.addEventListener('message', (event) => {
+      const update = JSON.parse(event.data);
+      if (update.type === 'error') {
+        voicePreviewStatus.textContent = `Voice preview could not start: ${update.error?.message || 'unknown problem'}`;
+        voicePreviewButton.disabled = false;
+      }
+      if (update.type === 'output_audio_buffer.stopped') {
+        voicePreviewStatus.textContent = '';
+        voicePreviewButton.disabled = false;
+        window.setTimeout(stopVoicePreview, 500);
+      }
+    });
+
+    const offer = await connection.createOffer();
+    await connection.setLocalDescription(offer);
+    const callResponse = await fetch('/api/realtime-call', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sdp: offer.sdp }),
+    });
+    const answer = await callResponse.text();
+    if (!callResponse.ok) throw new Error(answer);
+    await connection.setRemoteDescription({ type: 'answer', sdp: answer });
+  } catch (error) {
+    console.error('Voice preview could not start:', error);
+    voicePreviewStatus.textContent = 'Voice preview could not start.';
+    voicePreviewButton.disabled = false;
+    stopVoicePreview();
+  }
 }
 
 function stopRecording() {
@@ -864,6 +958,7 @@ voiceCustomizationBack.addEventListener('click', () => {
   voiceCustomizationScreen.hidden = true;
   setupScreen.hidden = false;
 });
+voicePreviewButton.addEventListener('click', previewVoice);
 betIncrease.addEventListener('click', () => {
   betCurrentPlayer(pendingBet + 1);
 });
@@ -905,12 +1000,7 @@ form.addEventListener('submit', (event) => {
     dealerNumber: Number(dealerSelect.value),
     firstDealerNumber: Number(dealerSelect.value),
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
-    voice: {
-      name: voiceChoice.value,
-      accent: voiceAccent.value,
-      personality: voicePersonality.value,
-      pace: voicePace.value,
-    },
+    voice: selectedVoiceSettings(),
   };
   showVoiceTranscript = showVoiceTranscriptCheckbox.checked;
   makePlayers();
