@@ -251,7 +251,7 @@ function scheduleRealtimeGameStateSync() {
 function realtimeInstructions() {
   const voiceSettings = gameSettings?.voice || { accent: 'neutral', personality: 'friendly', pace: 'steady' };
   const playerNames = Object.values(playersByNumber).map((player) => player.name).join(', ');
-  return `You are the voice control and dealer for a real-card poker game. At the start of every user voice turn, the app requires you to call getLatestGameState. Its function output is the only authoritative game state for that turn. Ignore conflicting or older game details elsewhere in the conversation. Use the returned stateVersion with any action function, and never guess or reuse a version from an older turn. The current session snapshot is included only as a fallback: ${JSON.stringify(getRealtimeGameState())}\n\nThe players are: ${playerNames}. Always use each player's name from playersByNumber. Never call a named player "Player 1", "Player 2", or any other number. ${voiceStyleInstructions(voiceSettings)} Only respond to clear poker-related speech: a poker action, a poker question, or an instruction about dealing cards. For all other speech, stay completely silent: do not speak, ask a question, or call another function. This includes casual conversation, background talk, unrelated jokes, and people talking to each other. Speak in exactly one very short poker-dealer phrase only after a successful poker action or a clear poker question. Say only the player, action, and amount when needed: "Sam bets 5." "Aaron calls." "Sam folds." "Deal the flop." Do not add greetings, explanations, commentary, or a second sentence. If a poker action is unclear, ask only one short poker question, such as "Call or raise?", and do not call an action function. Never claim to change the game yourself. To do anything, use only the listed poker action functions. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Clear action commands are immediately confirmed by their action function; call exactly one action function. When the table says the flop, turn, or river has been dealt, call cardsAreDealt.`;
+  return `You are the voice control and dealer for a real-card poker game. This response was created with the newest authoritative, read-only game snapshot: ${JSON.stringify(getRealtimeGameState())}\n\nUse only this snapshot for the current voice turn. Ignore conflicting or older game details elsewhere in the conversation. Pass this snapshot's exact stateVersion to any action function; never guess or reuse a version from an older turn. The players are: ${playerNames}. Always use each player's name from playersByNumber. Never call a named player "Player 1", "Player 2", or any other number. ${voiceStyleInstructions(voiceSettings)} Only respond to clear poker-related speech: a poker action, a poker question, or an instruction about dealing cards. For all other speech, stay completely silent: do not speak, ask a question, or call a function. This includes casual conversation, background talk, unrelated jokes, and people talking to each other. Speak in exactly one very short poker-dealer phrase only after a successful poker action or a clear poker question. Say only the player, action, and amount when needed: "Sam bets 5." "Aaron calls." "Sam folds." "Deal the flop." Do not add greetings, explanations, commentary, or a second sentence. If a poker action is unclear, ask only one short poker question, such as "Call or raise?", and do not call an action function. Never claim to change the game yourself. To do anything, use only the listed poker action functions. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Clear action commands are immediately confirmed by their action function; call exactly one action function. When the table says the flop, turn, or river has been dealt, call cardsAreDealt.`;
 }
 
 const stateVersionProperty = {
@@ -262,7 +262,6 @@ const stateVersionProperty = {
 };
 
 const realtimeTools = [
-  { type: 'function', name: 'getLatestGameState', description: 'Read the complete authoritative game state immediately before answering or acting. This never changes the game.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'foldCurrentPlayer', description: 'Immediately fold and confirm the current player.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
   { type: 'function', name: 'checkCurrentPlayer', description: 'Immediately check and confirm for the current player, only when checking is legal.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
   { type: 'function', name: 'callCurrentPlayer', description: 'Immediately call and confirm the current bet for the current player.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
@@ -270,7 +269,6 @@ const realtimeTools = [
   { type: 'function', name: 'goAllIn', description: 'Immediately bet every remaining chip and confirm for the current player.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
   { type: 'function', name: 'cardsAreDealt', description: 'Continue after the physical cards for the flop, turn, or river have been dealt. This does the same thing as pressing the OK button in the deal prompt.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
 ];
-const realtimeActionTools = realtimeTools.filter((tool) => tool.name !== 'getLatestGameState');
 
 function sendRealtimeEvent(event) {
   if (realtimeDataChannel?.readyState === 'open') {
@@ -291,9 +289,7 @@ function updateRealtimeGameState({ force = false } = {}) {
     type: 'realtime',
     instructions: realtimeInstructions(),
     tools: realtimeTools,
-    // Server VAD creates the first response automatically. Forcing this
-    // read-only tool means every voice turn begins with current app state.
-    tool_choice: { type: 'function', name: 'getLatestGameState' },
+    tool_choice: 'auto',
     output_modalities: ['audio'],
   };
 
@@ -304,7 +300,9 @@ function updateRealtimeGameState({ force = false } = {}) {
       input: {
         noise_reduction: { type: 'far_field' },
         transcription: { model: 'gpt-4o-transcribe', language: 'en' },
-        turn_detection: { type: 'server_vad', create_response: true, interrupt_response: true },
+        // VAD still detects and commits each voice turn, but the app waits for
+        // its transcription and then creates a response with fresh game state.
+        turn_detection: { type: 'server_vad', create_response: false, interrupt_response: true },
       },
       output: { voice: gameSettings?.voice?.name || 'marin' },
     };
@@ -321,11 +319,6 @@ function updateRealtimeGameState({ force = false } = {}) {
 
 function callRealtimeTool(name, argumentsText) {
   const args = argumentsText ? JSON.parse(argumentsText) : {};
-  if (name === 'getLatestGameState') {
-    updateRealtimeGameState();
-    return getRealtimeGameState();
-  }
-
   if (args.stateVersion !== realtimeGameStateVersion) {
     throw new Error(`Stale game state. Expected stateVersion ${realtimeGameStateVersion}, received ${args.stateVersion}. Use the latest gameState in this output.`);
   }
@@ -369,6 +362,10 @@ function handleRealtimeEvent(event) {
   if (event.type === 'conversation.item.input_audio_transcription.completed') {
     setVoiceTranscript(`Heard: “${event.transcript}”`);
     logGameEvent(`Table heard: “${event.transcript}”`);
+    // The transcript marks the completed user turn. Refresh the session first,
+    // then create its response; data-channel events are processed in order.
+    updateRealtimeGameState({ force: true });
+    sendRealtimeEvent({ type: 'response.create' });
     return;
   }
 
@@ -386,12 +383,10 @@ function handleRealtimeEvent(event) {
   if (event.type !== 'response.function_call_arguments.done') return;
 
   let result;
-  let failed = false;
   try {
     result = callRealtimeTool(event.name, event.arguments);
   } catch (error) {
     result = { error: error.message };
-    failed = true;
   }
 
   const gameState = getRealtimeGameState();
@@ -401,19 +396,10 @@ function handleRealtimeEvent(event) {
     item: {
       type: 'function_call_output',
       call_id: event.call_id,
-      output: JSON.stringify(event.name === 'getLatestGameState' ? { gameState: result } : { result, gameState }),
+      output: JSON.stringify({ result, gameState }),
     },
   });
   updateRealtimeGameState();
-  sendRealtimeEvent({
-    type: 'response.create',
-    response: {
-      // After the mandatory read, let the model answer or call one action.
-      // After a successful action, only let it speak the short confirmation.
-      tool_choice: event.name === 'getLatestGameState' || failed ? 'auto' : 'none',
-      tools: realtimeActionTools,
-    },
-  });
 }
 
 function stopRealtimeConversation() {
