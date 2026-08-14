@@ -33,6 +33,7 @@ const voiceStatus = document.querySelector('#voice-status');
 const voiceTranscript = document.querySelector('#voice-transcript');
 const showVoiceTranscriptCheckbox = document.querySelector('#show-voice-transcript');
 const voiceCustomizationButton = document.querySelector('#voice-customization-button');
+const lastGameSettingsButton = document.querySelector('#last-game-settings-button');
 const voiceCustomizationBack = document.querySelector('#voice-customization-back');
 const voiceChoice = document.querySelector('#voice-choice');
 const voiceAccent = document.querySelector('#voice-accent');
@@ -71,6 +72,7 @@ let screenWakeLock = null;
 let voicePreviewConnection = null;
 let voicePreviewChannel = null;
 let voicePreviewAudio = null;
+const lastGameSettingsKey = 'robodeal-last-game-settings';
 
 function selectedVoiceSettings() {
   return {
@@ -79,6 +81,60 @@ function selectedVoiceSettings() {
     personality: voicePersonality.value,
     pace: voicePace.value,
   };
+}
+
+function getLastGameSettings() {
+  try {
+    const savedGame = JSON.parse(localStorage.getItem(lastGameSettingsKey));
+    if (!savedGame || typeof savedGame !== 'object' || !savedGame.settings) return null;
+    return savedGame;
+  } catch {
+    return null;
+  }
+}
+
+function updateLastGameSettingsButton() {
+  lastGameSettingsButton.hidden = !getLastGameSettings();
+}
+
+function restoreLastGameSettings() {
+  const savedGame = getLastGameSettings();
+  const settings = savedGame?.settings;
+  if (!settings || !Number.isInteger(settings.playerCount) || settings.playerCount < 2 || settings.playerCount > 8) return;
+
+  playerCount.value = settings.playerCount;
+  document.querySelector('#starting-money').value = settings.startingMoney;
+  document.querySelector('#ante').value = settings.ante;
+  document.querySelector('#ante-increase').value = settings.anteIncrease;
+  drawPlayerNames();
+
+  [...playerNames.querySelectorAll('input')].forEach((input, index) => {
+    input.value = settings.playerNames?.[index] || '';
+  });
+  drawDealerOptions(String(settings.dealerNumber));
+  dealerSelect.value = String(settings.dealerNumber);
+  showVoiceTranscriptCheckbox.checked = Boolean(savedGame.showVoiceTranscript);
+
+  if (settings.voice) {
+    if ([...voiceChoice.options].some((option) => option.value === settings.voice.name)) voiceChoice.value = settings.voice.name;
+    if ([...voiceAccent.options].some((option) => option.value === settings.voice.accent)) voiceAccent.value = settings.voice.accent;
+    if ([...voicePersonality.options].some((option) => option.value === settings.voice.personality)) voicePersonality.value = settings.voice.personality;
+    if ([...voicePace.options].some((option) => option.value === settings.voice.pace)) voicePace.value = settings.voice.pace;
+  }
+
+  message.textContent = 'Last game settings restored.';
+}
+
+function saveLastGameSettings() {
+  try {
+    localStorage.setItem(lastGameSettingsKey, JSON.stringify({
+      settings: gameSettings,
+      showVoiceTranscript,
+    }));
+    updateLastGameSettingsButton();
+  } catch {
+    // The game still works if this browser has disabled saved site data.
+  }
 }
 
 function voiceStyleInstructions(voiceSettings) {
@@ -975,6 +1031,7 @@ voiceCustomizationButton.addEventListener('click', () => {
   setupScreen.hidden = true;
   voiceCustomizationScreen.hidden = false;
 });
+lastGameSettingsButton.addEventListener('click', restoreLastGameSettings);
 voiceCustomizationBack.addEventListener('click', () => {
   voiceCustomizationScreen.hidden = true;
   setupScreen.hidden = false;
@@ -1026,6 +1083,7 @@ form.addEventListener('submit', (event) => {
     voice: selectedVoiceSettings(),
   };
   showVoiceTranscript = showVoiceTranscriptCheckbox.checked;
+  saveLastGameSettings();
   makePlayers();
   setupScreen.hidden = true;
   voiceCustomizationScreen.hidden = true;
@@ -1043,3 +1101,4 @@ form.addEventListener('submit', (event) => {
 });
 
 drawPlayerNames();
+updateLastGameSettingsButton();
