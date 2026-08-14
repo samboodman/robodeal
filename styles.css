@@ -65,6 +65,8 @@ input:focus, select:focus { outline: 3px solid #f1c565; border-color: #7c5c15; }
 button { width: 100%; min-height: 56px; margin-top: 28px; border: 0; border-radius: 16px; background: #b63f29; color: white; font: inherit; font-weight: 800; font-size: 1.08rem; cursor: pointer; touch-action: manipulation; box-shadow: 0 4px 0 #7c2517; }
 button:active { transform: translateY(2px); box-shadow: 0 2px 0 #7c2517; }
 .test-voice-button { min-height: 46px; margin-top: 22px; background: #2875c7; box-shadow: 0 4px 0 #174f91; font-size: .98rem; }
+.voice-transcript-setting { display: flex; align-items: center; gap: 10px; margin-top: 22px; color: #3b6755; font-size: .92rem; font-weight: 700; }
+.voice-transcript-setting input { width: 20px; min-height: 20px; accent-color: #2875c7; }
 .message { min-height: 1.2em; margin: 14px 0 0; text-align: center; color: #3b6755; font-weight: 650; }
 @media (max-width: 600px) {
   .app-shell { display: block; padding: 0; }

@@ -30,6 +30,7 @@ const testVoiceButton = document.querySelector('#test-voice-button');
 const recordingButton = document.querySelector('#recording-button');
 const voiceStatus = document.querySelector('#voice-status');
 const voiceTranscript = document.querySelector('#voice-transcript');
+const showVoiceTranscriptCheckbox = document.querySelector('#show-voice-transcript');
 
 // This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
@@ -56,6 +57,7 @@ let audioCleanupTimer = null;
 let realtimePeerConnection = null;
 let realtimeDataChannel = null;
 let realtimeAudio = null;
+let showVoiceTranscript = false;
 
 function discardOldAudioFiles() {
   const oneMinuteAgo = Date.now() - 60_000;
@@ -69,7 +71,7 @@ function setVoiceStatus(status) {
 
 function setVoiceTranscript(transcript) {
   voiceTranscript.textContent = transcript;
-  voiceTranscript.hidden = !transcript;
+  voiceTranscript.hidden = !showVoiceTranscript || !transcript;
 }
 
 function getRealtimeGameState() {
@@ -652,7 +654,7 @@ function finishHand(winner) {
 
 function showGameWinner(winner) {
   gameScreen.hidden = true;
-  gameWinnerMessage.textContent = `Player ${winner.name} wins!`;
+  gameWinnerMessage.textContent = `${winner.name} wins!`;
   gameWinnerScreen.hidden = false;
   speak(`Player ${winner.name} wins the game!`);
 }
@@ -861,6 +863,7 @@ form.addEventListener('submit', (event) => {
     firstDealerNumber: Number(dealerSelect.value),
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
   };
+  showVoiceTranscript = showVoiceTranscriptCheckbox.checked;
   makePlayers();
   setupScreen.hidden = true;
   gameScreen.hidden = false;
