@@ -56,6 +56,8 @@ let sidePot = 0;
 let sidePotActive = false;
 let sidePotEligiblePlayers = [];
 let lastTurnState = null;
+let gameHistory = [];
+let gameHandNumber = 0;
 // These are one-second audio files kept only in this browser's memory.
 // The newest minute is useful for a future speech-to-text feature; nothing
 // is saved to the phone's file system.
@@ -177,6 +179,14 @@ function setVoiceTranscript(transcript) {
   voiceTranscript.hidden = !showVoiceTranscript || !transcript;
 }
 
+function logGameEvent(text) {
+  gameHistory.push({
+    hand: gameHandNumber,
+    round: ['Preflop', 'Flop', 'Turn', 'River'][roundNumber - 1] || 'Setup',
+    text,
+  });
+}
+
 function getRealtimeGameState() {
   // This makes a plain copy. The AI can read this copy, but cannot change the
   // real game variables. Only the approved functions below can affect a turn.
@@ -195,6 +205,7 @@ function getRealtimeGameState() {
     sidePotActive,
     sidePotEligiblePlayers: [...sidePotEligiblePlayers],
     lastTurnState: lastTurnState ? JSON.parse(JSON.stringify(lastTurnState)) : null,
+    gameHistory: [...gameHistory],
     recentAudioFileCount: recentAudioFiles.length,
     isRecording: microphoneRecorder?.state === 'recording',
   };
@@ -289,6 +300,12 @@ function handleRealtimeEvent(event) {
 
   if (event.type === 'conversation.item.input_audio_transcription.completed') {
     setVoiceTranscript(`Heard: “${event.transcript}”`);
+    logGameEvent(`Table heard: “${event.transcript}”`);
+    return;
+  }
+
+  if (event.type === 'response.output_audio_transcript.done') {
+    logGameEvent(`Dealer said: “${event.transcript}”`);
     return;
   }
 
@@ -755,6 +772,7 @@ function startNextRound() {
   }
 
   const nextCard = ['the flop', 'the turn', 'the river'][roundNumber - 1];
+  logGameEvent(`Betting round finished. Deal ${nextCard}.`);
   turnIndicator.hidden = true;
   actionButtons.hidden = true;
   dealMessage.textContent = `Deal ${nextCard}. Press OK to continue.`;
@@ -767,6 +785,7 @@ function beginNextRound() {
   turnIndicator.hidden = false;
   actionButtons.hidden = false;
   roundNumber += 1;
+  logGameEvent(`${['Preflop', 'Flop', 'Turn', 'River'][roundNumber - 1]} betting round started.`);
   Object.values(playersByNumber).forEach((player) => {
     player.roundBet = 0;
     player.hasActedThisRound = false;
@@ -781,6 +800,7 @@ function beginNextRound() {
 function showWinnerPicker() {
   const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded && !player.eliminated);
   speak('Showdown. Choose the player with the best cards.');
+  logGameEvent('Showdown: choose the player with the best cards.');
   showPotWinnerPicker('Who had the best cards?', activePlayers, awardMainPot);
 }
 
@@ -846,6 +866,7 @@ function finishHand(winner) {
   actionButtons.hidden = true;
   winnerPicker.hidden = false;
   winnerQuestion.textContent = `${winner.name} wins the hand!`;
+  logGameEvent(`${winner.name} wins hand ${gameHandNumber}.`);
   speak(`${winner.name} wins the hand.`);
   winnerOptions.replaceChildren();
   const closeButton = document.createElement('button');
@@ -858,6 +879,7 @@ function finishHand(winner) {
 
 function showGameWinner(winner) {
   allowScreenToSleep();
+  logGameEvent(`${winner.name} wins the game.`);
   gameScreen.hidden = true;
   gameWinnerMessage.textContent = `${winner.name} wins!`;
   gameWinnerScreen.hidden = false;
@@ -888,6 +910,7 @@ function startSidePotIfNeeded() {
 }
 
 function startHand() {
+  gameHandNumber += 1;
   isGameWon = false;
   roundNumber = 1;
   pot = 0;
@@ -913,6 +936,7 @@ function startHand() {
   playersByNumber[antePlayerNumber].hasActedThisRound = true;
   highestRoundBet = gameSettings.ante;
   addToPot(gameSettings.ante);
+  logGameEvent(`${playersByNumber[antePlayerNumber].name} antes ${gameSettings.ante}.`);
 
   setCurrentPlayer(antePlayerNumber);
   nextPlayer();
@@ -952,6 +976,7 @@ function confirmTurn() {
 
   if (pendingFold) {
     player.folded = true;
+    logGameEvent(`${player.name} folds.`);
     speak(`${player.name} folds.`);
   } else {
     const additionalChips = pendingBet;
@@ -961,6 +986,7 @@ function confirmTurn() {
     highestRoundBet = Math.max(highestRoundBet, player.roundBet);
     addToPot(additionalChips);
     startSidePotIfNeeded();
+    logGameEvent(additionalChips === 0 ? `${player.name} checks.` : `${player.name} bets ${additionalChips}.`);
     speak(additionalChips === 0 ? `${player.name} checks.` : `${player.name} bets ${additionalChips}.`);
   }
 
@@ -1083,6 +1109,8 @@ form.addEventListener('submit', (event) => {
     voice: selectedVoiceSettings(),
   };
   showVoiceTranscript = showVoiceTranscriptCheckbox.checked;
+  gameHistory = [];
+  gameHandNumber = 0;
   saveLastGameSettings();
   makePlayers();
   setupScreen.hidden = true;
