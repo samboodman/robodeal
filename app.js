@@ -5,7 +5,6 @@ const message = document.querySelector('#message');
 const dealerSelect = document.querySelector('#dealer');
 const setupScreen = document.querySelector('#setup-screen');
 const voiceCustomizationScreen = document.querySelector('#voice-customization-screen');
-const voiceRecognitionScreen = document.querySelector('#voice-recognition-screen');
 const gameScreen = document.querySelector('#game-screen');
 const gameWinnerScreen = document.querySelector('#game-winner-screen');
 const gameWinnerMessage = document.querySelector('#game-winner-message');
@@ -36,8 +35,6 @@ const showVoiceTranscriptCheckbox = document.querySelector('#show-voice-transcri
 const voiceCustomizationButton = document.querySelector('#voice-customization-button');
 const lastGameSettingsButton = document.querySelector('#last-game-settings-button');
 const voiceCustomizationBack = document.querySelector('#voice-customization-back');
-const voiceRecognitionButton = document.querySelector('#voice-recognition-button');
-const voiceRecognitionBack = document.querySelector('#voice-recognition-back');
 const voiceChoice = document.querySelector('#voice-choice');
 const voiceAccent = document.querySelector('#voice-accent');
 const voicePersonality = document.querySelector('#voice-personality');
@@ -1039,14 +1036,6 @@ voiceCustomizationBack.addEventListener('click', () => {
   voiceCustomizationScreen.hidden = true;
   setupScreen.hidden = false;
 });
-voiceRecognitionButton.addEventListener('click', () => {
-  setupScreen.hidden = true;
-  voiceRecognitionScreen.hidden = false;
-});
-voiceRecognitionBack.addEventListener('click', () => {
-  voiceRecognitionScreen.hidden = true;
-  setupScreen.hidden = false;
-});
 testVoiceButton.addEventListener('click', previewVoice);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && !gameScreen.hidden && !isGameWon) {
@@ -1098,7 +1087,6 @@ form.addEventListener('submit', (event) => {
   makePlayers();
   setupScreen.hidden = true;
   voiceCustomizationScreen.hidden = true;
-  voiceRecognitionScreen.hidden = true;
   gameScreen.hidden = false;
   gameWinnerScreen.hidden = true;
   winnerPicker.hidden = true;
