@@ -98,7 +98,7 @@ function getRealtimeGameState() {
 }
 
 function realtimeInstructions() {
-  return `You are the voice control for a real-card poker game. The following is a read-only snapshot of the current game state: ${JSON.stringify(getRealtimeGameState())}\n\nNever claim to change the game yourself. To do anything, use only the listed poker action functions. If a player says something unrelated to poker, do nothing. If an action is unclear, ask one short question. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Treat clear commands as immediately confirmed. For "raise 5" or any other bet, call betCurrentPlayer only: it confirms automatically. For fold, call, check, or all in, call the needed action function and then confirm. Do not speak a reply after a clear poker command.`;
+  return `You are the voice control for a real-card poker game. The following is a read-only snapshot of the current game state: ${JSON.stringify(getRealtimeGameState())}\n\nNever claim to change the game yourself. To do anything, use only the listed poker action functions. If a player says something unrelated to poker, do nothing. If an action is unclear, ask one short question. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Treat clear commands as immediately confirmed. For "raise 5" or any other bet, call betCurrentPlayer only: it confirms automatically. For fold, call, check, or all in, call the needed action function and then confirm. When the table says the flop, turn, or river has been dealt, call cardsAreDealt. Do not speak a reply after a clear poker command.`;
 }
 
 const realtimeTools = [
@@ -108,6 +108,7 @@ const realtimeTools = [
   { type: 'function', name: 'betCurrentPlayer', description: 'Bet this many additional chips for the current player. This function immediately confirms the bet, so never call confirm after it.', parameters: { type: 'object', properties: { amount: { type: 'number', description: 'Additional chips to bet now.' } }, required: ['amount'], additionalProperties: false } },
   { type: 'function', name: 'goAllIn', description: 'Set the current player to bet every chip they have left.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'confirm', description: 'Confirm the currently selected bet or fold. Call only after the player clearly asks to do it.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'cardsAreDealt', description: 'Continue after the physical cards for the flop, turn, or river have been dealt. This does the same thing as pressing the OK button in the deal prompt.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
 ];
 
 function sendRealtimeEvent(event) {
@@ -145,6 +146,7 @@ function callRealtimeTool(name, argumentsText) {
     betCurrentPlayer,
     goAllIn,
     confirm,
+    cardsAreDealt,
   };
   const action = allowedFunctions[name];
   if (!action) throw new Error(`The AI tried to call an unapproved function: ${name}`);
