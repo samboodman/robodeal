@@ -257,7 +257,7 @@ function realtimeInstructions() {
 const stateVersionProperty = {
   stateVersion: {
     type: 'number',
-    description: 'The exact stateVersion returned by getLatestGameState for this voice turn.',
+    description: 'The exact stateVersion shown in the authoritative snapshot for this voice turn.',
   },
 };
 
