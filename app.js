@@ -248,8 +248,8 @@ function getRealtimeNarration() {
 
   const amountToCall = Math.max(0, highestRoundBet - player.roundBet);
   const minimumBet = Math.min(amountToCall, player.chips);
-  const potNarration = sidePotActive ? `Pot ${pot}. Side pot ${sidePot}.` : `Pot ${pot}.`;
-  return `Minimum bet ${minimumBet}. ${potNarration} ${player.name} has ${player.chips} chips.`;
+  const potNarration = sidePotActive ? `Main pot, ${pot}. Side pot, ${sidePot}.` : `Pot, ${pot}.`;
+  return `Action on ${player.name}. Minimum bet, ${minimumBet}. ${potNarration} ${player.chips} chips behind.`;
 }
 
 function flushRealtimeResponseQueue() {
@@ -271,7 +271,7 @@ function flushRealtimeResponseQueue() {
   sendRealtimeEvent({
     type: 'response.create',
     response: {
-      instructions: `This is an automatic game-state announcement, not a reply to user speech. Ignore the normal silence rule for this response. Say exactly this and nothing else: ${narration}`,
+      instructions: `This is an automatic game-state announcement, not a reply to user speech. Ignore the normal silence rule for this response. Use a crisp, professional casino poker dealer cadence. Say exactly this and nothing else: ${narration}`,
       tool_choice: 'none',
     },
   });
