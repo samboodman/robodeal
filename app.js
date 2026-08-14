@@ -73,6 +73,10 @@ let realtimeStatePollTimer = null;
 let realtimeStateSyncQueued = false;
 let lastRealtimeGameStateFingerprint = null;
 let realtimeGameStateVersion = 0;
+let realtimeResponseActive = false;
+let realtimeUserResponseQueued = false;
+let queuedRealtimeNarration = null;
+let lastRealtimeNarration = null;
 let showVoiceTranscript = false;
 let screenWakeLock = null;
 let voicePreviewConnection = null;
@@ -238,6 +242,86 @@ function realtimeGameStateFingerprint() {
   return JSON.stringify(state);
 }
 
+function getRealtimeNarration() {
+  const phase = getGamePhase();
+  const totalPot = sidePotActive ? `Main pot ${pot}. Side pot ${sidePot}.` : `Pot ${pot}.`;
+  const round = ['Preflop', 'Flop', 'Turn', 'River'][roundNumber - 1] || 'Poker';
+  const stacks = Object.values(playersByNumber).map((player) => {
+    const status = player.eliminated ? ', out' : player.folded ? ', folded' : '';
+    const dealer = player.isDealer ? ', dealer' : '';
+    return `${player.name} ${player.chips}${status}${dealer}`;
+  }).join('; ');
+  const tableStatus = `${round}. Stacks: ${stacks}. ${totalPot}`;
+
+  if (phase === 'waiting for cards to be dealt') {
+    return `${tableStatus} ${dealMessage.textContent}`;
+  }
+
+  if (phase === 'choosing a pot winner' || phase === 'hand complete') {
+    return `${tableStatus} ${winnerQuestion.textContent}`;
+  }
+
+  if (phase === 'game over') {
+    return gameWinnerMessage.textContent;
+  }
+
+  if (phase !== 'betting') return null;
+
+  const player = playersByNumber[currentPlayerNumber];
+  if (!player) return null;
+
+  const amountToCall = Math.max(0, highestRoundBet - player.roundBet);
+  let options;
+  if (amountToCall === 0) {
+    options = 'check, bet, all in, or fold';
+  } else if (amountToCall >= player.chips) {
+    options = `call all in for ${player.chips}, or fold`;
+  } else {
+    options = `call ${amountToCall}, raise, all in, or fold`;
+  }
+
+  const selectedAction = pendingFold
+    ? ' Fold is selected.'
+    : pendingBet !== amountToCall
+      ? ` Selected additional bet ${pendingBet}.`
+      : '';
+
+  return `${tableStatus} ${player.name}'s turn. ${player.roundBet} committed this round. Current round bet ${highestRoundBet}. ${amountToCall} to call. Options: ${options}.${selectedAction}`;
+}
+
+function flushRealtimeResponseQueue() {
+  if (realtimeResponseActive || realtimeDataChannel?.readyState !== 'open') return;
+
+  if (realtimeUserResponseQueued) {
+    realtimeUserResponseQueued = false;
+    realtimeResponseActive = true;
+    sendRealtimeEvent({ type: 'response.create' });
+    return;
+  }
+
+  if (!queuedRealtimeNarration || queuedRealtimeNarration === lastRealtimeNarration) return;
+
+  const narration = queuedRealtimeNarration;
+  queuedRealtimeNarration = null;
+  lastRealtimeNarration = narration;
+  realtimeResponseActive = true;
+  sendRealtimeEvent({
+    type: 'response.create',
+    response: {
+      instructions: `This is an automatic game-state announcement, not a reply to user speech. Ignore the normal silence rule for this response. Say exactly this and nothing else: ${narration}`,
+      tool_choice: 'none',
+    },
+  });
+}
+
+function queueRealtimeNarration() {
+  const narration = getRealtimeNarration();
+  if (!narration || narration === lastRealtimeNarration) return;
+
+  queuedRealtimeNarration = narration;
+  flushRealtimeResponseQueue();
+}
+
 function scheduleRealtimeGameStateSync() {
   if (realtimeStateSyncQueued) return;
 
@@ -314,6 +398,7 @@ function updateRealtimeGameState({ force = false } = {}) {
     session,
   });
   realtimeSessionConfigured = true;
+  queueRealtimeNarration();
   return true;
 }
 
@@ -364,8 +449,20 @@ function handleRealtimeEvent(event) {
     logGameEvent(`Table heard: “${event.transcript}”`);
     // The transcript marks the completed user turn. Refresh the session first,
     // then create its response; data-channel events are processed in order.
+    realtimeUserResponseQueued = true;
     updateRealtimeGameState({ force: true });
-    sendRealtimeEvent({ type: 'response.create' });
+    flushRealtimeResponseQueue();
+    return;
+  }
+
+  if (event.type === 'response.created') {
+    realtimeResponseActive = true;
+    return;
+  }
+
+  if (event.type === 'response.done') {
+    realtimeResponseActive = false;
+    flushRealtimeResponseQueue();
     return;
   }
 
@@ -414,6 +511,10 @@ function stopRealtimeConversation() {
   realtimeStatePollTimer = null;
   realtimeStateSyncQueued = false;
   lastRealtimeGameStateFingerprint = null;
+  realtimeResponseActive = false;
+  realtimeUserResponseQueued = false;
+  queuedRealtimeNarration = null;
+  lastRealtimeNarration = null;
   setVoiceStatus('');
   setVoiceTranscript('');
 }
