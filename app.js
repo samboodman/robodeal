@@ -68,6 +68,7 @@ let realtimeDataChannel = null;
 let realtimeAudio = null;
 let realtimeSessionConfigured = false;
 let showVoiceTranscript = false;
+let screenWakeLock = null;
 let voicePreviewConnection = null;
 let voicePreviewChannel = null;
 let voicePreviewAudio = null;
@@ -84,6 +85,26 @@ function selectedVoiceSettings() {
 function voiceStyleInstructions(voiceSettings) {
   const accentInstruction = voiceSettings.accent === 'neutral' ? 'Use a neutral accent.' : `Use a ${voiceSettings.accent} accent.`;
   return `Your personality is ${voiceSettings.personality}. ${accentInstruction} Speak at a ${voiceSettings.pace} pace.`;
+}
+
+async function keepScreenAwake() {
+  if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+
+  try {
+    screenWakeLock = await navigator.wakeLock.request('screen');
+    screenWakeLock.addEventListener('release', () => {
+      screenWakeLock = null;
+    }, { once: true });
+  } catch (error) {
+    // Low-battery and power-saving modes may decline this request. The game
+    // still works normally when the phone decides not to keep the screen on.
+    console.info('Screen wake lock was not available:', error.message);
+  }
+}
+
+async function allowScreenToSleep() {
+  await screenWakeLock?.release();
+  screenWakeLock = null;
 }
 
 function discardOldAudioFiles() {
@@ -781,6 +802,7 @@ function finishHand(winner) {
 }
 
 function showGameWinner(winner) {
+  allowScreenToSleep();
   gameScreen.hidden = true;
   gameWinnerMessage.textContent = `${winner.name} wins!`;
   gameWinnerScreen.hidden = false;
@@ -959,6 +981,11 @@ voiceCustomizationBack.addEventListener('click', () => {
   setupScreen.hidden = false;
 });
 voicePreviewButton.addEventListener('click', previewVoice);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && !gameScreen.hidden && !isGameWon) {
+    keepScreenAwake();
+  }
+});
 betIncrease.addEventListener('click', () => {
   betCurrentPlayer(pendingBet + 1);
 });
@@ -1012,6 +1039,7 @@ form.addEventListener('submit', (event) => {
   dealPrompt.hidden = true;
   turnIndicator.hidden = false;
   actionButtons.hidden = false;
+  keepScreenAwake();
   startHand();
 
 
