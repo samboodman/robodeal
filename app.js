@@ -251,18 +251,26 @@ function scheduleRealtimeGameStateSync() {
 function realtimeInstructions() {
   const voiceSettings = gameSettings?.voice || { accent: 'neutral', personality: 'friendly', pace: 'steady' };
   const playerNames = Object.values(playersByNumber).map((player) => player.name).join(', ');
-  return `You are the voice control and dealer for a real-card poker game. The following is the newest authoritative, read-only snapshot of the current game state: ${JSON.stringify(getRealtimeGameState())}\n\nAlways use this snapshot instead of older, conflicting details in the conversation. Before speaking or calling a function, re-read its stateVersion, gamePhase, currentPlayerNumber, chips, bets, folds, and pots. The players are: ${playerNames}. Always use each player's name from playersByNumber. Never call a named player "Player 1", "Player 2", or any other number. ${voiceStyleInstructions(voiceSettings)} Only respond to clear poker-related speech: a poker action, a poker question, or an instruction about dealing cards. For all other speech, stay completely silent: do not speak, ask a question, or call a function. This includes casual conversation, background talk, unrelated jokes, and people talking to each other. Speak in exactly one very short poker-dealer phrase only after a successful poker action or a clear poker question. Say only the player, action, and amount when needed: "Sam bets 5." "Aaron calls." "Sam folds." "Deal the flop." Do not add greetings, explanations, commentary, or a second sentence. If a poker action is unclear, ask only one short poker question, such as "Call or raise?", and do not call an action function. Never claim to change the game yourself. To do anything, use only the listed poker action functions. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Treat clear commands as immediately confirmed. For "raise 5" or any other bet, call betCurrentPlayer only: it confirms automatically. For "call", call callCurrentPlayer only: it automatically matches the minimum required bet and confirms. For fold, check, or all in, call the needed action function and then confirm. When the table says the flop, turn, or river has been dealt, call cardsAreDealt.`;
+  return `You are the voice control and dealer for a real-card poker game. At the start of every user voice turn, the app requires you to call getLatestGameState. Its function output is the only authoritative game state for that turn. Ignore conflicting or older game details elsewhere in the conversation. Use the returned stateVersion with any action function, and never guess or reuse a version from an older turn. The current session snapshot is included only as a fallback: ${JSON.stringify(getRealtimeGameState())}\n\nThe players are: ${playerNames}. Always use each player's name from playersByNumber. Never call a named player "Player 1", "Player 2", or any other number. ${voiceStyleInstructions(voiceSettings)} Only respond to clear poker-related speech: a poker action, a poker question, or an instruction about dealing cards. For all other speech, stay completely silent: do not speak, ask a question, or call another function. This includes casual conversation, background talk, unrelated jokes, and people talking to each other. Speak in exactly one very short poker-dealer phrase only after a successful poker action or a clear poker question. Say only the player, action, and amount when needed: "Sam bets 5." "Aaron calls." "Sam folds." "Deal the flop." Do not add greetings, explanations, commentary, or a second sentence. If a poker action is unclear, ask only one short poker question, such as "Call or raise?", and do not call an action function. Never claim to change the game yourself. To do anything, use only the listed poker action functions. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Clear action commands are immediately confirmed by their action function; call exactly one action function. When the table says the flop, turn, or river has been dealt, call cardsAreDealt.`;
 }
 
+const stateVersionProperty = {
+  stateVersion: {
+    type: 'number',
+    description: 'The exact stateVersion returned by getLatestGameState for this voice turn.',
+  },
+};
+
 const realtimeTools = [
-  { type: 'function', name: 'foldCurrentPlayer', description: 'Select folding for the current player. Call confirm afterwards only when the player clearly means to fold.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'checkCurrentPlayer', description: 'Select checking for the current player, only when checking is legal.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'callCurrentPlayer', description: 'Make the current player call the current bet. This automatically confirms the minimum amount needed to match, so never call confirm after it.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'betCurrentPlayer', description: 'Bet this many additional chips for the current player. This function immediately confirms the bet, so never call confirm after it.', parameters: { type: 'object', properties: { amount: { type: 'number', description: 'Additional chips to bet now.' } }, required: ['amount'], additionalProperties: false } },
-  { type: 'function', name: 'goAllIn', description: 'Set the current player to bet every chip they have left.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'confirm', description: 'Confirm the currently selected bet or fold. Call only after the player clearly asks to do it.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'cardsAreDealt', description: 'Continue after the physical cards for the flop, turn, or river have been dealt. This does the same thing as pressing the OK button in the deal prompt.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'getLatestGameState', description: 'Read the complete authoritative game state immediately before answering or acting. This never changes the game.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'foldCurrentPlayer', description: 'Immediately fold and confirm the current player.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
+  { type: 'function', name: 'checkCurrentPlayer', description: 'Immediately check and confirm for the current player, only when checking is legal.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
+  { type: 'function', name: 'callCurrentPlayer', description: 'Immediately call and confirm the current bet for the current player.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
+  { type: 'function', name: 'betCurrentPlayer', description: 'Immediately bet and confirm this many additional chips for the current player.', parameters: { type: 'object', properties: { ...stateVersionProperty, amount: { type: 'number', description: 'Additional chips to bet now.' } }, required: ['stateVersion', 'amount'], additionalProperties: false } },
+  { type: 'function', name: 'goAllIn', description: 'Immediately bet every remaining chip and confirm for the current player.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
+  { type: 'function', name: 'cardsAreDealt', description: 'Continue after the physical cards for the flop, turn, or river have been dealt. This does the same thing as pressing the OK button in the deal prompt.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
 ];
+const realtimeActionTools = realtimeTools.filter((tool) => tool.name !== 'getLatestGameState');
 
 function sendRealtimeEvent(event) {
   if (realtimeDataChannel?.readyState === 'open') {
@@ -283,7 +291,9 @@ function updateRealtimeGameState({ force = false } = {}) {
     type: 'realtime',
     instructions: realtimeInstructions(),
     tools: realtimeTools,
-    tool_choice: 'auto',
+    // Server VAD creates the first response automatically. Forcing this
+    // read-only tool means every voice turn begins with current app state.
+    tool_choice: { type: 'function', name: 'getLatestGameState' },
     output_modalities: ['audio'],
   };
 
@@ -311,13 +321,21 @@ function updateRealtimeGameState({ force = false } = {}) {
 
 function callRealtimeTool(name, argumentsText) {
   const args = argumentsText ? JSON.parse(argumentsText) : {};
+  if (name === 'getLatestGameState') {
+    updateRealtimeGameState();
+    return getRealtimeGameState();
+  }
+
+  if (args.stateVersion !== realtimeGameStateVersion) {
+    throw new Error(`Stale game state. Expected stateVersion ${realtimeGameStateVersion}, received ${args.stateVersion}. Use the latest gameState in this output.`);
+  }
+
   const allowedFunctions = {
     foldCurrentPlayer,
     checkCurrentPlayer,
     callCurrentPlayer,
     betCurrentPlayer,
     goAllIn,
-    confirm,
     cardsAreDealt,
   };
   const action = allowedFunctions[name];
@@ -328,14 +346,18 @@ function callRealtimeTool(name, argumentsText) {
 
   // This is the only bridge from OpenAI back into the poker game.
   // The AI has no direct access to the real variables above.
-  if (name === 'betCurrentPlayer' || name === 'callCurrentPlayer') {
-    if (name === 'betCurrentPlayer') action(args.amount);
-    else action();
+  if (name === 'betCurrentPlayer') {
+    if (!action(args.amount)) return false;
     confirm();
     return true;
   }
 
-  return action();
+  if (name === 'cardsAreDealt') return action();
+
+  const selected = action();
+  if (selected === false) return false;
+  confirm();
+  return true;
 }
 
 function handleRealtimeEvent(event) {
@@ -364,22 +386,34 @@ function handleRealtimeEvent(event) {
   if (event.type !== 'response.function_call_arguments.done') return;
 
   let result;
+  let failed = false;
   try {
     result = callRealtimeTool(event.name, event.arguments);
   } catch (error) {
     result = { error: error.message };
+    failed = true;
   }
+
+  const gameState = getRealtimeGameState();
 
   sendRealtimeEvent({
     type: 'conversation.item.create',
     item: {
       type: 'function_call_output',
       call_id: event.call_id,
-      output: JSON.stringify({ result, gameState: getRealtimeGameState() }),
+      output: JSON.stringify(event.name === 'getLatestGameState' ? { gameState: result } : { result, gameState }),
     },
   });
   updateRealtimeGameState();
-  sendRealtimeEvent({ type: 'response.create' });
+  sendRealtimeEvent({
+    type: 'response.create',
+    response: {
+      // After the mandatory read, let the model answer or call one action.
+      // After a successful action, only let it speak the short confirmation.
+      tool_choice: event.name === 'getLatestGameState' || failed ? 'auto' : 'none',
+      tools: realtimeActionTools,
+    },
+  });
 }
 
 function stopRealtimeConversation() {
@@ -1098,6 +1132,7 @@ function goAllIn() {
 
 function confirm() {
   confirmTurn();
+  updateRealtimeGameState({ force: true });
 }
 
 function cardsAreDealt() {
