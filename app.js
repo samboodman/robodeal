@@ -69,6 +69,10 @@ let realtimePeerConnection = null;
 let realtimeDataChannel = null;
 let realtimeAudio = null;
 let realtimeSessionConfigured = false;
+let realtimeStatePollTimer = null;
+let realtimeStateSyncQueued = false;
+let lastRealtimeGameStateFingerprint = null;
+let realtimeGameStateVersion = 0;
 let showVoiceTranscript = false;
 let screenWakeLock = null;
 let voicePreviewConnection = null;
@@ -185,12 +189,25 @@ function logGameEvent(text) {
     round: ['Preflop', 'Flop', 'Turn', 'River'][roundNumber - 1] || 'Setup',
     text,
   });
+  scheduleRealtimeGameStateSync();
+}
+
+function getGamePhase() {
+  if (!gameWinnerScreen.hidden) return 'game over';
+  if (gameScreen.hidden) return 'setup';
+  if (!dealPrompt.hidden) return 'waiting for cards to be dealt';
+  if (!winnerPicker.hidden) return isGameWon ? 'hand complete' : 'choosing a pot winner';
+  return 'betting';
 }
 
 function getRealtimeGameState() {
   // This makes a plain copy. The AI can read this copy, but cannot change the
   // real game variables. Only the approved functions below can affect a turn.
   return {
+    stateVersion: realtimeGameStateVersion,
+    gamePhase: getGamePhase(),
+    dealInstruction: dealPrompt.hidden ? null : dealMessage.textContent,
+    winnerQuestion: winnerPicker.hidden ? null : winnerQuestion.textContent,
     gameSettings: gameSettings ? { ...gameSettings } : null,
     playersByNumber: Object.fromEntries(Object.entries(playersByNumber).map(([number, player]) => [number, { ...player }])),
     currentPlayerNumber,
@@ -211,10 +228,30 @@ function getRealtimeGameState() {
   };
 }
 
+function realtimeGameStateFingerprint() {
+  const state = getRealtimeGameState();
+  // Recording bookkeeping changes continuously but does not alter the poker
+  // game. Everything else in the snapshot is authoritative game data.
+  delete state.stateVersion;
+  delete state.recentAudioFileCount;
+  delete state.isRecording;
+  return JSON.stringify(state);
+}
+
+function scheduleRealtimeGameStateSync() {
+  if (realtimeStateSyncQueued) return;
+
+  realtimeStateSyncQueued = true;
+  queueMicrotask(() => {
+    realtimeStateSyncQueued = false;
+    updateRealtimeGameState();
+  });
+}
+
 function realtimeInstructions() {
   const voiceSettings = gameSettings?.voice || { accent: 'neutral', personality: 'friendly', pace: 'steady' };
   const playerNames = Object.values(playersByNumber).map((player) => player.name).join(', ');
-  return `You are the voice control and dealer for a real-card poker game. The following is a read-only snapshot of the current game state: ${JSON.stringify(getRealtimeGameState())}\n\nThe players are: ${playerNames}. Always use each player's name from playersByNumber. Never call a named player "Player 1", "Player 2", or any other number. ${voiceStyleInstructions(voiceSettings)} Only respond to clear poker-related speech: a poker action, a poker question, or an instruction about dealing cards. For all other speech, stay completely silent: do not speak, ask a question, or call a function. This includes casual conversation, background talk, unrelated jokes, and people talking to each other. Speak in exactly one very short poker-dealer phrase only after a successful poker action or a clear poker question. Say only the player, action, and amount when needed: "Sam bets 5." "Aaron calls." "Sam folds." "Deal the flop." Do not add greetings, explanations, commentary, or a second sentence. If a poker action is unclear, ask only one short poker question, such as "Call or raise?", and do not call an action function. Never claim to change the game yourself. To do anything, use only the listed poker action functions. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Treat clear commands as immediately confirmed. For "raise 5" or any other bet, call betCurrentPlayer only: it confirms automatically. For "call", call callCurrentPlayer only: it automatically matches the minimum required bet and confirms. For fold, check, or all in, call the needed action function and then confirm. When the table says the flop, turn, or river has been dealt, call cardsAreDealt.`;
+  return `You are the voice control and dealer for a real-card poker game. The following is the newest authoritative, read-only snapshot of the current game state: ${JSON.stringify(getRealtimeGameState())}\n\nAlways use this snapshot instead of older, conflicting details in the conversation. Before speaking or calling a function, re-read its stateVersion, gamePhase, currentPlayerNumber, chips, bets, folds, and pots. The players are: ${playerNames}. Always use each player's name from playersByNumber. Never call a named player "Player 1", "Player 2", or any other number. ${voiceStyleInstructions(voiceSettings)} Only respond to clear poker-related speech: a poker action, a poker question, or an instruction about dealing cards. For all other speech, stay completely silent: do not speak, ask a question, or call a function. This includes casual conversation, background talk, unrelated jokes, and people talking to each other. Speak in exactly one very short poker-dealer phrase only after a successful poker action or a clear poker question. Say only the player, action, and amount when needed: "Sam bets 5." "Aaron calls." "Sam folds." "Deal the flop." Do not add greetings, explanations, commentary, or a second sentence. If a poker action is unclear, ask only one short poker question, such as "Call or raise?", and do not call an action function. Never claim to change the game yourself. To do anything, use only the listed poker action functions. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Treat clear commands as immediately confirmed. For "raise 5" or any other bet, call betCurrentPlayer only: it confirms automatically. For "call", call callCurrentPlayer only: it automatically matches the minimum required bet and confirms. For fold, check, or all in, call the needed action function and then confirm. When the table says the flop, turn, or river has been dealt, call cardsAreDealt.`;
 }
 
 const realtimeTools = [
@@ -233,8 +270,14 @@ function sendRealtimeEvent(event) {
   }
 }
 
-function updateRealtimeGameState() {
-  if (realtimeDataChannel?.readyState !== 'open') return;
+function updateRealtimeGameState({ force = false } = {}) {
+  if (realtimeDataChannel?.readyState !== 'open') return false;
+
+  const fingerprint = realtimeGameStateFingerprint();
+  if (!force && fingerprint === lastRealtimeGameStateFingerprint) return false;
+
+  lastRealtimeGameStateFingerprint = fingerprint;
+  realtimeGameStateVersion += 1;
 
   const session = {
     type: 'realtime',
@@ -258,10 +301,12 @@ function updateRealtimeGameState() {
   }
 
   sendRealtimeEvent({
+    event_id: `game-state-${realtimeGameStateVersion}`,
     type: 'session.update',
     session,
   });
   realtimeSessionConfigured = true;
+  return true;
 }
 
 function callRealtimeTool(name, argumentsText) {
@@ -345,6 +390,10 @@ function stopRealtimeConversation() {
   realtimePeerConnection = null;
   realtimeAudio = null;
   realtimeSessionConfigured = false;
+  window.clearInterval(realtimeStatePollTimer);
+  realtimeStatePollTimer = null;
+  realtimeStateSyncQueued = false;
+  lastRealtimeGameStateFingerprint = null;
   setVoiceStatus('');
   setVoiceTranscript('');
 }
@@ -368,7 +417,11 @@ async function startRealtimeConversation(stream) {
 
   realtimeDataChannel = realtimePeerConnection.createDataChannel('oai-events');
   realtimeDataChannel.addEventListener('open', () => {
-    updateRealtimeGameState();
+    updateRealtimeGameState({ force: true });
+    window.clearInterval(realtimeStatePollTimer);
+    // This catches every change to the authoritative game variables, even if
+    // a future code path forgets to request an immediate synchronization.
+    realtimeStatePollTimer = window.setInterval(updateRealtimeGameState, 100);
     setVoiceStatus('AI is listening');
   });
   realtimeDataChannel.addEventListener('message', (event) => handleRealtimeEvent(JSON.parse(event.data)));
@@ -708,6 +761,7 @@ function updateBetControls() {
   const undoIsAvailable = canUndoLastTurn();
   undoButton.hidden = !undoIsAvailable;
   actionButtons.classList.toggle('has-undo', undoIsAvailable);
+  scheduleRealtimeGameStateSync();
 }
 
 function captureTurnState() {
