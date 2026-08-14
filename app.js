@@ -4,6 +4,7 @@ const form = document.querySelector('#setup-form');
 const message = document.querySelector('#message');
 const dealerSelect = document.querySelector('#dealer');
 const setupScreen = document.querySelector('#setup-screen');
+const voiceCustomizationScreen = document.querySelector('#voice-customization-screen');
 const gameScreen = document.querySelector('#game-screen');
 const gameWinnerScreen = document.querySelector('#game-winner-screen');
 const gameWinnerMessage = document.querySelector('#game-winner-message');
@@ -31,6 +32,12 @@ const recordingButton = document.querySelector('#recording-button');
 const voiceStatus = document.querySelector('#voice-status');
 const voiceTranscript = document.querySelector('#voice-transcript');
 const showVoiceTranscriptCheckbox = document.querySelector('#show-voice-transcript');
+const voiceCustomizationButton = document.querySelector('#voice-customization-button');
+const voiceCustomizationBack = document.querySelector('#voice-customization-back');
+const voiceChoice = document.querySelector('#voice-choice');
+const voiceAccent = document.querySelector('#voice-accent');
+const voicePersonality = document.querySelector('#voice-personality');
+const voicePace = document.querySelector('#voice-pace');
 
 // This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
@@ -99,7 +106,9 @@ function getRealtimeGameState() {
 }
 
 function realtimeInstructions() {
-  return `You are the voice control and dealer for a real-card poker game. The following is a read-only snapshot of the current game state: ${JSON.stringify(getRealtimeGameState())}\n\nSpeak in exactly one very short poker-dealer phrase. After a successful action, say only the player, action, and amount when needed: "Player 1 bets 5." "Player 2 calls." "Player 1 folds." "Deal the flop." Do not add greetings, explanations, commentary, or a second sentence. If an action is unclear, ask only one short question, such as "Call or raise?", and do not call an action function. Never claim to change the game yourself. To do anything, use only the listed poker action functions. If a player says something unrelated to poker, do nothing. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Treat clear commands as immediately confirmed. For "raise 5" or any other bet, call betCurrentPlayer only: it confirms automatically. For "call", call callCurrentPlayer only: it automatically matches the minimum required bet and confirms. For fold, check, or all in, call the needed action function and then confirm. When the table says the flop, turn, or river has been dealt, call cardsAreDealt.`;
+  const voiceSettings = gameSettings?.voice || { accent: 'neutral', personality: 'friendly', pace: 'steady' };
+  const accentInstruction = voiceSettings.accent === 'neutral' ? 'Use a neutral accent.' : `Use a ${voiceSettings.accent} accent.`;
+  return `You are the voice control and dealer for a real-card poker game. The following is a read-only snapshot of the current game state: ${JSON.stringify(getRealtimeGameState())}\n\nYour personality is ${voiceSettings.personality}. ${accentInstruction} Speak at a ${voiceSettings.pace} pace. Speak in exactly one very short poker-dealer phrase. After a successful action, say only the player, action, and amount when needed: "Player 1 bets 5." "Player 2 calls." "Player 1 folds." "Deal the flop." Do not add greetings, explanations, commentary, or a second sentence. If an action is unclear, ask only one short question, such as "Call or raise?", and do not call an action function. Never claim to change the game yourself. To do anything, use only the listed poker action functions. If a player says something unrelated to poker, do nothing. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Treat clear commands as immediately confirmed. For "raise 5" or any other bet, call betCurrentPlayer only: it confirms automatically. For "call", call callCurrentPlayer only: it automatically matches the minimum required bet and confirms. For fold, check, or all in, call the needed action function and then confirm. When the table says the flop, turn, or river has been dealt, call cardsAreDealt.`;
 }
 
 const realtimeTools = [
@@ -138,7 +147,7 @@ function updateRealtimeGameState() {
         transcription: { model: 'gpt-4o-transcribe', language: 'en' },
         turn_detection: { type: 'server_vad', create_response: true, interrupt_response: true },
       },
-      output: { voice: 'marin' },
+      output: { voice: gameSettings?.voice?.name || 'marin' },
     };
   }
 
@@ -847,6 +856,14 @@ function cardsAreDealt() {
 }
 
 playerCount.addEventListener('change', drawPlayerNames);
+voiceCustomizationButton.addEventListener('click', () => {
+  setupScreen.hidden = true;
+  voiceCustomizationScreen.hidden = false;
+});
+voiceCustomizationBack.addEventListener('click', () => {
+  voiceCustomizationScreen.hidden = true;
+  setupScreen.hidden = false;
+});
 betIncrease.addEventListener('click', () => {
   betCurrentPlayer(pendingBet + 1);
 });
@@ -888,10 +905,17 @@ form.addEventListener('submit', (event) => {
     dealerNumber: Number(dealerSelect.value),
     firstDealerNumber: Number(dealerSelect.value),
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
+    voice: {
+      name: voiceChoice.value,
+      accent: voiceAccent.value,
+      personality: voicePersonality.value,
+      pace: voicePace.value,
+    },
   };
   showVoiceTranscript = showVoiceTranscriptCheckbox.checked;
   makePlayers();
   setupScreen.hidden = true;
+  voiceCustomizationScreen.hidden = true;
   gameScreen.hidden = false;
   gameWinnerScreen.hidden = true;
   winnerPicker.hidden = true;
