@@ -38,7 +38,6 @@ const voiceChoice = document.querySelector('#voice-choice');
 const voiceAccent = document.querySelector('#voice-accent');
 const voicePersonality = document.querySelector('#voice-personality');
 const voicePace = document.querySelector('#voice-pace');
-const voicePreviewButton = document.querySelector('#voice-preview-button');
 const voicePreviewStatus = document.querySelector('#voice-preview-status');
 
 // This is where the game screen can read the settings when we add its controls.
@@ -324,7 +323,7 @@ function stopVoicePreview() {
 
 async function previewVoice() {
   stopVoicePreview();
-  voicePreviewButton.disabled = true;
+  testVoiceButton.disabled = true;
   voicePreviewStatus.textContent = 'Loading voice…';
 
   try {
@@ -362,11 +361,11 @@ async function previewVoice() {
       const update = JSON.parse(event.data);
       if (update.type === 'error') {
         voicePreviewStatus.textContent = `Voice preview could not start: ${update.error?.message || 'unknown problem'}`;
-        voicePreviewButton.disabled = false;
+        testVoiceButton.disabled = false;
       }
       if (update.type === 'output_audio_buffer.stopped') {
         voicePreviewStatus.textContent = '';
-        voicePreviewButton.disabled = false;
+        testVoiceButton.disabled = false;
         window.setTimeout(stopVoicePreview, 500);
       }
     });
@@ -384,7 +383,7 @@ async function previewVoice() {
   } catch (error) {
     console.error('Voice preview could not start:', error);
     voicePreviewStatus.textContent = 'Voice preview could not start.';
-    voicePreviewButton.disabled = false;
+    testVoiceButton.disabled = false;
     stopVoicePreview();
   }
 }
@@ -980,7 +979,7 @@ voiceCustomizationBack.addEventListener('click', () => {
   voiceCustomizationScreen.hidden = true;
   setupScreen.hidden = false;
 });
-voicePreviewButton.addEventListener('click', previewVoice);
+testVoiceButton.addEventListener('click', previewVoice);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && !gameScreen.hidden && !isGameWon) {
     keepScreenAwake();
@@ -1006,9 +1005,6 @@ foldButton.addEventListener('click', () => {
 confirmButton.addEventListener('click', confirm);
 undoButton.addEventListener('click', undoLastTurn);
 dealOkButton.addEventListener('click', beginNextRound);
-testVoiceButton.addEventListener('click', () => {
-  speak('Voice is ready. Let the poker game begin.');
-});
 recordingButton.addEventListener('click', () => {
   const isRecording = recordingButton.getAttribute('aria-pressed') === 'true';
   if (isRecording) {
