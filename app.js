@@ -57,6 +57,7 @@ let audioCleanupTimer = null;
 let realtimePeerConnection = null;
 let realtimeDataChannel = null;
 let realtimeAudio = null;
+let realtimeSessionConfigured = false;
 let showVoiceTranscript = false;
 
 function discardOldAudioFiles() {
@@ -98,7 +99,7 @@ function getRealtimeGameState() {
 }
 
 function realtimeInstructions() {
-  return `You are the voice control for a real-card poker game. The following is a read-only snapshot of the current game state: ${JSON.stringify(getRealtimeGameState())}\n\nNever claim to change the game yourself. To do anything, use only the listed poker action functions. If a player says something unrelated to poker, do nothing. If an action is unclear, ask one short question. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Treat clear commands as immediately confirmed. For "raise 5" or any other bet, call betCurrentPlayer only: it confirms automatically. For "call", call callCurrentPlayer only: it automatically matches the minimum required bet and confirms. For fold, check, or all in, call the needed action function and then confirm. When the table says the flop, turn, or river has been dealt, call cardsAreDealt. Do not speak a reply after a clear poker command.`;
+  return `You are the voice control and dealer for a real-card poker game. The following is a read-only snapshot of the current game state: ${JSON.stringify(getRealtimeGameState())}\n\nSpeak like a concise, friendly poker dealer. Never claim to change the game yourself. To do anything, use only the listed poker action functions. If a player says something unrelated to poker, do nothing. If an action is unclear, ask one short dealer-style question immediately, and do not call an action function. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Treat clear commands as immediately confirmed. For "raise 5" or any other bet, call betCurrentPlayer only: it confirms automatically. For "call", call callCurrentPlayer only: it automatically matches the minimum required bet and confirms. For fold, check, or all in, call the needed action function and then confirm. When the table says the flop, turn, or river has been dealt, call cardsAreDealt. After a successful clear action, briefly announce the result like a dealer.`;
 }
 
 const realtimeTools = [
@@ -118,23 +119,34 @@ function sendRealtimeEvent(event) {
 }
 
 function updateRealtimeGameState() {
+  if (realtimeDataChannel?.readyState !== 'open') return;
+
+  const session = {
+    type: 'realtime',
+    instructions: realtimeInstructions(),
+    tools: realtimeTools,
+    tool_choice: 'auto',
+    output_modalities: ['audio'],
+  };
+
+  // Voice settings can only be chosen before the AI has spoken. Later state
+  // updates deliberately leave them alone.
+  if (!realtimeSessionConfigured) {
+    session.audio = {
+      input: {
+        noise_reduction: { type: 'far_field' },
+        transcription: { model: 'gpt-4o-transcribe', language: 'en' },
+        turn_detection: { type: 'server_vad', create_response: true, interrupt_response: true },
+      },
+      output: { voice: 'marin' },
+    };
+  }
+
   sendRealtimeEvent({
     type: 'session.update',
-    session: {
-      type: 'realtime',
-      instructions: realtimeInstructions(),
-      tools: realtimeTools,
-      tool_choice: 'auto',
-      output_modalities: ['text'],
-      audio: {
-        input: {
-          noise_reduction: { type: 'far_field' },
-          transcription: { model: 'gpt-4o-transcribe', language: 'en' },
-          turn_detection: { type: 'server_vad', create_response: true, interrupt_response: true },
-        },
-      },
-    },
+    session,
   });
+  realtimeSessionConfigured = true;
 }
 
 function callRealtimeTool(name, argumentsText) {
@@ -211,6 +223,7 @@ function stopRealtimeConversation() {
   realtimeDataChannel = null;
   realtimePeerConnection = null;
   realtimeAudio = null;
+  realtimeSessionConfigured = false;
   setVoiceStatus('');
   setVoiceTranscript('');
 }
@@ -325,6 +338,9 @@ async function startRecording() {
 }
 
 function speak(message) {
+  // When the AI is connected, it is the table's voice. Browser speech remains
+  // available as a fallback when voice control is off.
+  if (realtimeDataChannel?.readyState === 'open') return;
   if (!('speechSynthesis' in window)) return;
 
   window.speechSynthesis.cancel();
