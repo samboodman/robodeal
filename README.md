@@ -1,13 +1,36 @@
 # RoboDeal
 
-RoboDeal is a simple phone-friendly web app for playing poker with real cards while the phone sits in the middle of the table. It keeps track of players, chip amounts, turns, betting, pots, and hand results so players do not need to bring physical poker chips.
+RoboDeal is a phone-friendly poker table companion. Players use real cards, while one phone in the middle of the table keeps track of the virtual chips, dealer, ante, turns, betting rounds, main pot, side pot, folds, and winners.
 
-The goal is to make casual poker games easier to start and manage anywhere, while keeping the code small and understandable enough for Sam to edit by hand. It is a single-page app built with plain HTML, CSS, and JavaScript—no frameworks or extra libraries.
+The project is a learning project for Sam. The game is intentionally one small single-page app with plain HTML, CSS, and JavaScript so it stays understandable and editable by hand. It is deployed at [robodeal.vercel.app](https://robodeal.vercel.app/).
+
+## What it does now
+
+- Set up two to eight players, player names, starting chips, dealer, ante, and ante increase.
+- Play a hand on one shared phone with physical cards.
+- Track bets, calls, checks, folds, all-ins, main pots, side pots, player elimination, and the dealer moving each hand.
+- Show whose turn it is around the table and rotate the controls toward that player.
+- Keep the phone screen awake during an active game when the browser supports it.
+- Remember the latest setup in that browser, including players, chip settings, and voice choices.
+- Offer optional OpenAI Realtime voice control. The app sends audio through a WebRTC connection and gives the AI a read-only copy of the game state. The AI can change the game only by calling approved action functions: fold, check, call, bet, all-in, confirm, and continue after cards are dealt.
+- Let players choose a built-in dealer voice, accent preference, personality, and speaking pace, then preview that voice before a game.
+
+## How it is built
+
+- `index.html`, `styles.css`, and `app.js` contain the game interface and logic.
+- Vite runs the local development server and builds the site for deployment.
+- `api/realtime-call.js` is a small Vercel server function. It keeps `OPENAI_API_KEY` on the server and creates the OpenAI Realtime WebRTC connection without exposing the key to the browser.
+- The app does not use React or a large UI framework.
+
+## Run locally
+
+```sh
+npm install
+npm run dev
+```
+
+Open the local address Vite prints. Voice control also needs an `OPENAI_API_KEY` configured in Vercel for the deployed site.
 
 ## Development practice
 
-After every meaningful chunk of completed work, create a Git commit and push it to the `main` branch on GitHub. The user may also ask for an explicit save point at any time.
-
-## Voice control
-
-When recording is on, the app keeps the newest minute of one-second audio clips in browser memory and connects to OpenAI Realtime through Vercel. The AI receives a read-only copy of the game state and can affect play only by requesting one of the six approved poker functions. To turn this on in the deployed app, add an `OPENAI_API_KEY` environment variable in Vercel; never put that key in browser code.
+After every meaningful chunk of work, create a Git commit and push it to the `main` branch on GitHub. The user can also ask for an explicit save point at any time.
