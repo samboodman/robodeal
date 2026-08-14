@@ -74,7 +74,7 @@ let realtimeStateSyncQueued = false;
 let lastRealtimeGameStateFingerprint = null;
 let realtimeGameStateVersion = 0;
 let realtimeResponseActive = false;
-let realtimeUserResponseQueued = false;
+let realtimeUserResponseQueued = null;
 let queuedRealtimeNarration = null;
 let lastRealtimeNarration = null;
 let showVoiceTranscript = false;
@@ -252,13 +252,32 @@ function getRealtimeNarration() {
   return `Action on ${player.name}. Minimum bet, ${minimumBet}. ${potNarration} ${player.chips} chips behind.`;
 }
 
+function isPokerRelatedTranscript(transcript) {
+  const normalizedTranscript = transcript.toLowerCase();
+  const mentionsPlayer = Object.values(playersByNumber).some((player) =>
+    normalizedTranscript.includes(player.name.toLowerCase()));
+  const mentionsPoker = /\b(poker|turn|pot|chips?|money|bet|wager|fold|check|call|raise|all[ -]?in|deal|dealt|cards?|flop|river|ante|dealer|winner|showdown|undo)\b/.test(normalizedTranscript);
+  return mentionsPlayer || mentionsPoker;
+}
+
 function flushRealtimeResponseQueue() {
   if (realtimeResponseActive || realtimeDataChannel?.readyState !== 'open') return;
 
   if (realtimeUserResponseQueued) {
-    realtimeUserResponseQueued = false;
+    const queuedUserResponse = realtimeUserResponseQueued;
+    realtimeUserResponseQueued = null;
     realtimeResponseActive = true;
-    sendRealtimeEvent({ type: 'response.create' });
+    sendRealtimeEvent({
+      type: 'response.create',
+      response: {
+        // Consider only this voice turn. Earlier microphone items may contain
+        // ignored background speech and must never influence a later reply.
+        ...(queuedUserResponse.itemId ? {
+          input: [{ type: 'item_reference', id: queuedUserResponse.itemId }],
+        } : {}),
+        instructions: realtimeInstructions(),
+      },
+    });
     return;
   }
 
@@ -271,9 +290,18 @@ function flushRealtimeResponseQueue() {
   sendRealtimeEvent({
     type: 'response.create',
     response: {
-      // Keep narration isolated from the full conversation and state snapshot.
-      input: [],
-      instructions: `This is an automatic game-state announcement, not a reply to user speech. Ignore the normal silence rule for this response. Use a crisp, professional casino poker dealer cadence. Say exactly this and nothing else: ${narration}`,
+      // Keep deterministic announcements outside the user's conversation and
+      // give the model an explicit input instead of an empty-context prompt.
+      conversation: 'none',
+      metadata: { kind: 'game-state-narration' },
+      input: [{
+        type: 'message',
+        role: 'user',
+        content: [{
+          type: 'input_text',
+          text: `In a crisp professional poker dealer cadence, say exactly this and nothing else: ${narration}`,
+        }],
+      }],
       tool_choice: 'none',
     },
   });
@@ -411,10 +439,14 @@ function handleRealtimeEvent(event) {
 
   if (event.type === 'conversation.item.input_audio_transcription.completed') {
     setVoiceTranscript(`Heard: “${event.transcript}”`);
+    if (!isPokerRelatedTranscript(event.transcript)) {
+      setVoiceTranscript(`Ignored unrelated speech: “${event.transcript}”`);
+      return;
+    }
     logGameEvent(`Table heard: “${event.transcript}”`);
     // The transcript marks the completed user turn. Refresh the session first,
     // then create its response; data-channel events are processed in order.
-    realtimeUserResponseQueued = true;
+    realtimeUserResponseQueued = { itemId: event.item_id };
     updateRealtimeGameState({ force: true });
     flushRealtimeResponseQueue();
     return;
@@ -477,7 +509,7 @@ function stopRealtimeConversation() {
   realtimeStateSyncQueued = false;
   lastRealtimeGameStateFingerprint = null;
   realtimeResponseActive = false;
-  realtimeUserResponseQueued = false;
+  realtimeUserResponseQueued = null;
   queuedRealtimeNarration = null;
   lastRealtimeNarration = null;
   setVoiceStatus('');
