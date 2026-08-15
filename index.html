@@ -31,7 +31,6 @@
             <div>
               <label for="ante">Small Blind</label>
               <input id="ante" name="ante" type="number" min="0" value="5" inputmode="numeric" required />
-              <small class="field-note">Used as the ante in stud and casino variants.</small>
             </div>
             <div class="ante-increase-field">
               <label for="ante-increase">Ante increase</label>
@@ -137,10 +136,6 @@
         <section id="deal-prompt" class="winner-picker" aria-live="polite" hidden>
           <p id="deal-message"></p>
           <button id="deal-ok-button" type="button">OK</button>
-        </section>
-        <section id="variant-picker" class="winner-picker variant-picker" aria-live="polite" hidden>
-          <p id="variant-question">Choose the poker game.</p>
-          <div id="variant-options" class="variant-options"></div>
         </section>
       </section>
       <section id="game-winner-screen" class="game-winner-screen" aria-live="polite" hidden>
