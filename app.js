@@ -27,6 +27,9 @@ const winnerOptions = document.querySelector('#winner-options');
 const dealPrompt = document.querySelector('#deal-prompt');
 const dealMessage = document.querySelector('#deal-message');
 const dealOkButton = document.querySelector('#deal-ok-button');
+const variantPicker = document.querySelector('#variant-picker');
+const variantQuestion = document.querySelector('#variant-question');
+const variantOptions = document.querySelector('#variant-options');
 const testVoiceButton = document.querySelector('#test-voice-button');
 const recordingButton = document.querySelector('#recording-button');
 const voiceStatus = document.querySelector('#voice-status');
@@ -40,6 +43,95 @@ const voiceAccent = document.querySelector('#voice-accent');
 const voicePersonality = document.querySelector('#voice-personality');
 const voicePace = document.querySelector('#voice-pace');
 const voicePreviewStatus = document.querySelector('#voice-preview-status');
+
+const communityRounds = [
+  { label: 'Preflop' },
+  { label: 'Flop', dealPrompt: 'Deal the flop: three community cards.' },
+  { label: 'Turn', dealPrompt: 'Deal the turn: one community card.' },
+  { label: 'River', dealPrompt: 'Deal the river: one community card.' },
+];
+const studRounds = [
+  { label: 'Third Street', firstActor: 'manual', actorPrompt: 'Tap the player with the lowest exposed card for the bring-in.' },
+  { label: 'Fourth Street', dealPrompt: 'Deal one face-up card to each remaining player.', firstActor: 'manual', actorPrompt: 'Tap the player with the highest exposed hand.' },
+  { label: 'Fifth Street', dealPrompt: 'Deal one face-up card to each remaining player.', firstActor: 'manual', actorPrompt: 'Tap the player with the highest exposed hand.' },
+  { label: 'Sixth Street', dealPrompt: 'Deal one face-up card to each remaining player.', firstActor: 'manual', actorPrompt: 'Tap the player with the highest exposed hand.' },
+  { label: 'Seventh Street', dealPrompt: 'Deal one final face-down card to each remaining player.', firstActor: 'manual', actorPrompt: 'Tap the player with the highest exposed hand.' },
+];
+const razzRounds = studRounds.map((round, index) => ({
+  ...round,
+  actorPrompt: index === 0
+    ? 'Tap the player with the highest exposed card for the bring-in.'
+    : 'Tap the player with the lowest exposed hand.',
+}));
+const tripleDrawRounds = [
+  { label: 'First Betting' },
+  { label: 'Second Betting', dealPrompt: 'First draw: each remaining player may discard and draw replacement cards.' },
+  { label: 'Third Betting', dealPrompt: 'Second draw: each remaining player may discard and draw replacement cards.' },
+  { label: 'Final Betting', dealPrompt: 'Third draw: each remaining player may discard and draw replacement cards.' },
+];
+
+const pokerVariants = {
+  'texas-holdem': { name: "Texas Hold'em", forcedBets: 'blinds', startPrompt: 'Deal two face-down hole cards to each player.', rounds: communityRounds },
+  omaha: { name: 'Omaha', forcedBets: 'blinds', startPrompt: 'Deal four face-down hole cards to each player. At showdown, use exactly two hole cards and three board cards.', rounds: communityRounds },
+  'short-deck': { name: 'Short Deck Hold’em', forcedBets: 'blinds', startPrompt: 'Using a 36-card deck, deal two face-down hole cards to each player.', rounds: communityRounds },
+  pineapple: { name: 'Pineapple', forcedBets: 'blinds', startPrompt: 'Deal three face-down hole cards to each player. Each player discards one before betting.', rounds: communityRounds },
+  'crazy-pineapple': {
+    name: 'Crazy Pineapple',
+    forcedBets: 'blinds',
+    startPrompt: 'Deal three face-down hole cards to each player.',
+    rounds: communityRounds.map((round) => round.label === 'Flop'
+      ? { ...round, dealPrompt: 'Deal the flop, then each remaining player discards one hole card.' }
+      : round),
+  },
+  'five-card-draw': {
+    name: 'Five-Card Draw',
+    forcedBets: 'blinds',
+    startPrompt: 'Deal five face-down cards to each player.',
+    rounds: [
+      { label: 'Opening Betting' },
+      { label: 'Final Betting', dealPrompt: 'Each remaining player may discard and draw replacement cards.' },
+    ],
+  },
+  'seven-card-stud': { name: 'Seven-Card Stud', forcedBets: 'antes', startPrompt: 'Deal two face-down cards and one face-up card to each player.', rounds: studRounds },
+  razz: { name: 'Razz', forcedBets: 'antes', startPrompt: 'Deal two face-down cards and one face-up card to each player. The lowest five-card hand wins.', rounds: razzRounds },
+  'five-card-stud': {
+    name: 'Five-Card Stud',
+    forcedBets: 'antes',
+    startPrompt: 'Deal one face-down card and one face-up card to each player.',
+    rounds: studRounds.slice(0, 4).map((round, index) => ({
+      ...round,
+      label: ['Second Street', 'Third Street', 'Fourth Street', 'Fifth Street'][index],
+      dealPrompt: index === 0 ? undefined : 'Deal one face-up card to each remaining player.',
+    })),
+  },
+  'deuce-to-seven-triple-draw': { name: '2-7 Triple Draw', forcedBets: 'blinds', startPrompt: 'Deal five face-down cards to each player. Aces are high and the lowest hand wins.', rounds: tripleDrawRounds },
+  badugi: { name: 'Badugi', forcedBets: 'blinds', startPrompt: 'Deal four face-down cards to each player. The lowest four-card rainbow hand wins.', rounds: tripleDrawRounds },
+  'caribbean-stud': {
+    name: 'Caribbean Stud',
+    forcedBets: 'antes',
+    requiredBetMultiplier: 2,
+    startPrompt: 'Deal five cards to every player and the house, exposing one house card. Each player must fold or bet twice the ante.',
+    rounds: [{ label: 'Player Decisions' }],
+    showdownPrompt: 'Reveal the house hand and choose who receives the tracked pot. Settle any other house payouts manually.',
+  },
+  'three-card-poker': {
+    name: 'Three-Card Poker',
+    forcedBets: 'antes',
+    requiredBetMultiplier: 1,
+    startPrompt: 'Deal three face-down cards to every player and the house. Each player must fold or make a play bet equal to the ante.',
+    rounds: [{ label: 'Player Decisions' }],
+    showdownPrompt: 'Reveal the house hand and choose who receives the tracked pot. Settle any other house payouts manually.',
+  },
+  'limit-holdem': { name: "Limit Hold'em", forcedBets: 'blinds', startPrompt: 'Deal two face-down hole cards to each player.', rounds: communityRounds },
+  'omaha-hi-lo': { name: 'Omaha Hi-Lo', forcedBets: 'blinds', startPrompt: 'Deal four face-down hole cards to each player. Use exactly two hole cards and three board cards for each high or qualifying low hand.', rounds: communityRounds },
+  'stud-hi-lo': { name: 'Seven-Card Stud Hi-Lo', forcedBets: 'antes', startPrompt: 'Deal two face-down cards and one face-up card to each player. Split high and qualifying low hands at showdown.', rounds: studRounds },
+};
+const dealerChoiceVariants = [
+  'texas-holdem', 'omaha', 'short-deck', 'pineapple', 'crazy-pineapple',
+  'five-card-draw', 'seven-card-stud', 'five-card-stud', 'razz',
+  'deuce-to-seven-triple-draw', 'badugi', 'horse', 'caribbean-stud', 'three-card-poker',
+];
+const horseRotation = ['limit-holdem', 'omaha-hi-lo', 'razz', 'seven-card-stud', 'stud-hi-lo'];
 
 // This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
@@ -59,6 +151,9 @@ let sidePotEligiblePlayers = [];
 let lastTurnState = null;
 let gameHistory = [];
 let gameHandNumber = 0;
+let horseRotationIndex = -1;
+let dealPromptMode = null;
+let selectedPromptFirstPlayer = null;
 // These are one-second audio files kept only in this browser's memory.
 // The newest minute is useful for a future speech-to-text feature; nothing
 // is saved to the phone's file system.
@@ -188,10 +283,29 @@ function setVoiceTranscript(transcript) {
   voiceTranscript.hidden = !showVoiceTranscript || !transcript;
 }
 
+function activePokerVariant() {
+  return pokerVariants[gameSettings?.activePokerVariant] || pokerVariants['texas-holdem'];
+}
+
+function currentPokerRound() {
+  return activePokerVariant().rounds[roundNumber - 1];
+}
+
+function announceDealer(message) {
+  if (realtimeDataChannel?.readyState === 'open') {
+    lastRealtimeNarration = null;
+    queuedRealtimeNarration = message;
+    flushRealtimeResponseQueue();
+    return;
+  }
+
+  speak(message);
+}
+
 function logGameEvent(text) {
   gameHistory.push({
     hand: gameHandNumber,
-    round: ['Preflop', 'Flop', 'Turn', 'River'][roundNumber - 1] || 'Setup',
+    round: currentPokerRound()?.label || 'Setup',
     text,
   });
   scheduleRealtimeGameStateSync();
@@ -200,7 +314,8 @@ function logGameEvent(text) {
 function getGamePhase() {
   if (!gameWinnerScreen.hidden) return 'game over';
   if (gameScreen.hidden) return 'setup';
-  if (!dealPrompt.hidden) return 'waiting for cards to be dealt';
+  if (!variantPicker.hidden) return 'choosing poker variant';
+  if (!dealPrompt.hidden) return 'waiting for the dealer to complete the deal or draw instruction';
   if (!winnerPicker.hidden) return isGameWon ? 'hand complete' : 'choosing a pot winner';
   return 'betting';
 }
@@ -245,6 +360,8 @@ function realtimeGameStateFingerprint() {
 }
 
 function getRealtimeNarration() {
+  if (getGamePhase() !== 'betting') return null;
+
   const player = playersByNumber[currentPlayerNumber];
   if (!player) return null;
 
@@ -258,7 +375,7 @@ function isPokerRelatedTranscript(transcript) {
   const normalizedTranscript = transcript.toLowerCase();
   const mentionsPlayer = Object.values(playersByNumber).some((player) =>
     normalizedTranscript.includes(player.name.toLowerCase()));
-  const mentionsPoker = /\b(poker|turn|pot|chips?|money|bet|wager|fold|check|call|raise|all[ -]?in|deal|dealt|cards?|flop|river|ante|dealer|winner|showdown|undo)\b/.test(normalizedTranscript);
+  const mentionsPoker = /\b(poker|holdem|hold'em|omaha|pineapple|stud|razz|badugi|draw|discard|turn|pot|chips?|money|bet|wager|fold|check|call|raise|all[ -]?in|deal|dealt|cards?|flop|river|ante|blind|dealer|winner|showdown|undo)\b/.test(normalizedTranscript);
   return mentionsPlayer || mentionsPoker;
 }
 
@@ -330,7 +447,8 @@ function scheduleRealtimeGameStateSync() {
 function realtimeInstructions() {
   const voiceSettings = gameSettings?.voice || { accent: 'neutral', personality: 'friendly', pace: 'steady' };
   const playerNames = Object.values(playersByNumber).map((player) => player.name).join(', ');
-  return `You are the voice control and dealer for a real-card poker game. This response was created with the newest authoritative, read-only game snapshot: ${JSON.stringify(getRealtimeGameState())}\n\nUse only this snapshot for the current voice turn. Ignore conflicting or older game details elsewhere in the conversation. Never recite, summarize, or list the snapshot or its fields. Say only the specific poker fact needed for the current command or question. Pass this snapshot's exact stateVersion to any action function; never guess or reuse a version from an older turn. The players are: ${playerNames}. Always use each player's name from playersByNumber. Never call a named player "Player 1", "Player 2", or any other number. ${voiceStyleInstructions(voiceSettings)} Only respond to clear poker-related speech: a poker action, a poker question, or an instruction about dealing cards. For all other speech, stay completely silent: do not speak, ask a question, or call a function. This includes casual conversation, background talk, unrelated jokes, and people talking to each other. Speak in exactly one very short poker-dealer phrase only after a successful poker action or a clear poker question. Say only the player, action, and amount when needed: "Sam bets 5." "Aaron calls." "Sam folds." "Deal the flop." Do not add greetings, explanations, commentary, or a second sentence. If a poker action is unclear, ask only one short poker question, such as "Call or raise?", and do not call an action function. Never claim to change the game yourself. To do anything, use only the listed poker action functions. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Clear action commands are immediately confirmed by their action function; call exactly one action function. When the table says the flop, turn, or river has been dealt, call cardsAreDealt.`;
+  const variantName = gameSettings?.activePokerVariantName || activePokerVariant().name;
+  return `You are the voice control and dealer for a real-card ${variantName} game. This response was created with the newest authoritative, read-only game snapshot: ${JSON.stringify(getRealtimeGameState())}\n\nUse only this snapshot for the current voice turn. Ignore conflicting or older game details elsewhere in the conversation. Never recite, summarize, or list the snapshot or its fields. Say only the specific poker fact needed for the current command or question. Pass this snapshot's exact stateVersion to any action function; never guess or reuse a version from an older turn. The players are: ${playerNames}. Always use each player's name from playersByNumber. Never call a named player "Player 1", "Player 2", or any other number. ${voiceStyleInstructions(voiceSettings)} Only respond to clear poker-related speech: a poker action, a poker question, or an instruction about dealing, drawing, or discarding cards. For all other speech, stay completely silent: do not speak, ask a question, or call a function. This includes casual conversation, background talk, unrelated jokes, and people talking to each other. Speak in exactly one very short poker-dealer phrase only after a successful poker action or a clear poker question. Say only the player, action, and amount when needed: "Sam bets 5." "Aaron calls." "Sam folds." Do not add greetings, explanations, commentary, or a second sentence. If a poker action is unclear, ask only one short poker question, such as "Call or raise?", and do not call an action function. Never claim to change the game yourself. To do anything, use only the listed poker action functions. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Clear action commands are immediately confirmed by their action function; call exactly one action function. When the table confirms the displayed deal, draw, or discard instruction is complete, call cardsAreDealt.`;
 }
 
 const stateVersionProperty = {
@@ -346,7 +464,7 @@ const realtimeTools = [
   { type: 'function', name: 'callCurrentPlayer', description: 'Immediately call and confirm the current bet for the current player.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
   { type: 'function', name: 'betCurrentPlayer', description: 'Immediately bet and confirm this many additional chips for the current player.', parameters: { type: 'object', properties: { ...stateVersionProperty, amount: { type: 'number', description: 'Additional chips to bet now.' } }, required: ['stateVersion', 'amount'], additionalProperties: false } },
   { type: 'function', name: 'goAllIn', description: 'Immediately bet every remaining chip and confirm for the current player.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
-  { type: 'function', name: 'cardsAreDealt', description: 'Continue after the physical cards for the flop, turn, or river have been dealt. This does the same thing as pressing the OK button in the deal prompt.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
+  { type: 'function', name: 'cardsAreDealt', description: 'Continue after the displayed physical deal, draw, or discard instruction has been completed. This does the same thing as pressing the OK button in the prompt.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
 ];
 
 function sendRealtimeEvent(event) {
@@ -811,11 +929,11 @@ function drawPlayerSeats() {
     seat.setAttribute('role', 'button');
     seat.tabIndex = 0;
     if (!player.folded && !player.eliminated && player.chips > 0) {
-      seat.addEventListener('click', () => setCurrentPlayer(player.number));
+      seat.addEventListener('click', () => selectPlayerSeat(player.number));
       seat.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          setCurrentPlayer(player.number);
+          selectPlayerSeat(player.number);
         }
       });
     } else {
@@ -831,10 +949,19 @@ function drawPlayerSeats() {
   sidePotValue.textContent = sidePot;
   sidePotValue.hidden = !sidePotActive;
   potDisplay.classList.toggle('side-pot-active', sidePotActive);
-  roundLabel.textContent = ['Preflop', 'Flop', 'Turn', 'River'][roundNumber - 1];
+  roundLabel.textContent = `${gameSettings?.activePokerVariantName || activePokerVariant().name} · ${currentPokerRound()?.label || ''}`;
   turnIndicator.setAttribute('aria-label', `Your bet: ${pendingBet}. Pot: ${pot}`);
   updateBetControls();
   updateRealtimeGameState();
+}
+
+function selectPlayerSeat(number) {
+  if (!dealPrompt.hidden && promptedPokerRound()?.firstActor === 'manual') {
+    selectedPromptFirstPlayer = number;
+    dealOkButton.disabled = false;
+  }
+
+  setCurrentPlayer(number);
 }
 
 function setCurrentPlayer(number) {
@@ -939,44 +1066,84 @@ function allActivePlayersHaveMatchedBet() {
     && activePlayers.every((player) => player.hasActedThisRound && player.roundBet === highestRoundBet);
 }
 
+function promptedPokerRound() {
+  const roundIndex = dealPromptMode === 'next' ? roundNumber : roundNumber - 1;
+  return activePokerVariant().rounds[roundIndex];
+}
+
+function showDealInstruction(message, mode) {
+  dealPromptMode = mode;
+  selectedPromptFirstPlayer = null;
+  const promptedRound = promptedPokerRound();
+  const actorInstruction = promptedRound?.actorPrompt ? ` ${promptedRound.actorPrompt}` : '';
+  const needsPlayerChoice = promptedRound?.firstActor === 'manual';
+
+  turnIndicator.hidden = true;
+  actionButtons.hidden = true;
+  dealMessage.textContent = `${message}${actorInstruction} Press OK to continue.`;
+  dealOkButton.disabled = needsPlayerChoice;
+  dealPrompt.hidden = false;
+  announceDealer(`${message}${actorInstruction}`);
+}
+
 function startNextRound() {
   lastTurnState = null;
-  if (roundNumber >= 4) {
+  const nextRound = activePokerVariant().rounds[roundNumber];
+  if (!nextRound) {
     showWinnerPicker();
     return;
   }
 
-  const nextCard = ['the flop', 'the turn', 'the river'][roundNumber - 1];
-  logGameEvent(`Betting round finished. Deal ${nextCard}.`);
-  turnIndicator.hidden = true;
-  actionButtons.hidden = true;
-  dealMessage.textContent = `Deal ${nextCard}. Press OK to continue.`;
-  dealPrompt.hidden = false;
-  speak(`Deal ${nextCard}. Press OK to continue.`);
+  logGameEvent(`Betting round finished. ${nextRound.dealPrompt}`);
+  showDealInstruction(nextRound.dealPrompt, 'next');
 }
 
 function beginNextRound() {
+  const nextRound = activePokerVariant().rounds[roundNumber];
+  const chosenFirstPlayer = selectedPromptFirstPlayer;
   dealPrompt.hidden = true;
   turnIndicator.hidden = false;
   actionButtons.hidden = false;
   roundNumber += 1;
-  logGameEvent(`${['Preflop', 'Flop', 'Turn', 'River'][roundNumber - 1]} betting round started.`);
+  logGameEvent(`${nextRound.label} betting round started.`);
   Object.values(playersByNumber).forEach((player) => {
     player.roundBet = 0;
     player.hasActedThisRound = false;
   });
   highestRoundBet = 0;
-  const firstPlayer = playersByNumber[antePlayerNumber].folded || playersByNumber[antePlayerNumber].chips === 0
+  const positionalFirstPlayer = playersByNumber[antePlayerNumber].folded || playersByNumber[antePlayerNumber].chips === 0
     ? nextActivePlayerFrom(antePlayerNumber)
     : antePlayerNumber;
+  const firstPlayer = nextRound.firstActor === 'manual' ? chosenFirstPlayer : positionalFirstPlayer;
+  dealPromptMode = null;
+  selectedPromptFirstPlayer = null;
   if (firstPlayer !== null) setCurrentPlayer(firstPlayer);
+}
+
+function continueAfterDealInstruction() {
+  if (dealPrompt.hidden || dealOkButton.disabled) return false;
+
+  if (dealPromptMode === 'start') {
+    dealPrompt.hidden = true;
+    turnIndicator.hidden = false;
+    actionButtons.hidden = false;
+    dealPromptMode = null;
+    selectedPromptFirstPlayer = null;
+    logGameEvent(`${currentPokerRound().label} betting round started.`);
+    drawPlayerSeats();
+    return true;
+  }
+
+  beginNextRound();
+  return true;
 }
 
 function showWinnerPicker() {
   const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded && !player.eliminated);
-  speak('Showdown. Choose the player with the best cards.');
-  logGameEvent('Showdown: choose the player with the best cards.');
-  showPotWinnerPicker('Who had the best cards?', activePlayers, awardMainPot);
+  const showdownPrompt = activePokerVariant().showdownPrompt || 'Who had the best cards?';
+  announceDealer(`Showdown. ${showdownPrompt}`);
+  logGameEvent(`Showdown: ${showdownPrompt}`);
+  showPotWinnerPicker(showdownPrompt, activePlayers, awardMainPot);
 }
 
 function showPotWinnerPicker(question, players, awardFunction) {
@@ -1095,6 +1262,56 @@ function postBlind(playerNumber, requestedAmount, blindName) {
   logGameEvent(`${player.name} posts the ${blindName} ${amount}.`);
 }
 
+function postAnte(playerNumber) {
+  const player = playersByNumber[playerNumber];
+  const amount = Math.min(gameSettings.ante, player.chips);
+
+  player.chips -= amount;
+  addToPot(amount);
+  logGameEvent(`${player.name} antes ${amount}.`);
+}
+
+function choosePokerVariant(variantKey) {
+  let activeVariantKey = variantKey;
+  if (variantKey === 'horse') {
+    horseRotationIndex = (horseRotationIndex + 1) % horseRotation.length;
+    activeVariantKey = horseRotation[horseRotationIndex];
+  }
+
+  const variant = pokerVariants[activeVariantKey];
+  gameSettings.pokerVariant = variantKey;
+  gameSettings.activePokerVariant = activeVariantKey;
+  gameSettings.activePokerVariantName = variantKey === 'horse' ? `HORSE — ${variant.name}` : variant.name;
+  variantPicker.hidden = true;
+  startHand();
+}
+
+function showVariantPicker() {
+  const dealer = playersByNumber[gameSettings.dealerNumber];
+  const nextHorseVariant = pokerVariants[horseRotation[(horseRotationIndex + 1) % horseRotation.length]];
+
+  winnerPicker.hidden = true;
+  dealPrompt.hidden = true;
+  turnIndicator.hidden = true;
+  actionButtons.hidden = true;
+  variantQuestion.textContent = `${dealer.name}, choose the next poker game.`;
+  variantOptions.replaceChildren();
+
+  dealerChoiceVariants.forEach((variantKey) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = variantKey === 'horse'
+      ? `HORSE (next: ${nextHorseVariant.name})`
+      : pokerVariants[variantKey].name;
+    button.addEventListener('click', () => choosePokerVariant(variantKey));
+    variantOptions.append(button);
+  });
+
+  variantPicker.hidden = false;
+  announceDealer(`${dealer.name}, choose the next poker game.`);
+  updateRealtimeGameState({ force: true });
+}
+
 function startHand() {
   gameHandNumber += 1;
   isGameWon = false;
@@ -1116,37 +1333,51 @@ function startHand() {
     player.isDealer = player.number === gameSettings.dealerNumber;
   });
 
+  const variant = activePokerVariant();
   antePlayerNumber = playerToDealersLeft(gameSettings.dealerNumber);
-  if (gameSettings.playerCount >= 6) {
-    bigBlindPlayerNumber = playerToDealersLeft(antePlayerNumber);
-  }
   gameSettings.antePlayerNumber = antePlayerNumber;
-  gameSettings.bigBlindPlayerNumber = bigBlindPlayerNumber;
-  gameSettings.bigBlind = bigBlindPlayerNumber === null ? null : gameSettings.ante * 2;
 
-  postBlind(antePlayerNumber, gameSettings.ante, 'small blind');
-  if (bigBlindPlayerNumber !== null) {
-    postBlind(bigBlindPlayerNumber, gameSettings.bigBlind, 'big blind');
+  if (variant.forcedBets === 'antes') {
+    gameSettings.bigBlindPlayerNumber = null;
+    gameSettings.bigBlind = null;
+    Object.values(playersByNumber)
+      .filter((player) => !player.eliminated)
+      .forEach((player) => postAnte(player.number));
+    highestRoundBet = gameSettings.ante * (variant.requiredBetMultiplier || 0);
+    setCurrentPlayer(gameSettings.dealerNumber);
+    nextPlayer();
+  } else {
+    if (gameSettings.playerCount >= 6) {
+      bigBlindPlayerNumber = playerToDealersLeft(antePlayerNumber);
+    }
+    gameSettings.bigBlindPlayerNumber = bigBlindPlayerNumber;
+    gameSettings.bigBlind = bigBlindPlayerNumber === null ? null : gameSettings.ante * 2;
+
+    postBlind(antePlayerNumber, gameSettings.ante, 'small blind');
+    if (bigBlindPlayerNumber !== null) {
+      postBlind(bigBlindPlayerNumber, gameSettings.bigBlind, 'big blind');
+    }
+
+    setCurrentPlayer(bigBlindPlayerNumber ?? antePlayerNumber);
+    nextPlayer();
   }
 
   startSidePotIfNeeded();
-
-  setCurrentPlayer(bigBlindPlayerNumber ?? antePlayerNumber);
-  nextPlayer();
+  logGameEvent(`${gameSettings.activePokerVariantName} selected for hand ${gameHandNumber}.`);
+  showDealInstruction(variant.startPrompt, 'start');
 }
 
 function startNewHand() {
   const nextDealerNumber = playerToDealersLeft(gameSettings.dealerNumber);
   if (nextDealerNumber === gameSettings.firstDealerNumber) {
     gameSettings.ante += gameSettings.anteIncrease;
-    speak(`The ante is now ${gameSettings.ante}.`);
+    const forcedBetName = activePokerVariant().forcedBets === 'antes' ? 'ante' : 'small blind';
+    speak(`The ${forcedBetName} is now ${gameSettings.ante}.`);
   }
   gameSettings.dealerNumber = nextDealerNumber;
   winnerPicker.hidden = true;
   dealPrompt.hidden = true;
-  turnIndicator.hidden = false;
-  actionButtons.hidden = false;
-  startHand();
+  showVariantPicker();
 }
 
 function finishTurn() {
@@ -1240,10 +1471,7 @@ function confirm() {
 }
 
 function cardsAreDealt() {
-  if (dealPrompt.hidden) return false;
-
-  beginNextRound();
-  return true;
+  return continueAfterDealInstruction();
 }
 
 playerCount.addEventListener('change', drawPlayerNames);
@@ -1281,7 +1509,7 @@ foldButton.addEventListener('click', () => {
 });
 confirmButton.addEventListener('click', confirm);
 undoButton.addEventListener('click', undoLastTurn);
-dealOkButton.addEventListener('click', beginNextRound);
+dealOkButton.addEventListener('click', continueAfterDealInstruction);
 recordingButton.addEventListener('click', () => {
   const isRecording = recordingButton.getAttribute('aria-pressed') === 'true';
   if (isRecording) {
@@ -1305,6 +1533,7 @@ form.addEventListener('submit', (event) => {
   showVoiceTranscript = showVoiceTranscriptCheckbox.checked;
   gameHistory = [];
   gameHandNumber = 0;
+  horseRotationIndex = -1;
   saveLastGameSettings();
   makePlayers();
   setupScreen.hidden = true;
@@ -1313,10 +1542,11 @@ form.addEventListener('submit', (event) => {
   gameWinnerScreen.hidden = true;
   winnerPicker.hidden = true;
   dealPrompt.hidden = true;
+  variantPicker.hidden = true;
   turnIndicator.hidden = false;
   actionButtons.hidden = false;
   keepScreenAwake();
-  startHand();
+  showVariantPicker();
 
 
   // Add the game-table interface inside gameScreen in the next step.

@@ -258,6 +258,7 @@ body {
 }
 .winner-picker {
   position: absolute;
+  z-index: 2;
   left: 50%;
   top: 50%;
   width: min(78vw, 360px);
@@ -290,6 +291,29 @@ body {
   font: inherit;
   font-weight: 800;
   cursor: pointer;
+}
+#deal-ok-button:disabled {
+  background: #8ba6a0;
+  cursor: default;
+}
+.variant-picker {
+  width: min(92vw, 520px);
+  max-height: min(84svh, 680px);
+  overflow-y: auto;
+}
+.variant-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+.variant-options button {
+  min-height: 46px;
+  margin: 0;
+  padding: 8px;
+  border-radius: 11px;
+  background: #2875c7;
+  box-shadow: 0 3px 0 #174f91;
+  font-size: 0.88rem;
 }
 .player-seat {
   position: absolute;
@@ -394,6 +418,13 @@ input:focus,
 select:focus {
   outline: 3px solid #f1c565;
   border-color: #7c5c15;
+}
+.field-note {
+  display: block;
+  margin-top: 6px;
+  color: #71857b;
+  font-size: 0.72rem;
+  line-height: 1.25;
 }
 .money-grid {
   display: grid;
@@ -553,5 +584,8 @@ button:active {
   }
   .money-grid label {
     font-size: 0.84rem;
+  }
+  .variant-options {
+    grid-template-columns: 1fr;
   }
 }

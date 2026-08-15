@@ -1,13 +1,15 @@
 # RoboDeal
 
-RoboDeal is a phone-friendly poker table companion. Players use real cards, while one phone in the middle of the table keeps track of the virtual chips, dealer, ante, turns, betting rounds, main pot, side pot, folds, and winners.
+RoboDeal is a phone-friendly poker table companion. Players use real cards, while one phone in the middle of the table keeps track of the virtual chips, dealer, forced bets, turns, betting rounds, main pot, side pot, folds, and winners.
 
 The project is a learning project for Sam. The game is intentionally one small single-page app with plain HTML, CSS, and JavaScript so it stays understandable and editable by hand. It is deployed at [robodeal.vercel.app](https://robodeal.vercel.app/).
 
 ## What it does now
 
-- Set up two to eight players, player names, starting chips, dealer, ante, and ante increase.
+- Set up two to eight players, player names, starting chips, dealer, small blind, and forced-bet increase.
 - Play a hand on one shared phone with physical cards.
+- Let the current dealer choose the poker variant before the first hand and between every hand.
+- Run variant-specific betting and card prompts for Texas Hold'em, Omaha, Short Deck, Pineapple, Crazy Pineapple, Five-Card Draw, Seven-Card Stud, Five-Card Stud, Razz, 2-7 Triple Draw, Badugi, HORSE, Caribbean Stud, and Three-Card Poker.
 - Track bets, calls, checks, folds, all-ins, main pots, side pots, player elimination, and the dealer moving each hand.
 - Automatically post the configured ante as the small blind, plus a big blind worth twice the ante in games with six to eight players.
 - Show whose turn it is around the table and rotate the controls toward that player.
