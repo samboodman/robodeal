@@ -1,24 +1,25 @@
 # RoboDeal
 
-RoboDeal is a phone-friendly poker table companion. Players use real cards, while one phone in the middle of the table keeps track of the virtual chips, dealer, ante, turns, betting rounds, main pot, side pot, folds, and winners.
+RoboDeal is a phone-friendly poker table companion. Players use real cards, while one phone in the middle of the table keeps track of the virtual chips, dealer, small blind, turns, betting rounds, main pot, any number of side pots, folds, and winners.
 
 The project is a learning project for Sam. The game is intentionally one small single-page app with plain HTML, CSS, and JavaScript so it stays understandable and editable by hand. It is deployed at [robodeal.vercel.app](https://robodeal.vercel.app/).
 
 ## What it does now
 
-- Set up two to eight players, player names, starting chips, dealer, ante, and ante increase.
+- Set up two to eight players, player names, starting chips, dealer, small blind, and the scheduled blind increase.
 - Play a hand on one shared phone with physical cards.
 - Track bets, calls, checks, folds, all-ins, main pots, side pots, player elimination, and the dealer moving each hand.
-- Automatically post the configured ante as the small blind, plus a big blind worth twice the ante in games with six to eight players.
+- Automatically post the configured small blind, plus a big blind worth twice the small blind in games with six to eight players.
 - Show whose turn it is around the table and rotate the controls toward that player.
 - Keep the phone screen awake during an active game when the browser supports it.
 - Remember the latest setup in that browser, including players, chip settings, and voice choices.
-- Keep an OpenAI Realtime dealer connected throughout the game. The microphone can be started or stopped independently while the dealer continues making table announcements. The AI receives a read-only copy of the game state and can change the game only by calling approved action functions: fold, check, call, bet, all-in, confirm, and continue after cards are dealt.
+- Attempt to connect an OpenAI Realtime dealer when the game starts and keep that session running unless the connection ends. The microphone can be started or stopped independently while a connected dealer continues making table announcements. The AI receives a read-only copy of the game state and can change the game only by calling approved action functions: fold, check, call, bet, all-in, and continue after cards are dealt. Each betting action confirms itself automatically.
 - Let players choose a built-in dealer voice, accent preference, personality, and speaking pace, then preview that voice before a game.
 
 ## How it is built
 
-- `index.html`, `styles.css`, and `app.js` contain the game interface and logic.
+- `index.html`, `styles.css`, and `app.js` contain the game interface and main game flow.
+- `pot-logic.js` calculates contribution-based main and side pots and decides when betting rounds are complete. `pot-logic.test.js` tests that logic.
 - Vite runs the local development server and builds the site for deployment.
 - `api/realtime-call.js` is a small Vercel server function. It keeps `OPENAI_API_KEY` on the server and creates the OpenAI Realtime WebRTC connection without exposing the key to the browser.
 - `vite.config.mjs` provides the same protected Realtime endpoint during local development, so running locally does not require Vercel.
