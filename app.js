@@ -31,6 +31,7 @@ const testVoiceButton = document.querySelector('#test-voice-button');
 const recordingButton = document.querySelector('#recording-button');
 const voiceStatus = document.querySelector('#voice-status');
 const voiceTranscript = document.querySelector('#voice-transcript');
+const startAiAutomaticallyCheckbox = document.querySelector('#start-ai-automatically');
 const showVoiceTranscriptCheckbox = document.querySelector('#show-voice-transcript');
 const voiceCustomizationButton = document.querySelector('#voice-customization-button');
 const lastGameSettingsButton = document.querySelector('#last-game-settings-button');
@@ -124,6 +125,7 @@ function restoreLastGameSettings() {
   });
   drawDealerOptions(String(settings.dealerNumber));
   dealerSelect.value = String(settings.dealerNumber);
+  startAiAutomaticallyCheckbox.checked = settings.startAiAutomatically !== false;
   showVoiceTranscriptCheckbox.checked = Boolean(savedGame.showVoiceTranscript);
 
   if (settings.voice) {
@@ -1300,6 +1302,7 @@ form.addEventListener('submit', (event) => {
     dealerNumber: Number(dealerSelect.value),
     firstDealerNumber: Number(dealerSelect.value),
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
+    startAiAutomatically: startAiAutomaticallyCheckbox.checked,
     voice: selectedVoiceSettings(),
   };
   showVoiceTranscript = showVoiceTranscriptCheckbox.checked;
@@ -1317,6 +1320,7 @@ form.addEventListener('submit', (event) => {
   actionButtons.hidden = false;
   keepScreenAwake();
   startHand();
+  if (gameSettings.startAiAutomatically) startRecording();
 
 
   // Add the game-table interface inside gameScreen in the next step.
