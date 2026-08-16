@@ -21,16 +21,25 @@ The project is a learning project for Sam. The game is intentionally one small s
 - `index.html`, `styles.css`, and `app.js` contain the game interface and logic.
 - Vite runs the local development server and builds the site for deployment.
 - `api/realtime-call.js` is a small Vercel server function. It keeps `OPENAI_API_KEY` on the server and creates the OpenAI Realtime WebRTC connection without exposing the key to the browser.
+- `vite.config.mjs` provides the same protected Realtime endpoint during local development, so running locally does not require Vercel.
 - The app does not use React or a large UI framework.
 
 ## Run locally
+
+Create a `.env.local` file containing your OpenAI API key:
+
+```sh
+OPENAI_API_KEY=your_key_here
+```
+
+The file is ignored by Git and the key is used only by the local Vite server. Then run:
 
 ```sh
 npm install
 npm run dev
 ```
 
-Open the local address Vite prints. Voice control also needs an `OPENAI_API_KEY` configured in Vercel for the deployed site.
+Open the local address Vite prints. A deployed copy separately needs `OPENAI_API_KEY` configured on whichever hosting service runs `api/realtime-call.js`.
 
 ## Development practice
 
