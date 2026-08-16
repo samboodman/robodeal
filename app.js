@@ -559,7 +559,7 @@ async function startRealtimeConversation(stream) {
     realtimeInitialNarrationTimer = window.setTimeout(() => {
       realtimeInitialNarrationTimer = null;
       queueRealtimeNarration();
-    }, 700);
+    }, 200);
     updateRealtimeGameState({ force: true, narrate: false });
     window.clearInterval(realtimeStatePollTimer);
     // This catches every change to the authoritative game variables, even if
