@@ -308,7 +308,7 @@ body {
   font-weight: 800;
   box-shadow: 0 3px 0 #7c2517;
   cursor: pointer;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) rotate(var(--rotation));
 }
 .player-seat-name {
   display: block;
