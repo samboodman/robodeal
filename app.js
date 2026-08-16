@@ -893,12 +893,46 @@ const debugPresets = {
     contributions: [25, 50, 50],
     chips: [0, 87, 88],
     currentPlayerNumber: 2,
+    roundNumber: 4,
   },
   'three-pots': {
     playerCount: 4,
     contributions: [25, 50, 75, 75],
     chips: [0, 0, 87, 88],
     currentPlayerNumber: 3,
+    roundNumber: 4,
+  },
+  'deal-flop': {
+    playerCount: 3,
+    contributions: [10, 10, 10],
+    chips: [90, 90, 90],
+    currentPlayerNumber: 1,
+    roundNumber: 1,
+    view: 'deal-flop',
+  },
+  showdown: {
+    playerCount: 3,
+    contributions: [20, 20, 20],
+    chips: [80, 80, 80],
+    currentPlayerNumber: 1,
+    roundNumber: 4,
+    view: 'showdown',
+  },
+  'hand-won': {
+    playerCount: 3,
+    contributions: [0, 0, 0],
+    chips: [140, 80, 80],
+    currentPlayerNumber: 1,
+    roundNumber: 4,
+    view: 'hand-won',
+  },
+  'game-won': {
+    playerCount: 2,
+    contributions: [0, 0],
+    chips: [200, 0],
+    currentPlayerNumber: 1,
+    roundNumber: 4,
+    view: 'game-won',
   },
 };
 
@@ -915,12 +949,12 @@ function startDebugPreset(presetName) {
   const preset = debugPresets[presetName];
   if (!preset) {
     startHand();
-    return;
+    return true;
   }
 
   gameHandNumber = 1;
   isGameWon = false;
-  roundNumber = 4;
+  roundNumber = preset.roundNumber;
   potAwardIndex = 0;
   lastPotWinnerNumber = null;
   lastTurnState = null;
@@ -949,8 +983,25 @@ function startDebugPreset(presetName) {
   winnerPicker.hidden = true;
   turnIndicator.hidden = false;
   actionButtons.hidden = false;
-  logGameEvent(`Debug preset loaded with ${pots.length} pots on the river.`);
+  logGameEvent(`Debug preset "${presetName}" loaded.`);
   setCurrentPlayer(preset.currentPlayerNumber);
+
+  if (preset.view === 'deal-flop') {
+    startNextRound();
+  } else if (preset.view === 'showdown') {
+    showWinnerPicker();
+  } else if (preset.view === 'hand-won') {
+    finishHand(playersByNumber[preset.currentPlayerNumber]);
+  } else if (preset.view === 'game-won') {
+    Object.values(playersByNumber).forEach((player) => {
+      player.eliminated = player.chips === 0;
+    });
+    drawPlayerSeats();
+    showGameWinner(playersByNumber[preset.currentPlayerNumber]);
+    return false;
+  }
+
+  return true;
 }
 
 function playerToDealersLeft(dealerNumber) {
@@ -1531,20 +1582,22 @@ form.addEventListener('submit', (event) => {
   turnIndicator.hidden = false;
   actionButtons.hidden = false;
   keepScreenAwake();
-  startDebugPreset(debugPresetSelect.value);
-  setVoiceStatus('Connecting AI…');
-  startRealtimeConversation().catch((error) => {
-    console.error('Realtime voice connection could not start:', error);
-    let reason = 'unknown connection problem';
-    try {
-      reason = JSON.parse(error.message).error?.message || reason;
-    } catch {
-      reason = error.message || reason;
-    }
-    stopRealtimeConversation();
-    setVoiceStatus(`AI could not connect: ${reason}`);
-  });
-  if (gameSettings.startMicrophoneAutomatically) startRecording();
+  const shouldRunDealer = startDebugPreset(debugPresetSelect.value);
+  if (shouldRunDealer) {
+    setVoiceStatus('Connecting AI…');
+    startRealtimeConversation().catch((error) => {
+      console.error('Realtime voice connection could not start:', error);
+      let reason = 'unknown connection problem';
+      try {
+        reason = JSON.parse(error.message).error?.message || reason;
+      } catch {
+        reason = error.message || reason;
+      }
+      stopRealtimeConversation();
+      setVoiceStatus(`AI could not connect: ${reason}`);
+    });
+    if (gameSettings.startMicrophoneAutomatically) startRecording();
+  }
 
 
   // Add the game-table interface inside gameScreen in the next step.
