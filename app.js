@@ -34,7 +34,6 @@ const voiceTranscript = document.querySelector('#voice-transcript');
 const startAiAutomaticallyCheckbox = document.querySelector('#start-ai-automatically');
 const showVoiceTranscriptCheckbox = document.querySelector('#show-voice-transcript');
 const voiceCustomizationButton = document.querySelector('#voice-customization-button');
-const lastGameSettingsButton = document.querySelector('#last-game-settings-button');
 const voiceCustomizationBack = document.querySelector('#voice-customization-back');
 const voiceChoice = document.querySelector('#voice-choice');
 const voiceAccent = document.querySelector('#voice-accent');
@@ -105,10 +104,6 @@ function getLastGameSettings() {
   }
 }
 
-function updateLastGameSettingsButton() {
-  lastGameSettingsButton.hidden = !getLastGameSettings();
-}
-
 function restoreLastGameSettings() {
   const savedGame = getLastGameSettings();
   const settings = savedGame?.settings;
@@ -144,7 +139,6 @@ function saveLastGameSettings() {
       settings: gameSettings,
       showVoiceTranscript,
     }));
-    updateLastGameSettingsButton();
   } catch {
     // The game still works if this browser has disabled saved site data.
   }
@@ -1263,7 +1257,6 @@ voiceCustomizationButton.addEventListener('click', () => {
   setupScreen.hidden = true;
   voiceCustomizationScreen.hidden = false;
 });
-lastGameSettingsButton.addEventListener('click', restoreLastGameSettings);
 voiceCustomizationBack.addEventListener('click', () => {
   voiceCustomizationScreen.hidden = true;
   setupScreen.hidden = false;
@@ -1337,4 +1330,4 @@ form.addEventListener('submit', (event) => {
 });
 
 drawPlayerNames();
-updateLastGameSettingsButton();
+restoreLastGameSettings();

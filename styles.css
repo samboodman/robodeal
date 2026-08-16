@@ -474,8 +474,7 @@ button:active {
   font-size: 0.98rem;
 }
 .voice-customization-button,
-.voice-customization-back,
-.last-game-settings-button {
+.voice-customization-back {
   min-height: 46px;
   margin-top: 22px;
   background: #557066;
