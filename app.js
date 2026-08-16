@@ -1117,6 +1117,7 @@ function postBlind(playerNumber, requestedAmount, blindName) {
 
   player.chips -= amount;
   player.roundBet += amount;
+  player.hasActedThisRound = true;
   highestRoundBet = Math.max(highestRoundBet, player.roundBet);
   addToPot(amount);
   logGameEvent(`${player.name} posts the ${blindName} ${amount}.`);
