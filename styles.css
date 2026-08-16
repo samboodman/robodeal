@@ -130,10 +130,10 @@ body {
   left: 50%;
   top: 50%;
   display: grid;
-  width: min(78vw, 360px);
+  width: min(62vw, 290px);
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: auto 1fr auto;
-  min-height: min(62vw, 280px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: min(48vw, 220px);
   place-items: center;
   border-radius: 12px;
   background: #fffdf6;
