@@ -73,6 +73,7 @@ let realtimeDataChannel = null;
 let realtimeAudio = null;
 let realtimeSessionConfigured = false;
 let realtimeStatePollTimer = null;
+let realtimeInitialNarrationTimer = null;
 let realtimeStateSyncQueued = false;
 let lastRealtimeGameStateFingerprint = null;
 let realtimeGameStateVersion = 0;
@@ -370,7 +371,7 @@ function sendRealtimeEvent(event) {
   }
 }
 
-function updateRealtimeGameState({ force = false } = {}) {
+function updateRealtimeGameState({ force = false, narrate = true } = {}) {
   if (realtimeDataChannel?.readyState !== 'open') return false;
 
   const fingerprint = realtimeGameStateFingerprint();
@@ -408,7 +409,7 @@ function updateRealtimeGameState({ force = false } = {}) {
     session,
   });
   realtimeSessionConfigured = true;
-  queueRealtimeNarration();
+  if (narrate && realtimeInitialNarrationTimer === null) queueRealtimeNarration();
   return true;
 }
 
@@ -523,6 +524,8 @@ function stopRealtimeConversation() {
   realtimeSessionConfigured = false;
   window.clearInterval(realtimeStatePollTimer);
   realtimeStatePollTimer = null;
+  window.clearTimeout(realtimeInitialNarrationTimer);
+  realtimeInitialNarrationTimer = null;
   realtimeStateSyncQueued = false;
   lastRealtimeGameStateFingerprint = null;
   realtimeResponseActive = false;
@@ -552,7 +555,12 @@ async function startRealtimeConversation(stream) {
 
   realtimeDataChannel = realtimePeerConnection.createDataChannel('oai-events');
   realtimeDataChannel.addEventListener('open', () => {
-    updateRealtimeGameState({ force: true });
+    window.clearTimeout(realtimeInitialNarrationTimer);
+    realtimeInitialNarrationTimer = window.setTimeout(() => {
+      realtimeInitialNarrationTimer = null;
+      queueRealtimeNarration();
+    }, 700);
+    updateRealtimeGameState({ force: true, narrate: false });
     window.clearInterval(realtimeStatePollTimer);
     // This catches every change to the authoritative game variables, even if
     // a future code path forgets to request an immediate synchronization.
