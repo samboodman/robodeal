@@ -31,7 +31,7 @@ const testVoiceButton = document.querySelector('#test-voice-button');
 const recordingButton = document.querySelector('#recording-button');
 const voiceStatus = document.querySelector('#voice-status');
 const voiceTranscript = document.querySelector('#voice-transcript');
-const startAiAutomaticallyCheckbox = document.querySelector('#start-ai-automatically');
+const startMicrophoneAutomaticallyCheckbox = document.querySelector('#start-microphone-automatically');
 const showVoiceTranscriptCheckbox = document.querySelector('#show-voice-transcript');
 const voiceCustomizationButton = document.querySelector('#voice-customization-button');
 const voiceCustomizationBack = document.querySelector('#voice-customization-back');
@@ -69,6 +69,7 @@ let microphoneRecorder = null;
 let recentAudioFiles = [];
 let audioCleanupTimer = null;
 let realtimePeerConnection = null;
+let realtimeMicrophoneSender = null;
 let realtimeDataChannel = null;
 let realtimeAudio = null;
 let realtimeSessionConfigured = false;
@@ -123,7 +124,7 @@ function restoreLastGameSettings() {
   });
   drawDealerOptions(String(settings.dealerNumber));
   dealerSelect.value = String(settings.dealerNumber);
-  startAiAutomaticallyCheckbox.checked = settings.startAiAutomatically !== false;
+  startMicrophoneAutomaticallyCheckbox.checked = (settings.startMicrophoneAutomatically ?? settings.startAiAutomatically) !== false;
   showVoiceTranscriptCheckbox.checked = Boolean(savedGame.showVoiceTranscript);
 
   if (settings.voice) {
@@ -520,6 +521,7 @@ function stopRealtimeConversation() {
   realtimeAudio?.remove();
   realtimeDataChannel = null;
   realtimePeerConnection = null;
+  realtimeMicrophoneSender = null;
   realtimeAudio = null;
   realtimeSessionConfigured = false;
   window.clearInterval(realtimeStatePollTimer);
@@ -536,11 +538,11 @@ function stopRealtimeConversation() {
   setVoiceTranscript('');
 }
 
-async function startRealtimeConversation(stream) {
+async function startRealtimeConversation() {
   if (!window.RTCPeerConnection) throw new Error('This browser does not support WebRTC.');
 
   realtimePeerConnection = new RTCPeerConnection();
-  stream.getTracks().forEach((track) => realtimePeerConnection.addTrack(track, stream));
+  realtimeMicrophoneSender = realtimePeerConnection.addTransceiver('audio', { direction: 'sendrecv' }).sender;
   realtimePeerConnection.addEventListener('track', (event) => {
     if (!realtimeAudio) {
       realtimeAudio = document.createElement('audio');
@@ -658,19 +660,20 @@ async function previewVoice() {
   }
 }
 
-function stopRecording() {
+async function stopRecording() {
+  await realtimeMicrophoneSender?.replaceTrack(null).catch(() => {});
   if (microphoneRecorder && microphoneRecorder.state !== 'inactive') {
     microphoneRecorder.stop();
   }
 
   microphoneStream?.getTracks().forEach((track) => track.stop());
-  stopRealtimeConversation();
   microphoneRecorder = null;
   microphoneStream = null;
   window.clearInterval(audioCleanupTimer);
   audioCleanupTimer = null;
   recordingButton.setAttribute('aria-pressed', 'false');
   recordingButton.textContent = 'Start recording';
+  setVoiceStatus('AI is running. Microphone is off.');
 }
 
 async function startRecording() {
@@ -684,6 +687,9 @@ async function startRecording() {
     const newMicrophoneRecorder = new MediaRecorder(newMicrophoneStream);
     microphoneStream = newMicrophoneStream;
     microphoneRecorder = newMicrophoneRecorder;
+    const microphoneTrack = newMicrophoneStream.getAudioTracks()[0];
+    if (!realtimeMicrophoneSender || !microphoneTrack) throw new Error('The AI audio connection is not ready.');
+    await realtimeMicrophoneSender.replaceTrack(microphoneTrack);
 
     newMicrophoneRecorder.addEventListener('dataavailable', (event) => {
       if (event.data.size === 0) return;
@@ -706,18 +712,8 @@ async function startRecording() {
     audioCleanupTimer = window.setInterval(discardOldAudioFiles, 1_000);
     recordingButton.setAttribute('aria-pressed', 'true');
     recordingButton.textContent = 'Stop recording';
-    setVoiceStatus('Connecting AI…');
+    setVoiceStatus('AI is listening');
     setVoiceTranscript('');
-    startRealtimeConversation(newMicrophoneStream).catch((error) => {
-      console.error('Realtime voice connection could not start:', error);
-      let reason = 'unknown connection problem';
-      try {
-        reason = JSON.parse(error.message).error?.message || reason;
-      } catch {
-        reason = error.message || reason;
-      }
-      setVoiceStatus(`AI could not connect: ${reason}`);
-    });
   } catch (error) {
     microphoneRecorder = null;
     microphoneStream?.getTracks().forEach((track) => track.stop());
@@ -1178,7 +1174,7 @@ function startHand() {
   setCurrentPlayer(bigBlindPlayerNumber ?? antePlayerNumber);
   nextPlayer();
   logGameEvent('Waiting for the dealer to deal two cards face down to each player.');
-  if (!(gameHandNumber === 1 && gameSettings.startAiAutomatically)) speak(dealMessage.textContent);
+  if (gameHandNumber !== 1) speak(dealMessage.textContent);
 }
 
 function startNewHand() {
@@ -1356,7 +1352,7 @@ form.addEventListener('submit', (event) => {
     dealerNumber: Number(dealerSelect.value),
     firstDealerNumber: Number(dealerSelect.value),
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
-    startAiAutomatically: startAiAutomaticallyCheckbox.checked,
+    startMicrophoneAutomatically: startMicrophoneAutomaticallyCheckbox.checked,
     voice: selectedVoiceSettings(),
   };
   showVoiceTranscript = showVoiceTranscriptCheckbox.checked;
@@ -1374,7 +1370,19 @@ form.addEventListener('submit', (event) => {
   actionButtons.hidden = false;
   keepScreenAwake();
   startHand();
-  if (gameSettings.startAiAutomatically) startRecording();
+  setVoiceStatus('Connecting AI…');
+  startRealtimeConversation().catch((error) => {
+    console.error('Realtime voice connection could not start:', error);
+    let reason = 'unknown connection problem';
+    try {
+      reason = JSON.parse(error.message).error?.message || reason;
+    } catch {
+      reason = error.message || reason;
+    }
+    stopRealtimeConversation();
+    setVoiceStatus(`AI could not connect: ${reason}`);
+  });
+  if (gameSettings.startMicrophoneAutomatically) startRecording();
 
 
   // Add the game-table interface inside gameScreen in the next step.

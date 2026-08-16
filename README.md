@@ -13,7 +13,7 @@ The project is a learning project for Sam. The game is intentionally one small s
 - Show whose turn it is around the table and rotate the controls toward that player.
 - Keep the phone screen awake during an active game when the browser supports it.
 - Remember the latest setup in that browser, including players, chip settings, and voice choices.
-- Offer optional OpenAI Realtime voice control. The app sends audio through a WebRTC connection and gives the AI a read-only copy of the game state. The AI can change the game only by calling approved action functions: fold, check, call, bet, all-in, confirm, and continue after cards are dealt.
+- Keep an OpenAI Realtime dealer connected throughout the game. The microphone can be started or stopped independently while the dealer continues making table announcements. The AI receives a read-only copy of the game state and can change the game only by calling approved action functions: fold, check, call, bet, all-in, confirm, and continue after cards are dealt.
 - Let players choose a built-in dealer voice, accent preference, personality, and speaking pace, then preview that voice before a game.
 
 ## How it is built
