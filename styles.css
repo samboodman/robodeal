@@ -64,10 +64,10 @@ body {
     0 3px 0 #66141a;
 }
 .voice-status {
-  position: absolute;
+  position: fixed;
   z-index: 1;
   left: 50%;
-  top: calc(7% + 97px);
+  top: 48px;
   width: min(90%, 280px);
   margin: 0;
   color: #fffdf6;
@@ -78,10 +78,10 @@ body {
   transform: translateX(-50%);
 }
 .voice-transcript {
-  position: absolute;
+  position: fixed;
   z-index: 1;
   left: 50%;
-  top: calc(7% + 119px);
+  top: 70px;
   width: min(90%, 320px);
   margin: 0;
   color: #fffdf6;
