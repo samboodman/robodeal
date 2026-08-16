@@ -177,8 +177,8 @@ function discardOldAudioFiles() {
 }
 
 function setVoiceStatus(status) {
-  voiceStatus.textContent = status;
-  voiceStatus.hidden = !status;
+  voiceStatus.textContent = showVoiceTranscript ? status : '';
+  voiceStatus.hidden = !showVoiceTranscript || !status;
 }
 
 function setVoiceTranscript(transcript) {
