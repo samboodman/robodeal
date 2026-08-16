@@ -79,6 +79,8 @@ let realtimeStateSyncQueued = false;
 let lastRealtimeGameStateFingerprint = null;
 let realtimeGameStateVersion = 0;
 let realtimeResponseActive = false;
+let realtimeNarrationResponseActive = false;
+let realtimeOutputAudioPlaying = false;
 let realtimeUserResponseQueued = null;
 let queuedRealtimeNarration = null;
 let lastRealtimeNarration = null;
@@ -291,6 +293,20 @@ function shouldRespondToTranscript(transcript) {
   return mentionsPlayer || mentionsPoker || isDirectlyAddressingDealer(transcript);
 }
 
+function interruptObsoleteRealtimeNarration() {
+  if (realtimeNarrationResponseActive) {
+    sendRealtimeEvent({ type: 'response.cancel' });
+  }
+
+  if (realtimeOutputAudioPlaying) {
+    // WebRTC keeps unplayed model audio in a server-side buffer. Clearing it
+    // makes the old announcement stop immediately instead of finishing after
+    // the game has already advanced.
+    sendRealtimeEvent({ type: 'output_audio_buffer.clear' });
+    realtimeOutputAudioPlaying = false;
+  }
+}
+
 function flushRealtimeResponseQueue() {
   if (realtimeResponseActive || realtimeDataChannel?.readyState !== 'open') return;
 
@@ -298,6 +314,7 @@ function flushRealtimeResponseQueue() {
     const queuedUserResponse = realtimeUserResponseQueued;
     realtimeUserResponseQueued = null;
     realtimeResponseActive = true;
+    realtimeNarrationResponseActive = false;
     sendRealtimeEvent({
       type: 'response.create',
       response: {
@@ -318,6 +335,7 @@ function flushRealtimeResponseQueue() {
   queuedRealtimeNarration = null;
   lastRealtimeNarration = narration;
   realtimeResponseActive = true;
+  realtimeNarrationResponseActive = true;
   sendRealtimeEvent({
     type: 'response.create',
     response: {
@@ -395,7 +413,13 @@ function updateRealtimeGameState({ force = false, narrate = true } = {}) {
   if (realtimeDataChannel?.readyState !== 'open') return false;
 
   const fingerprint = realtimeGameStateFingerprint();
-  if (!force && fingerprint === lastRealtimeGameStateFingerprint) return false;
+  const stateChanged = fingerprint !== lastRealtimeGameStateFingerprint;
+  if (!force && !stateChanged) return false;
+
+  const nextNarration = narrate ? getRealtimeNarration() : null;
+  if (stateChanged && nextNarration && nextNarration !== lastRealtimeNarration) {
+    interruptObsoleteRealtimeNarration();
+  }
 
   lastRealtimeGameStateFingerprint = fingerprint;
   realtimeGameStateVersion += 1;
@@ -497,7 +521,18 @@ function handleRealtimeEvent(event) {
 
   if (event.type === 'response.done') {
     realtimeResponseActive = false;
+    realtimeNarrationResponseActive = false;
     flushRealtimeResponseQueue();
+    return;
+  }
+
+  if (event.type === 'output_audio_buffer.started') {
+    realtimeOutputAudioPlaying = true;
+    return;
+  }
+
+  if (event.type === 'output_audio_buffer.stopped' || event.type === 'output_audio_buffer.cleared') {
+    realtimeOutputAudioPlaying = false;
     return;
   }
 
@@ -550,6 +585,8 @@ function stopRealtimeConversation() {
   realtimeStateSyncQueued = false;
   lastRealtimeGameStateFingerprint = null;
   realtimeResponseActive = false;
+  realtimeNarrationResponseActive = false;
+  realtimeOutputAudioPlaying = false;
   realtimeUserResponseQueued = null;
   queuedRealtimeNarration = null;
   lastRealtimeNarration = null;
