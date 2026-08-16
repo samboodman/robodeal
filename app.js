@@ -5,6 +5,7 @@ const playerNames = document.querySelector('#player-names');
 const form = document.querySelector('#setup-form');
 const message = document.querySelector('#message');
 const dealerSelect = document.querySelector('#dealer');
+const debugPresetSelect = document.querySelector('#debug-preset');
 const setupScreen = document.querySelector('#setup-screen');
 const voiceCustomizationScreen = document.querySelector('#voice-customization-screen');
 const gameScreen = document.querySelector('#game-screen');
@@ -886,6 +887,72 @@ function makePlayers() {
   });
 }
 
+const debugPresets = {
+  'two-pots': {
+    playerCount: 3,
+    contributions: [25, 50, 50],
+    chips: [0, 87, 88],
+    currentPlayerNumber: 2,
+  },
+  'three-pots': {
+    playerCount: 4,
+    contributions: [25, 50, 75, 75],
+    chips: [0, 0, 87, 88],
+    currentPlayerNumber: 3,
+  },
+};
+
+function selectDebugPreset() {
+  const preset = debugPresets[debugPresetSelect.value];
+  if (!preset) return;
+
+  playerCount.value = preset.playerCount;
+  document.querySelector('#starting-money').value = 100;
+  drawPlayerNames();
+}
+
+function startDebugPreset(presetName) {
+  const preset = debugPresets[presetName];
+  if (!preset) {
+    startHand();
+    return;
+  }
+
+  gameHandNumber = 1;
+  isGameWon = false;
+  roundNumber = 4;
+  potAwardIndex = 0;
+  lastPotWinnerNumber = null;
+  lastTurnState = null;
+  pendingFold = false;
+  openingTurnAnnouncementPending = false;
+  dealPromptKind = null;
+  antePlayerNumber = playerToDealersLeft(gameSettings.dealerNumber);
+  bigBlindPlayerNumber = null;
+
+  Object.values(playersByNumber).forEach((player, index) => {
+    player.chips = preset.chips[index];
+    player.roundBet = preset.contributions[index];
+    player.handContribution = preset.contributions[index];
+    player.hasActedThisRound = false;
+    player.folded = false;
+    player.eliminated = false;
+    player.isDealer = player.number === gameSettings.dealerNumber;
+  });
+
+  highestRoundBet = Math.max(...preset.contributions);
+  recalculatePots();
+  gameSettings.antePlayerNumber = antePlayerNumber;
+  gameSettings.bigBlindPlayerNumber = null;
+  gameSettings.bigBlind = null;
+  dealPrompt.hidden = true;
+  winnerPicker.hidden = true;
+  turnIndicator.hidden = false;
+  actionButtons.hidden = false;
+  logGameEvent(`Debug preset loaded with ${pots.length} pots on the river.`);
+  setCurrentPlayer(preset.currentPlayerNumber);
+}
+
 function playerToDealersLeft(dealerNumber) {
   const playerNumbers = Object.keys(playersByNumber).map(Number);
   const dealerIndex = playerNumbers.indexOf(dealerNumber);
@@ -1394,6 +1461,7 @@ function cardsAreDealt() {
 }
 
 playerCount.addEventListener('change', drawPlayerNames);
+debugPresetSelect.addEventListener('change', selectDebugPreset);
 voiceCustomizationButton.addEventListener('click', () => {
   setupScreen.hidden = true;
   voiceCustomizationScreen.hidden = false;
@@ -1463,7 +1531,7 @@ form.addEventListener('submit', (event) => {
   turnIndicator.hidden = false;
   actionButtons.hidden = false;
   keepScreenAwake();
-  startHand();
+  startDebugPreset(debugPresetSelect.value);
   setVoiceStatus('Connecting AI…');
   startRealtimeConversation().catch((error) => {
     console.error('Realtime voice connection could not start:', error);
