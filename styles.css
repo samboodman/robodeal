@@ -36,10 +36,10 @@ body {
   min-height: min(100svh, 680px);
 }
 .recording-button {
-  position: absolute;
+  position: fixed;
   z-index: 1;
   left: 50%;
-  top: calc(7% + 52px);
+  top: 0;
   width: 154px;
   min-height: 42px;
   margin: 0;
