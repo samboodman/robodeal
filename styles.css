@@ -298,7 +298,8 @@ body {
   display: grid;
   width: 52px;
   height: 52px;
-  place-items: center;
+  place-content: center;
+  justify-items: center;
   border: 3px solid #fffdf6;
   border-radius: 50%;
   background: #b63f29;
@@ -308,6 +309,20 @@ body {
   box-shadow: 0 3px 0 #7c2517;
   cursor: pointer;
   transform: translate(-50%, -50%) rotate(var(--rotation));
+}
+.player-seat-name {
+  display: block;
+  max-width: 44px;
+  overflow: hidden;
+  font-size: 0.62rem;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.player-seat-chips {
+  display: block;
+  font-size: 1.1rem;
+  line-height: 1.05;
 }
 .player-seat.current-player {
   border-color: #ffe18a;

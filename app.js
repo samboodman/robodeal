@@ -808,7 +808,17 @@ function drawPlayerSeats() {
     seat.style.setProperty('--x', `${50 + Math.cos(angle) * 43}%`);
     seat.style.setProperty('--y', `${50 + Math.sin(angle) * 43}%`);
     seat.style.setProperty('--rotation', `${angle - Math.PI / 2}rad`);
-    seat.textContent = player.eliminated ? '' : player.chips;
+    if (!player.eliminated) {
+      const name = document.createElement('span');
+      name.className = 'player-seat-name';
+      name.textContent = player.name;
+
+      const chips = document.createElement('span');
+      chips.className = 'player-seat-chips';
+      chips.textContent = player.chips;
+
+      seat.append(name, chips);
+    }
     seat.setAttribute('aria-label', `${player.name}${player.eliminated ? ', out of the game' : `: ${player.chips} chips`}${player.isDealer ? ', dealer' : ''}${isCurrentPlayer ? ', current turn' : ''}${player.folded ? ', folded' : ''}`);
     seat.setAttribute('role', 'button');
     seat.tabIndex = 0;
