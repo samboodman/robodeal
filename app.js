@@ -801,17 +801,16 @@ function drawPlayerSeats() {
     if (player.eliminated) seat.classList.add('eliminated');
     seat.style.setProperty('--x', `${50 + Math.cos(angle) * 43}%`);
     seat.style.setProperty('--y', `${50 + Math.sin(angle) * 43}%`);
-    seat.style.setProperty('--rotation', `${angle - Math.PI / 2}rad`);
-    if (!player.eliminated) {
-      const name = document.createElement('span');
-      name.className = 'player-seat-name';
-      name.textContent = player.name;
+    const name = document.createElement('span');
+    name.className = 'player-seat-name';
+    name.textContent = player.name;
+    seat.append(name);
 
+    if (!player.eliminated) {
       const chips = document.createElement('span');
       chips.className = 'player-seat-chips';
       chips.textContent = player.chips;
-
-      seat.append(name, chips);
+      seat.append(chips);
     }
     seat.setAttribute('aria-label', `${player.name}${player.eliminated ? ', out of the game' : `: ${player.chips} chips`}${player.isDealer ? ', dealer' : ''}${isCurrentPlayer ? ', current turn' : ''}${player.folded ? ', folded' : ''}`);
     seat.setAttribute('role', 'button');

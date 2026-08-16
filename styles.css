@@ -308,15 +308,21 @@ body {
   font-weight: 800;
   box-shadow: 0 3px 0 #7c2517;
   cursor: pointer;
-  transform: translate(-50%, -50%) rotate(var(--rotation));
+  transform: translate(-50%, -50%);
 }
 .player-seat-name {
   display: block;
-  max-width: 44px;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  max-width: 110px;
   overflow: hidden;
-  font-size: 0.62rem;
-  line-height: 1;
+  color: #fffdf6;
+  font-size: 0.9rem;
+  line-height: 1.1;
+  text-shadow: 0 2px 4px #000;
   text-overflow: ellipsis;
+  transform: translateX(-50%);
   white-space: nowrap;
 }
 .player-seat-chips {
