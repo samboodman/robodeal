@@ -59,6 +59,8 @@ let sidePotEligiblePlayers = [];
 let lastTurnState = null;
 let gameHistory = [];
 let gameHandNumber = 0;
+let dealPromptKind = null;
+let openingTurnAnnouncementPending = false;
 // These are one-second audio files kept only in this browser's memory.
 // The newest minute is useful for a future speech-to-text feature; nothing
 // is saved to the phone's file system.
@@ -196,7 +198,7 @@ function logGameEvent(text) {
 function getGamePhase() {
   if (!gameWinnerScreen.hidden) return 'game over';
   if (gameScreen.hidden) return 'setup';
-  if (!dealPrompt.hidden) return 'waiting for cards to be dealt';
+  if (!dealPrompt.hidden) return dealPromptKind === 'hole-cards' ? 'waiting for hole cards to be dealt' : 'waiting for community cards to be dealt';
   if (!winnerPicker.hidden) return isGameWon ? 'hand complete' : 'choosing a pot winner';
   return 'betting';
 }
@@ -208,6 +210,7 @@ function getRealtimeGameState() {
     stateVersion: realtimeGameStateVersion,
     gamePhase: getGamePhase(),
     dealInstruction: dealPrompt.hidden ? null : dealMessage.textContent,
+    dealPromptKind,
     winnerQuestion: winnerPicker.hidden ? null : winnerQuestion.textContent,
     gameSettings: gameSettings ? { ...gameSettings } : null,
     playersByNumber: Object.fromEntries(Object.entries(playersByNumber).map(([number, player]) => [number, { ...player }])),
@@ -244,10 +247,25 @@ function getRealtimeNarration() {
   const player = playersByNumber[currentPlayerNumber];
   if (!player) return null;
 
+  if (dealPromptKind === 'hole-cards') {
+    const dealer = Object.values(playersByNumber).find((candidate) => candidate.isDealer);
+    const introduction = gameHandNumber === 1 ? `Game is Texas Hold'em. Ante is ${gameSettings.ante}.` : `New hand. Ante is ${gameSettings.ante}.`;
+    return `${introduction} ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK when done.`;
+  }
+
+  if (openingTurnAnnouncementPending) {
+    const smallBlind = playersByNumber[antePlayerNumber];
+    const bigBlind = playersByNumber[bigBlindPlayerNumber];
+    const blindNarration = bigBlind
+      ? `${smallBlind.name}, you're the small blind. ${bigBlind.name}, you're the big blind.`
+      : `${smallBlind.name}, you're the small blind.`;
+    return `${blindNarration} ${player.name}, you're first.`;
+  }
+
   const amountToCall = Math.max(0, highestRoundBet - player.roundBet);
   const minimumBet = Math.min(amountToCall, player.chips);
   const potNarration = sidePotActive ? `Main pot, ${pot}. Side pot, ${sidePot}.` : `Pot, ${pot}.`;
-  return `Action on ${player.name}. Minimum bet, ${minimumBet}. ${potNarration} ${player.chips} chips behind.`;
+  return `${player.name}, it's your turn. Minimum bet, ${minimumBet}. ${potNarration} ${player.chips} chips behind.`;
 }
 
 function isPokerRelatedTranscript(transcript) {
@@ -310,6 +328,7 @@ function queueRealtimeNarration() {
   if (!narration || narration === lastRealtimeNarration) return;
 
   queuedRealtimeNarration = narration;
+  openingTurnAnnouncementPending = false;
   flushRealtimeResponseQueue();
 }
 
@@ -326,7 +345,7 @@ function scheduleRealtimeGameStateSync() {
 function realtimeInstructions() {
   const voiceSettings = gameSettings?.voice || { accent: 'neutral', personality: 'friendly', pace: 'steady' };
   const playerNames = Object.values(playersByNumber).map((player) => player.name).join(', ');
-  return `You are the voice control and dealer for a real-card poker game. This response was created with the newest authoritative, read-only game snapshot: ${JSON.stringify(getRealtimeGameState())}\n\nUse only this snapshot for the current voice turn. Ignore conflicting or older game details elsewhere in the conversation. Never recite, summarize, or list the snapshot or its fields. Say only the specific poker fact needed for the current command or question. Pass this snapshot's exact stateVersion to any action function; never guess or reuse a version from an older turn. The players are: ${playerNames}. Always use each player's name from playersByNumber. Never call a named player "Player 1", "Player 2", or any other number. ${voiceStyleInstructions(voiceSettings)} Only respond to clear poker-related speech: a poker action, a poker question, or an instruction about dealing cards. For all other speech, stay completely silent: do not speak, ask a question, or call a function. This includes casual conversation, background talk, unrelated jokes, and people talking to each other. Speak in exactly one very short poker-dealer phrase only after a successful poker action or a clear poker question. Say only the player, action, and amount when needed: "Sam bets 5." "Aaron calls." "Sam folds." "Deal the flop." Do not add greetings, explanations, commentary, or a second sentence. If a poker action is unclear, ask only one short poker question, such as "Call or raise?", and do not call an action function. Never claim to change the game yourself. To do anything, use only the listed poker action functions. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Clear action commands are immediately confirmed by their action function; call exactly one action function. When the table says the flop, turn, or river has been dealt, call cardsAreDealt.`;
+  return `You are the voice control and dealer for a real-card poker game. This response was created with the newest authoritative, read-only game snapshot: ${JSON.stringify(getRealtimeGameState())}\n\nUse only this snapshot for the current voice turn. Ignore conflicting or older game details elsewhere in the conversation. Never recite, summarize, or list the snapshot or its fields. Say only the specific poker fact needed for the current command or question. Pass this snapshot's exact stateVersion to any action function; never guess or reuse a version from an older turn. The players are: ${playerNames}. Always use each player's name from playersByNumber. Never call a named player "Player 1", "Player 2", or any other number. ${voiceStyleInstructions(voiceSettings)} Only respond to clear poker-related speech: a poker action, a poker question, or an instruction about dealing cards. For all other speech, stay completely silent: do not speak, ask a question, or call a function. This includes casual conversation, background talk, unrelated jokes, and people talking to each other. Speak in exactly one very short poker-dealer phrase only after a successful poker action or a clear poker question. Say only the player, action, and amount when needed: "Sam bets 5." "Aaron calls." "Sam folds." "Deal the flop." Do not add greetings, explanations, commentary, or a second sentence. If a poker action is unclear, ask only one short poker question, such as "Call or raise?", and do not call an action function. Never claim to change the game yourself. To do anything, use only the listed poker action functions. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Clear action commands are immediately confirmed by their action function; call exactly one action function. When the table says the two hole cards, flop, turn, or river have been dealt, call cardsAreDealt.`;
 }
 
 const stateVersionProperty = {
@@ -342,7 +361,7 @@ const realtimeTools = [
   { type: 'function', name: 'callCurrentPlayer', description: 'Immediately call and confirm the current bet for the current player.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
   { type: 'function', name: 'betCurrentPlayer', description: 'Immediately bet and confirm this many additional chips for the current player.', parameters: { type: 'object', properties: { ...stateVersionProperty, amount: { type: 'number', description: 'Additional chips to bet now.' } }, required: ['stateVersion', 'amount'], additionalProperties: false } },
   { type: 'function', name: 'goAllIn', description: 'Immediately bet every remaining chip and confirm for the current player.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
-  { type: 'function', name: 'cardsAreDealt', description: 'Continue after the physical cards for the flop, turn, or river have been dealt. This does the same thing as pressing the OK button in the deal prompt.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
+  { type: 'function', name: 'cardsAreDealt', description: 'Continue after the physical hole cards, flop, turn, or river have been dealt. This does the same thing as pressing the OK button in the deal prompt.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
 ];
 
 function sendRealtimeEvent(event) {
@@ -956,12 +975,14 @@ function startNextRound() {
   logGameEvent(`Betting round finished. Deal ${nextCard}.`);
   turnIndicator.hidden = true;
   actionButtons.hidden = true;
+  dealPromptKind = 'community-cards';
   dealMessage.textContent = `Deal ${nextCard}. Press OK to continue.`;
   dealPrompt.hidden = false;
   speak(`Deal ${nextCard}. Press OK to continue.`);
 }
 
 function beginNextRound() {
+  dealPromptKind = null;
   dealPrompt.hidden = true;
   turnIndicator.hidden = false;
   actionButtons.hidden = false;
@@ -1114,6 +1135,7 @@ function startHand() {
   pendingFold = false;
   lastTurnState = null;
   bigBlindPlayerNumber = null;
+  openingTurnAnnouncementPending = false;
 
   Object.values(playersByNumber).forEach((player) => {
     player.folded = player.eliminated;
@@ -1137,8 +1159,17 @@ function startHand() {
 
   startSidePotIfNeeded();
 
+  turnIndicator.hidden = true;
+  actionButtons.hidden = true;
+  dealPromptKind = 'hole-cards';
+  const dealer = playersByNumber[gameSettings.dealerNumber];
+  const introduction = gameHandNumber === 1 ? `Game is Texas Hold'em. Ante is ${gameSettings.ante}.` : `New hand. Ante is ${gameSettings.ante}.`;
+  dealMessage.textContent = `${introduction} ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK when done.`;
+  dealPrompt.hidden = false;
   setCurrentPlayer(bigBlindPlayerNumber ?? antePlayerNumber);
   nextPlayer();
+  logGameEvent('Waiting for the dealer to deal two cards face down to each player.');
+  if (!(gameHandNumber === 1 && gameSettings.startAiAutomatically)) speak(dealMessage.textContent);
 }
 
 function startNewHand() {
@@ -1248,6 +1279,17 @@ function confirm() {
 function cardsAreDealt() {
   if (dealPrompt.hidden) return false;
 
+  if (dealPromptKind === 'hole-cards') {
+    dealPromptKind = null;
+    dealPrompt.hidden = true;
+    turnIndicator.hidden = false;
+    actionButtons.hidden = false;
+    openingTurnAnnouncementPending = true;
+    logGameEvent('Two cards were dealt face down to each player. Preflop betting started.');
+    drawPlayerSeats();
+    return true;
+  }
+
   beginNextRound();
   return true;
 }
@@ -1286,7 +1328,7 @@ foldButton.addEventListener('click', () => {
 });
 confirmButton.addEventListener('click', confirm);
 undoButton.addEventListener('click', undoLastTurn);
-dealOkButton.addEventListener('click', beginNextRound);
+dealOkButton.addEventListener('click', cardsAreDealt);
 recordingButton.addEventListener('click', () => {
   const isRecording = recordingButton.getAttribute('aria-pressed') === 'true';
   if (isRecording) {
