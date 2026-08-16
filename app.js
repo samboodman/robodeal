@@ -296,10 +296,11 @@ function drawPotLayers(layerCount, animateNewLayer = false) {
   potValue.textContent = animateNewLayer ? 0 : activeLayer.amount;
   potValue.setAttribute('aria-label', `${potLayerName(activeLayerIndex)}: ${activeLayer.amount}`);
   if (animateNewLayer) {
+    potValue.classList.remove('pot-value-entering');
+    void potValue.offsetWidth;
     potValue.classList.add('pot-value-entering');
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => potValue.classList.remove('pot-value-entering'));
-    });
+  } else {
+    potValue.classList.remove('pot-value-entering');
   }
 }
 

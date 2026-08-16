@@ -205,7 +205,6 @@ body {
   font-size: clamp(3.2rem, 14vw, 6rem);
   font-weight: 850;
   line-height: 1;
-  transition: opacity 260ms ease, transform 420ms ease;
 }
 .side-pot-value {
   position: absolute;
@@ -237,13 +236,25 @@ body {
   transform: translate(50%, -50%) scale(3.2);
 }
 .pot-value.pot-value-entering {
-  opacity: 0;
-  transform: scale(0.72);
+  animation: pot-value-fade-in 580ms ease both;
+}
+@keyframes pot-value-fade-in {
+  0%,
+  30% {
+    opacity: 0;
+    transform: scale(0.68);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .pot-value,
   .side-pot-value span {
     transition-duration: 1ms;
+  }
+  .pot-value.pot-value-entering {
+    animation-duration: 1ms;
   }
 }
 .action-buttons {
