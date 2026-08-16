@@ -270,12 +270,25 @@ function getRealtimeNarration() {
   return `${player.name}, it's your turn. Minimum bet, ${minimumBet}. ${potNarration} ${player.chips} chips behind.`;
 }
 
-function isPokerRelatedTranscript(transcript) {
+function isDirectlyAddressingDealer(transcript) {
+  const normalizedTranscript = transcript.toLowerCase().trim();
+  if (/\bopen[\s-]*ai\b/.test(normalizedTranscript)) return false;
+
+  const dealerName = '(?:robo[\\s-]*deal(?:er)?|robot|bot|ai)';
+  const greeting = '(?:hey|hi|hello|okay|ok|yo|please|excuse\\s+me|um|uh)';
+  const questionOrRequest = '(?:can|could|would|will|do|did|are|is|am|what|when|where|who|why|how|tell|say|help|listen|hear)';
+  const addressedFirst = new RegExp(`^(?:${greeting}[\\s,!:.-]+)?${dealerName}[\\s,!:.-]+${questionOrRequest}\\b`);
+  const addressedLast = new RegExp(`\\b${questionOrRequest}\\b[\\s\\S]*[,\\s]+${dealerName}[?!.]*$`);
+  const greetingOnly = new RegExp(`^(?:${greeting}[\\s,!:.-]+)?${dealerName}[?!.]*$`);
+  return addressedFirst.test(normalizedTranscript) || addressedLast.test(normalizedTranscript) || greetingOnly.test(normalizedTranscript);
+}
+
+function shouldRespondToTranscript(transcript) {
   const normalizedTranscript = transcript.toLowerCase();
   const mentionsPlayer = Object.values(playersByNumber).some((player) =>
     normalizedTranscript.includes(player.name.toLowerCase()));
   const mentionsPoker = /\b(poker|turn|pot|chips?|money|bet|wager|fold|check|call|raise|all[ -]?in|deal|dealt|cards?|flop|river|ante|dealer|winner|showdown|undo)\b/.test(normalizedTranscript);
-  return mentionsPlayer || mentionsPoker;
+  return mentionsPlayer || mentionsPoker || isDirectlyAddressingDealer(transcript);
 }
 
 function flushRealtimeResponseQueue() {
@@ -347,7 +360,13 @@ function scheduleRealtimeGameStateSync() {
 function realtimeInstructions() {
   const voiceSettings = gameSettings?.voice || { accent: 'neutral', personality: 'friendly', pace: 'steady' };
   const playerNames = Object.values(playersByNumber).map((player) => player.name).join(', ');
-  return `You are the voice control and dealer for a real-card poker game. This response was created with the newest authoritative, read-only game snapshot: ${JSON.stringify(getRealtimeGameState())}\n\nUse only this snapshot for the current voice turn. Ignore conflicting or older game details elsewhere in the conversation. Never recite, summarize, or list the snapshot or its fields. Say only the specific poker fact needed for the current command or question. Pass this snapshot's exact stateVersion to any action function; never guess or reuse a version from an older turn. The players are: ${playerNames}. Always use each player's name from playersByNumber. Never call a named player "Player 1", "Player 2", or any other number. ${voiceStyleInstructions(voiceSettings)} Only respond to clear poker-related speech: a poker action, a poker question, or an instruction about dealing cards. For all other speech, stay completely silent: do not speak, ask a question, or call a function. This includes casual conversation, background talk, unrelated jokes, and people talking to each other. Speak in exactly one very short poker-dealer phrase only after a successful poker action or a clear poker question. Say only the player, action, and amount when needed: "Sam bets 5." "Aaron calls." "Sam folds." "Deal the flop." Do not add greetings, explanations, commentary, or a second sentence. If a poker action is unclear, ask only one short poker question, such as "Call or raise?", and do not call an action function. Never claim to change the game yourself. To do anything, use only the listed poker action functions. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Clear action commands are immediately confirmed by their action function; call exactly one action function. When the table says the two hole cards, flop, turn, or river have been dealt, call cardsAreDealt.`;
+  return `You are the voice control and dealer for a real-card poker game. This response was created with the newest authoritative, read-only game snapshot: ${JSON.stringify(getRealtimeGameState())}
+
+Use only this snapshot for poker facts and actions in the current voice turn. Ignore conflicting or older game details elsewhere in the conversation. Never recite, summarize, or list the snapshot or its fields. Say only the short answer needed for the current poker request or direct question. Pass this snapshot's exact stateVersion to any action function; never guess or reuse a version from an older turn. The players are: ${playerNames}. Always use each player's name from playersByNumber. Never call a named player "Player 1", "Player 2", or any other number. ${voiceStyleInstructions(voiceSettings)}
+
+Respond to clear poker-related speech: a poker action, a poker question, or an instruction about dealing cards. Also respond when a question or request is clearly addressed directly to you as AI, Bot, Robot, RoboDeal, or RoboDealer, even when it is not about poker. Examples of direct address include "Can you hear me, AI?" and "Bot, can you help?" Merely mentioning those words in conversation is not direct address. In particular, do not respond just because people mention OpenAI while talking to each other.
+
+For all other speech, stay completely silent: do not speak, ask a question, or call a function. This includes casual conversation, background talk, unrelated jokes, and people talking to each other. Speak in exactly one very short dealer phrase after a successful poker action, clear poker question, or directly addressed question. For a direct non-poker question, answer in one short sentence and do not call a poker function. Say only the player, action, and amount when needed: "Sam bets 5." "Aaron calls." "Sam folds." "Deal the flop." Do not add greetings, explanations, commentary, or a second sentence. If a poker action is unclear, ask only one short poker question, such as "Call or raise?", and do not call an action function. Never claim to change the game yourself. To do anything in the game, use only the listed poker action functions. Use check only when it is legal. A raise amount is the number of additional chips to bet now. Clear action commands are immediately confirmed by their action function; call exactly one action function. When the table says the two hole cards, flop, turn, or river have been dealt, call cardsAreDealt.`;
 }
 
 const stateVersionProperty = {
@@ -458,7 +477,7 @@ function handleRealtimeEvent(event) {
 
   if (event.type === 'conversation.item.input_audio_transcription.completed') {
     setVoiceTranscript(`Heard: “${event.transcript}”`);
-    if (!isPokerRelatedTranscript(event.transcript)) {
+    if (!shouldRespondToTranscript(event.transcript)) {
       setVoiceTranscript(`Ignored unrelated speech: “${event.transcript}”`);
       return;
     }
