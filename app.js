@@ -1,3 +1,5 @@
+import { calculatePots, hasBettingRoundFinished } from './pot-logic.js';
+
 const playerCount = document.querySelector('#player-count');
 const playerNames = document.querySelector('#player-names');
 const form = document.querySelector('#setup-form');
@@ -47,15 +49,14 @@ let playersByNumber = {};
 let currentPlayerNumber = 1;
 let antePlayerNumber = null;
 let bigBlindPlayerNumber = null;
-let pot = 0;
 let highestRoundBet = 0;
 let pendingBet = 0;
 let pendingFold = false;
 let isGameWon = false;
 let roundNumber = 1;
-let sidePot = 0;
-let sidePotActive = false;
-let sidePotEligiblePlayers = [];
+let pots = [];
+let potAwardIndex = 0;
+let lastPotWinnerNumber = null;
 let lastTurnState = null;
 let gameHistory = [];
 let gameHandNumber = 0;
@@ -207,6 +208,36 @@ function getGamePhase() {
   return 'betting';
 }
 
+function copyPots() {
+  return pots.map((potLayer) => ({
+    ...potLayer,
+    eligiblePlayerNumbers: [...potLayer.eligiblePlayerNumbers],
+  }));
+}
+
+function mainPotAmount() {
+  return pots[0]?.amount || 0;
+}
+
+function sidePots() {
+  return pots.slice(1);
+}
+
+function totalPotAmount() {
+  return pots.reduce((total, potLayer) => total + potLayer.amount, 0);
+}
+
+function syncPotsToGameSettings() {
+  if (!gameSettings) return;
+  gameSettings.pot = mainPotAmount();
+  gameSettings.pots = copyPots();
+}
+
+function recalculatePots() {
+  pots = calculatePots(Object.values(playersByNumber));
+  syncPotsToGameSettings();
+}
+
 function getRealtimeGameState() {
   // This makes a plain copy. The AI can read this copy, but cannot change the
   // real game variables. Only the approved functions below can affect a turn.
@@ -221,15 +252,13 @@ function getRealtimeGameState() {
     currentPlayerNumber,
     antePlayerNumber,
     bigBlindPlayerNumber,
-    pot,
+    pot: totalPotAmount(),
+    pots: copyPots(),
     highestRoundBet,
     pendingBet,
     pendingFold,
     isGameWon,
     roundNumber,
-    sidePot,
-    sidePotActive,
-    sidePotEligiblePlayers: [...sidePotEligiblePlayers],
     lastTurnState: lastTurnState ? JSON.parse(JSON.stringify(lastTurnState)) : null,
     gameHistory: [...gameHistory],
     recentAudioFileCount: recentAudioFiles.length,
@@ -268,7 +297,10 @@ function getRealtimeNarration() {
 
   const amountToCall = Math.max(0, highestRoundBet - player.roundBet);
   const minimumBet = Math.min(amountToCall, player.chips);
-  const potNarration = sidePotActive ? `Main pot, ${pot}. Side pot, ${sidePot}.` : `Pot, ${pot}.`;
+  const currentSidePots = sidePots();
+  const potNarration = currentSidePots.length > 0
+    ? `Main pot, ${mainPotAmount()}. ${currentSidePots.map((potLayer, index) => `Side pot ${index + 1}, ${potLayer.amount}.`).join(' ')}`
+    : `Pot, ${mainPotAmount()}.`;
   return `${player.name}, it's your turn. Minimum bet, ${minimumBet}. ${potNarration} ${player.chips} chips behind.`;
 }
 
@@ -846,6 +878,7 @@ function makePlayers() {
       chips: Number(document.querySelector('#starting-money').value),
       isDealer: number === Number(dealerSelect.value),
       roundBet: 0,
+      handContribution: 0,
       hasActedThisRound: false,
       folded: false,
       eliminated: false,
@@ -912,12 +945,19 @@ function drawPlayerSeats() {
   const activeIndex = players.findIndex((player) => player.number === currentPlayerNumber);
   const activeAngle = (activeIndex / players.length) * Math.PI * 2 + Math.PI / 2;
   turnIndicator.style.setProperty('--rotation', `${activeAngle - Math.PI / 2}rad`);
-  potValue.textContent = pot;
-  sidePotValue.textContent = sidePot;
-  sidePotValue.hidden = !sidePotActive;
-  potDisplay.classList.toggle('side-pot-active', sidePotActive);
+  const currentSidePots = sidePots();
+  potValue.textContent = mainPotAmount();
+  potValue.setAttribute('aria-label', currentSidePots.length > 0 ? `Main pot: ${mainPotAmount()}` : `Pot: ${mainPotAmount()}`);
+  sidePotValue.replaceChildren(...currentSidePots.map((potLayer, index) => {
+    const amount = document.createElement('span');
+    amount.textContent = `S${index + 1} ${potLayer.amount}`;
+    return amount;
+  }));
+  sidePotValue.setAttribute('aria-label', `Side pots: ${currentSidePots.map((potLayer) => potLayer.amount).join(', ')}`);
+  sidePotValue.hidden = currentSidePots.length === 0;
+  potDisplay.classList.toggle('side-pot-active', currentSidePots.length > 0);
   roundLabel.textContent = ['Preflop', 'Flop', 'Turn', 'River'][roundNumber - 1];
-  turnIndicator.setAttribute('aria-label', `Your bet: ${pendingBet}. Pot: ${pot}`);
+  turnIndicator.setAttribute('aria-label', `Your bet: ${pendingBet}. Total pot: ${totalPotAmount()}`);
   updateBetControls();
   updateRealtimeGameState();
 }
@@ -972,14 +1012,11 @@ function updateBetControls() {
 function captureTurnState() {
   return {
     currentPlayerNumber,
-    pot,
-    sidePot,
-    sidePotActive,
-    sidePotEligiblePlayers: [...sidePotEligiblePlayers],
     highestRoundBet,
     players: Object.fromEntries(Object.values(playersByNumber).map((player) => [player.number, {
       chips: player.chips,
       roundBet: player.roundBet,
+      handContribution: player.handContribution,
       hasActedThisRound: player.hasActedThisRound,
       folded: player.folded,
     }])),
@@ -999,29 +1036,18 @@ function undoLastTurn() {
     Object.assign(playersByNumber[number], playerState);
   });
   currentPlayerNumber = lastTurnState.currentPlayerNumber;
-  pot = lastTurnState.pot;
-  sidePot = lastTurnState.sidePot;
-  sidePotActive = lastTurnState.sidePotActive;
-  sidePotEligiblePlayers = [...lastTurnState.sidePotEligiblePlayers];
+  recalculatePots();
   highestRoundBet = lastTurnState.highestRoundBet;
   pendingBet = Math.max(0, highestRoundBet - playersByNumber[currentPlayerNumber].roundBet);
   pendingFold = false;
   gameSettings.currentPlayerNumber = currentPlayerNumber;
-  gameSettings.pot = pot;
-  gameSettings.sidePot = sidePot;
-  gameSettings.sidePotEligiblePlayers = sidePotEligiblePlayers;
   lastTurnState = null;
   speak('Last turn undone.');
   drawPlayerSeats();
 }
 
 function allActivePlayersHaveMatchedBet() {
-  const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded && !player.eliminated && player.chips > 0);
-
-  if (activePlayers.length === 1) return activePlayers[0].hasActedThisRound;
-
-  return activePlayers.length > 1
-    && activePlayers.every((player) => player.hasActedThisRound && player.roundBet === highestRoundBet);
+  return hasBettingRoundFinished(Object.values(playersByNumber), highestRoundBet);
 }
 
 function startNextRound() {
@@ -1056,14 +1082,24 @@ function beginNextRound() {
   const firstPlayer = playersByNumber[antePlayerNumber].folded || playersByNumber[antePlayerNumber].chips === 0
     ? nextActivePlayerFrom(antePlayerNumber)
     : antePlayerNumber;
-  if (firstPlayer !== null) setCurrentPlayer(firstPlayer);
+  if (firstPlayer === null) {
+    startNextRound();
+  } else {
+    setCurrentPlayer(firstPlayer);
+  }
 }
 
 function showWinnerPicker() {
   const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded && !player.eliminated);
   speak('Showdown. Choose the player with the best cards.');
   logGameEvent('Showdown: choose the player with the best cards.');
-  showPotWinnerPicker('Who had the best cards?', activePlayers, awardMainPot);
+  potAwardIndex = 0;
+  lastPotWinnerNumber = null;
+  if (pots.length === 0) {
+    showPotWinnerPicker('Who had the best cards?', activePlayers, (winnerNumber) => finishHand(playersByNumber[winnerNumber]));
+    return;
+  }
+  awardNextPot();
 }
 
 function showPotWinnerPicker(question, players, awardFunction) {
@@ -1083,32 +1119,57 @@ function showPotWinnerPicker(question, players, awardFunction) {
   winnerPicker.hidden = false;
 }
 
-function awardMainPot(winnerNumber) {
-  const winner = playersByNumber[winnerNumber];
-  winner.chips += pot;
-  pot = 0;
-  gameSettings.pot = pot;
+function eligiblePlayersForPot(potLayer) {
+  return potLayer.eligiblePlayerNumbers
+    .map((number) => playersByNumber[number])
+    .filter((player) => player && !player.folded && !player.eliminated);
+}
 
-  if (sidePotActive && sidePot > 0) {
-    const sidePotPlayers = Object.values(playersByNumber).filter((player) =>
-      !player.folded && !player.eliminated && sidePotEligiblePlayers.includes(player.number));
-    if (sidePotPlayers.length <= 1) {
-      awardSidePot(sidePotPlayers[0]?.number || winnerNumber);
-    } else {
-      showPotWinnerPicker('Who wins the side pot?', sidePotPlayers, awardSidePot);
-    }
-    drawPlayerSeats();
+function awardPot(potIndex, winnerNumber) {
+  const potLayer = pots[potIndex];
+  const winner = playersByNumber[winnerNumber];
+  if (!potLayer || potLayer.amount <= 0 || !winner || !potLayer.eligiblePlayerNumbers.includes(winnerNumber)) return;
+
+  winner.chips += potLayer.amount;
+  potLayer.amount = 0;
+  lastPotWinnerNumber = winnerNumber;
+  potAwardIndex = potIndex + 1;
+  syncPotsToGameSettings();
+  drawPlayerSeats();
+  awardNextPot();
+}
+
+function awardNextPot() {
+  while (potAwardIndex < pots.length && pots[potAwardIndex].amount <= 0) potAwardIndex += 1;
+
+  if (potAwardIndex >= pots.length) {
+    const fallbackWinner = Object.values(playersByNumber).find((player) => !player.folded && !player.eliminated);
+    finishHand(playersByNumber[lastPotWinnerNumber] || fallbackWinner);
     return;
   }
 
-  finishHand(winner);
+  const potLayer = pots[potAwardIndex];
+  const eligiblePlayers = eligiblePlayersForPot(potLayer);
+  if (eligiblePlayers.length <= 1) {
+    const fallbackWinner = Object.values(playersByNumber).find((player) => !player.folded && !player.eliminated);
+    awardPot(potAwardIndex, eligiblePlayers[0]?.number || fallbackWinner?.number);
+    return;
+  }
+
+  const question = potAwardIndex === 0
+    ? 'Who had the best cards?'
+    : `Who wins side pot ${potAwardIndex}?`;
+  showPotWinnerPicker(question, eligiblePlayers, (winnerNumber) => awardPot(potAwardIndex, winnerNumber));
 }
 
-function awardSidePot(winnerNumber) {
+function awardAllPotsTo(winnerNumber) {
   const winner = playersByNumber[winnerNumber];
-  winner.chips += sidePot;
-  sidePot = 0;
-  gameSettings.sidePot = sidePot;
+  winner.chips += totalPotAmount();
+  pots.forEach((potLayer) => {
+    potLayer.amount = 0;
+  });
+  lastPotWinnerNumber = winnerNumber;
+  syncPotsToGameSettings();
   finishHand(winner);
 }
 
@@ -1148,38 +1209,16 @@ function showGameWinner(winner) {
   speak(`Player ${winner.name} wins the game!`);
 }
 
-function addToPot(chips) {
-  if (sidePotActive) {
-    sidePot += chips;
-  } else {
-    pot += chips;
-  }
-  gameSettings.pot = pot;
-  gameSettings.sidePot = sidePot;
-}
-
-function startSidePotIfNeeded() {
-  if (sidePotActive) return;
-
-  const allInPlayers = Object.values(playersByNumber).filter((player) => !player.folded && !player.eliminated && player.chips === 0);
-  const playersWithChips = Object.values(playersByNumber).filter((player) => !player.folded && !player.eliminated && player.chips > 0);
-
-  if (allInPlayers.length > 0 && playersWithChips.length >= 2) {
-    sidePotActive = true;
-    sidePotEligiblePlayers = playersWithChips.map((player) => player.number);
-    gameSettings.sidePotEligiblePlayers = sidePotEligiblePlayers;
-  }
-}
-
 function postBlind(playerNumber, requestedAmount, blindName) {
   const player = playersByNumber[playerNumber];
   const amount = Math.min(requestedAmount, player.chips);
 
   player.chips -= amount;
   player.roundBet += amount;
+  player.handContribution += amount;
   player.hasActedThisRound = true;
   highestRoundBet = Math.max(highestRoundBet, player.roundBet);
-  addToPot(amount);
+  recalculatePots();
   logGameEvent(`${player.name} posts the ${blindName} ${amount}.`);
 }
 
@@ -1187,10 +1226,9 @@ function startHand() {
   gameHandNumber += 1;
   isGameWon = false;
   roundNumber = 1;
-  pot = 0;
-  sidePot = 0;
-  sidePotActive = false;
-  sidePotEligiblePlayers = [];
+  pots = [];
+  potAwardIndex = 0;
+  lastPotWinnerNumber = null;
   highestRoundBet = 0;
   pendingBet = 0;
   pendingFold = false;
@@ -1201,6 +1239,7 @@ function startHand() {
   Object.values(playersByNumber).forEach((player) => {
     player.folded = player.eliminated;
     player.roundBet = 0;
+    player.handContribution = 0;
     player.hasActedThisRound = false;
     player.isDealer = player.number === gameSettings.dealerNumber;
   });
@@ -1217,8 +1256,6 @@ function startHand() {
   if (bigBlindPlayerNumber !== null) {
     postBlind(bigBlindPlayerNumber, gameSettings.bigBlind, 'big blind');
   }
-
-  startSidePotIfNeeded();
 
   turnIndicator.hidden = true;
   actionButtons.hidden = true;
@@ -1252,7 +1289,7 @@ function finishTurn() {
 
   if (activePlayers.length === 1) {
     lastTurnState = null;
-    awardMainPot(activePlayers[0].number);
+    awardAllPotsTo(activePlayers[0].number);
   } else if (allActivePlayersHaveMatchedBet()) {
     lastTurnState = null;
     startNextRound();
@@ -1267,16 +1304,17 @@ function confirmTurn() {
 
   if (pendingFold) {
     player.folded = true;
+    recalculatePots();
     logGameEvent(`${player.name} folds.`);
     speak(`${player.name} folds.`);
   } else {
     const additionalChips = pendingBet;
     player.chips -= additionalChips;
     player.roundBet += additionalChips;
+    player.handContribution += additionalChips;
     player.hasActedThisRound = true;
     highestRoundBet = Math.max(highestRoundBet, player.roundBet);
-    addToPot(additionalChips);
-    startSidePotIfNeeded();
+    recalculatePots();
     logGameEvent(additionalChips === 0 ? `${player.name} checks.` : `${player.name} bets ${additionalChips}.`);
     speak(additionalChips === 0 ? `${player.name} checks.` : `${player.name} bets ${additionalChips}.`);
   }

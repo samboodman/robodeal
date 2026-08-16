@@ -220,6 +220,15 @@ body {
 .side-pot-value {
   background: #101010;
   color: #fffdf6;
+  align-content: center;
+  grid-auto-flow: row;
+  grid-auto-rows: minmax(0, auto);
+  line-height: 1.05;
+  overflow: hidden;
+  padding: 6px;
+}
+.side-pot-value span {
+  font-size: clamp(1rem, 4.5vw, 2rem);
 }
 .action-buttons {
   display: grid;

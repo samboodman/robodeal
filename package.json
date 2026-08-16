@@ -1,10 +1,11 @@
 {
   "name": "robo",
   "version": "1.0.0",
+  "type": "module",
   "description": "RoboDeal is a simple phone-friendly web app for playing poker with real cards while the phone sits in the middle of the table. It keeps track of players, chip amounts, turns, betting, pots, and hand results so players do not need to bring physical poker chips.",
   "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test",
     "dev": "vite",
     "start": "vite",
     "build": "vite build"
