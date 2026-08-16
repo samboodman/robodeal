@@ -20,7 +20,6 @@ const foldButton = document.querySelector('#fold-button');
 const confirmButton = document.querySelector('#confirm-button');
 const undoButton = document.querySelector('#undo-button');
 const potValue = document.querySelector('#pot-value');
-const potDisplay = document.querySelector('#pot-display');
 const sidePotValue = document.querySelector('#side-pot-value');
 const roundLabel = document.querySelector('#round-label');
 const actionButtons = document.querySelector('.action-buttons');
@@ -56,6 +55,8 @@ let pendingFold = false;
 let isGameWon = false;
 let roundNumber = 1;
 let pots = [];
+let renderedPotLayerCount = 0;
+let potAnimationTimer = null;
 let potAwardIndex = 0;
 let lastPotWinnerNumber = null;
 let lastTurnState = null;
@@ -237,6 +238,108 @@ function syncPotsToGameSettings() {
 function recalculatePots() {
   pots = calculatePots(Object.values(playersByNumber));
   syncPotsToGameSettings();
+}
+
+function potLayerName(index) {
+  return index === 0 ? 'Main pot' : `Side pot ${index}`;
+}
+
+function drawPotLayers(layerCount, animateNewLayer = false) {
+  const visibleLayers = pots.slice(0, layerCount);
+  const activeLayerIndex = visibleLayers.length - 1;
+  const archivedLayerIndexes = visibleLayers
+    .slice(0, -1)
+    .map((_, index) => index)
+    .reverse();
+  const existingArchivedLayers = new Map(
+    [...sidePotValue.children].map((element) => [Number(element.dataset.layerIndex), element]),
+  );
+
+  archivedLayerIndexes.forEach((layerIndex, stackIndex) => {
+    let amount = existingArchivedLayers.get(layerIndex);
+    const isNewArchivedLayer = !amount;
+    if (!amount) {
+      amount = document.createElement('span');
+      amount.dataset.layerIndex = layerIndex;
+      sidePotValue.append(amount);
+    }
+
+    amount.textContent = visibleLayers[layerIndex].amount;
+    amount.setAttribute('aria-label', `${potLayerName(layerIndex)}: ${visibleLayers[layerIndex].amount}`);
+    amount.style.setProperty('--stack-index', stackIndex);
+    existingArchivedLayers.delete(layerIndex);
+
+    if (animateNewLayer && isNewArchivedLayer && layerIndex === activeLayerIndex - 1) {
+      amount.classList.add('pot-layer-archiving');
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => amount.classList.remove('pot-layer-archiving'));
+      });
+    }
+  });
+
+  existingArchivedLayers.forEach((element) => element.remove());
+  sidePotValue.hidden = archivedLayerIndexes.length === 0;
+  sidePotValue.setAttribute(
+    'aria-label',
+    archivedLayerIndexes.length === 0
+      ? 'No completed pots'
+      : `Completed pots: ${archivedLayerIndexes.map((index) => `${potLayerName(index)}, ${visibleLayers[index].amount}`).join('. ')}`,
+  );
+
+  const activeLayer = visibleLayers[activeLayerIndex];
+  if (!activeLayer) {
+    potValue.textContent = 0;
+    potValue.setAttribute('aria-label', 'Pot: 0');
+    return;
+  }
+
+  potValue.textContent = animateNewLayer ? 0 : activeLayer.amount;
+  potValue.setAttribute('aria-label', `${potLayerName(activeLayerIndex)}: ${activeLayer.amount}`);
+  if (animateNewLayer) {
+    potValue.classList.add('pot-value-entering');
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => potValue.classList.remove('pot-value-entering'));
+    });
+  }
+}
+
+function continuePotLayerAnimation() {
+  potAnimationTimer = null;
+  if (pots.length <= renderedPotLayerCount) {
+    drawPotLayers(renderedPotLayerCount);
+    return;
+  }
+
+  renderedPotLayerCount += 1;
+  drawPotLayers(renderedPotLayerCount, true);
+  potAnimationTimer = setTimeout(() => {
+    potAnimationTimer = null;
+    drawPotLayers(renderedPotLayerCount);
+    updatePotDisplay();
+  }, 600);
+}
+
+function updatePotDisplay() {
+  const targetLayerCount = pots.length;
+
+  if (targetLayerCount < renderedPotLayerCount || targetLayerCount === 0) {
+    clearTimeout(potAnimationTimer);
+    potAnimationTimer = null;
+    renderedPotLayerCount = targetLayerCount;
+    drawPotLayers(renderedPotLayerCount);
+    return;
+  }
+
+  if (renderedPotLayerCount === 0) {
+    renderedPotLayerCount = 1;
+    drawPotLayers(renderedPotLayerCount);
+  }
+
+  if (targetLayerCount > renderedPotLayerCount && potAnimationTimer === null) {
+    potAnimationTimer = setTimeout(continuePotLayerAnimation, 120);
+  } else if (targetLayerCount === renderedPotLayerCount && potAnimationTimer === null) {
+    drawPotLayers(renderedPotLayerCount);
+  }
 }
 
 function getRealtimeGameState() {
@@ -1063,17 +1166,7 @@ function drawPlayerSeats() {
   const activeIndex = players.findIndex((player) => player.number === currentPlayerNumber);
   const activeAngle = (activeIndex / players.length) * Math.PI * 2 + Math.PI / 2;
   turnIndicator.style.setProperty('--rotation', `${activeAngle - Math.PI / 2}rad`);
-  const currentSidePots = sidePots();
-  potValue.textContent = mainPotAmount();
-  potValue.setAttribute('aria-label', currentSidePots.length > 0 ? `Main pot: ${mainPotAmount()}` : `Pot: ${mainPotAmount()}`);
-  sidePotValue.replaceChildren(...currentSidePots.map((potLayer, index) => {
-    const amount = document.createElement('span');
-    amount.textContent = `S${index + 1} ${potLayer.amount}`;
-    return amount;
-  }));
-  sidePotValue.setAttribute('aria-label', `Side pots: ${currentSidePots.map((potLayer) => potLayer.amount).join(', ')}`);
-  sidePotValue.hidden = currentSidePots.length === 0;
-  potDisplay.classList.toggle('side-pot-active', currentSidePots.length > 0);
+  updatePotDisplay();
   roundLabel.textContent = ['Preflop', 'Flop', 'Turn', 'River'][roundNumber - 1];
   turnIndicator.setAttribute('aria-label', `Your bet: ${pendingBet}. Total pot: ${totalPotAmount()}`);
   updateBetControls();
