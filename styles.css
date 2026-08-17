@@ -553,6 +553,11 @@ button:active {
 .chip-denominations-back {
   margin-top: auto;
 }
+.chip-display-mode {
+  margin-top: 28px;
+  background: #2875c7;
+  box-shadow: 0 4px 0 #174f91;
+}
 .voice-transcript-setting {
   display: flex;
   align-items: center;

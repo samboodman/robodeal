@@ -40,6 +40,7 @@ const voiceCustomizationButton = document.querySelector('#voice-customization-bu
 const voiceCustomizationBack = document.querySelector('#voice-customization-back');
 const chipDenominationsButton = document.querySelector('#chip-denominations-button');
 const chipDenominationsBack = document.querySelector('#chip-denominations-back');
+const chipDisplayModeButton = document.querySelector('#chip-display-mode');
 const voiceChoice = document.querySelector('#voice-choice');
 const voiceAccent = document.querySelector('#voice-accent');
 const voicePersonality = document.querySelector('#voice-personality');
@@ -68,6 +69,7 @@ let gameHistory = [];
 let gameHandNumber = 0;
 let dealPromptKind = null;
 let openingTurnAnnouncementPending = false;
+let chipDisplayMode = 'value';
 // These are one-second audio files kept only in this browser's memory.
 // The newest minute is useful for a future speech-to-text feature; nothing
 // is saved to the phone's file system.
@@ -107,6 +109,12 @@ function selectedVoiceSettings() {
   };
 }
 
+function updateChipDisplayModeButton() {
+  const showsChipPile = chipDisplayMode === 'pile';
+  chipDisplayModeButton.textContent = `Money display: ${showsChipPile ? 'Pile of chips' : 'Value'}`;
+  chipDisplayModeButton.setAttribute('aria-pressed', String(showsChipPile));
+}
+
 function getLastGameSettings() {
   try {
     const savedGame = JSON.parse(localStorage.getItem(lastGameSettingsKey));
@@ -135,6 +143,8 @@ function restoreLastGameSettings() {
   dealerSelect.value = String(settings.dealerNumber);
   startMicrophoneAutomaticallyCheckbox.checked = (settings.startMicrophoneAutomatically ?? settings.startAiAutomatically) !== false;
   showVoiceTranscriptCheckbox.checked = Boolean(savedGame.showVoiceTranscript);
+  chipDisplayMode = settings.chipDisplayMode === 'pile' ? 'pile' : 'value';
+  updateChipDisplayModeButton();
 
   if (settings.voice) {
     if ([...voiceChoice.options].some((option) => option.value === settings.voice.name)) voiceChoice.value = settings.voice.name;
@@ -1770,6 +1780,10 @@ chipDenominationsBack.addEventListener('click', () => {
   chipDenominationsScreen.hidden = true;
   setupScreen.hidden = false;
 });
+chipDisplayModeButton.addEventListener('click', () => {
+  chipDisplayMode = chipDisplayMode === 'value' ? 'pile' : 'value';
+  updateChipDisplayModeButton();
+});
 testVoiceButton.addEventListener('click', previewVoice);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && !gameScreen.hidden && !isGameWon) {
@@ -1815,6 +1829,7 @@ form.addEventListener('submit', (event) => {
     firstDealerNumber: Number(dealerSelect.value),
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
     startMicrophoneAutomatically: startMicrophoneAutomaticallyCheckbox.checked,
+    chipDisplayMode,
     voice: selectedVoiceSettings(),
   };
   showVoiceTranscript = showVoiceTranscriptCheckbox.checked;
@@ -1854,4 +1869,5 @@ form.addEventListener('submit', (event) => {
 });
 
 drawPlayerNames();
+updateChipDisplayModeButton();
 restoreLastGameSettings();
