@@ -2,9 +2,18 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { calculatePots, hasBettingRoundFinished, splitPotAmount } from './pot-logic.js';
 
-function player(number, handContribution, { folded = false, eliminated = false } = {}) {
-  return { number, handContribution, folded, eliminated };
+function player(number, handContribution, { chips = 0, folded = false, eliminated = false } = {}) {
+  return { number, handContribution, chips, folded, eliminated };
 }
+
+test('keeps unequal active bets in one pot when nobody is all-in', () => {
+  assert.deepEqual(calculatePots([
+    player(1, 15, { chips: 85 }),
+    player(2, 5, { chips: 95 }),
+  ]), [
+    { amount: 20, contributionCap: 15, eligiblePlayerNumbers: [1, 2] },
+  ]);
+});
 
 test('creates the correct main pot and one side pot', () => {
   assert.deepEqual(calculatePots([

@@ -3,6 +3,30 @@ function samePlayers(first, second) {
 }
 
 export function calculatePots(players) {
+  const totalContributions = players.reduce(
+    (total, player) => total + (Number(player.handContribution) || 0),
+    0,
+  );
+  const highestContribution = Math.max(0, ...players.map((player) => Number(player.handContribution) || 0));
+  const eligiblePlayerNumbers = players
+    .filter((player) => !player.folded && !player.eliminated)
+    .map((player) => player.number)
+    .sort((first, second) => first - second);
+  const hasAllInPlayer = players.some((player) =>
+    !player.folded
+    && !player.eliminated
+    && player.chips === 0
+    && player.handContribution > 0);
+
+  // Unequal contributions are normal while a bet is waiting to be called.
+  // They only become separate pots when an all-in player caps the amount they
+  // can win. Until then, keep every contributed chip in one main pot.
+  if (!hasAllInPlayer) {
+    return totalContributions > 0
+      ? [{ amount: totalContributions, contributionCap: highestContribution, eligiblePlayerNumbers }]
+      : [];
+  }
+
   const contributionLevels = [...new Set(players
     .map((player) => Number(player.handContribution) || 0)
     .filter((amount) => amount > 0))]
