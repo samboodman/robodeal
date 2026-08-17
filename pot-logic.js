@@ -42,3 +42,15 @@ export function hasBettingRoundFinished(players, highestRoundBet) {
   return playersWhoCanAct.every((player) =>
     player.hasActedThisRound && player.roundBet === highestRoundBet);
 }
+
+export function splitPotAmount(amount, orderedWinnerNumbers) {
+  const winnerNumbers = [...new Set(orderedWinnerNumbers)];
+  if (winnerNumbers.length === 0) return [];
+
+  const equalShare = Math.floor(amount / winnerNumbers.length);
+  const oddChips = amount % winnerNumbers.length;
+  return winnerNumbers.map((number, index) => ({
+    number,
+    amount: equalShare + (index < oddChips ? 1 : 0),
+  }));
+}

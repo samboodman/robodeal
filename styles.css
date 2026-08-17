@@ -327,6 +327,21 @@ body {
   font-weight: 800;
   cursor: pointer;
 }
+.winner-options button.selected {
+  background: #d6a900;
+  color: #173329;
+  box-shadow: 0 0 0 3px #ffe889;
+}
+.winner-options .split-pot-button {
+  background: #557066;
+}
+.winner-options .confirm-split-button {
+  background: #b63f29;
+}
+.winner-options .confirm-split-button:disabled {
+  background: #a9b4ae;
+  cursor: default;
+}
 .player-seat {
   position: absolute;
   left: var(--x);

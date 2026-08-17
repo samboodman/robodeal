@@ -1,4 +1,4 @@
-import { calculatePots, hasBettingRoundFinished } from './pot-logic.js';
+import { calculatePots, hasBettingRoundFinished, splitPotAmount } from './pot-logic.js';
 
 const playerCount = document.querySelector('#player-count');
 const playerNames = document.querySelector('#player-names');
@@ -59,6 +59,7 @@ let renderedPotLayerCount = 0;
 let potAnimationTimer = null;
 let potAwardIndex = 0;
 let lastPotWinnerNumber = null;
+let handWinnerNumbers = [];
 let lastTurnState = null;
 let gameHistory = [];
 let gameHandNumber = 0;
@@ -385,11 +386,8 @@ function getRealtimeNarration() {
   const player = playersByNumber[currentPlayerNumber];
   if (!player) return null;
 
-  if (dealPromptKind === 'hole-cards') {
-    const dealer = Object.values(playersByNumber).find((candidate) => candidate.isDealer);
-    const introduction = gameHandNumber === 1 ? `Game is Texas Hold'em. Ante is ${gameSettings.ante}.` : `New hand. Ante is ${gameSettings.ante}.`;
-    return `${introduction} ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK when done.`;
-  }
+  if (!dealPrompt.hidden) return dealMessage.textContent;
+  if (!winnerPicker.hidden || !gameWinnerScreen.hidden) return null;
 
   if (openingTurnAnnouncementPending) {
     const smallBlind = playersByNumber[antePlayerNumber];
@@ -1006,6 +1004,14 @@ const debugPresets = {
     currentPlayerNumber: 3,
     roundNumber: 4,
   },
+  'all-in-runout': {
+    playerCount: 3,
+    contributions: [25, 50, 50],
+    chips: [0, 0, 175],
+    currentPlayerNumber: 3,
+    roundNumber: 1,
+    view: 'all-in-runout',
+  },
   'deal-flop': {
     playerCount: 3,
     contributions: [10, 10, 10],
@@ -1061,6 +1067,7 @@ function startDebugPreset(presetName) {
   roundNumber = preset.roundNumber;
   potAwardIndex = 0;
   lastPotWinnerNumber = null;
+  handWinnerNumbers = [];
   lastTurnState = null;
   pendingFold = false;
   openingTurnAnnouncementPending = false;
@@ -1091,6 +1098,8 @@ function startDebugPreset(presetName) {
   setCurrentPlayer(preset.currentPlayerNumber);
 
   if (preset.view === 'deal-flop') {
+    startNextRound();
+  } else if (preset.view === 'all-in-runout') {
     startNextRound();
   } else if (preset.view === 'showdown') {
     showWinnerPicker();
@@ -1262,10 +1271,41 @@ function allActivePlayersHaveMatchedBet() {
   return hasBettingRoundFinished(Object.values(playersByNumber), highestRoundBet);
 }
 
+function remainingCommunityCards() {
+  return ['the flop', 'the turn', 'the river'].slice(roundNumber - 1);
+}
+
+function formatCardList(cards) {
+  if (cards.length <= 1) return cards[0] || '';
+  if (cards.length === 2) return `${cards[0]} and ${cards[1]}`;
+  return `${cards.slice(0, -1).join(', ')}, and ${cards.at(-1)}`;
+}
+
+function formatNameList(names) {
+  if (names.length <= 1) return names[0] || '';
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}`;
+}
+
 function startNextRound() {
   lastTurnState = null;
   if (roundNumber >= 4) {
     showWinnerPicker();
+    return;
+  }
+
+  const playersWhoCanStillBet = Object.values(playersByNumber)
+    .filter((player) => !player.folded && !player.eliminated && player.chips > 0);
+  if (playersWhoCanStillBet.length <= 1) {
+    const cards = remainingCommunityCards();
+    const cardsToDeal = formatCardList(cards);
+    logGameEvent(`No more betting is possible. Deal ${cardsToDeal}, then go to showdown.`);
+    turnIndicator.hidden = true;
+    actionButtons.hidden = true;
+    dealPromptKind = 'all-in-runout';
+    dealMessage.textContent = `Deal ${cardsToDeal}. Press OK for showdown.`;
+    dealPrompt.hidden = false;
+    speak(dealMessage.textContent);
     return;
   }
 
@@ -1307,6 +1347,7 @@ function showWinnerPicker() {
   logGameEvent('Showdown: choose the player with the best cards.');
   potAwardIndex = 0;
   lastPotWinnerNumber = null;
+  handWinnerNumbers = [];
   if (pots.length === 0) {
     showPotWinnerPicker('Who had the best cards?', activePlayers, (winnerNumber) => finishHand(playersByNumber[winnerNumber]));
     return;
@@ -1314,19 +1355,69 @@ function showWinnerPicker() {
   awardNextPot();
 }
 
-function showPotWinnerPicker(question, players, awardFunction) {
+function showPotWinnerPicker(question, players, awardFunction, splitFunction = null) {
   turnIndicator.hidden = true;
   actionButtons.hidden = true;
   winnerQuestion.textContent = question;
   winnerOptions.replaceChildren();
+  let splitMode = false;
+  const selectedWinnerNumbers = new Set();
+  const playerButtons = [];
+  let confirmSplitButton = null;
 
   players.forEach((player) => {
     const winnerButton = document.createElement('button');
     winnerButton.type = 'button';
     winnerButton.textContent = player.name;
-    winnerButton.addEventListener('click', () => awardFunction(player.number));
+    winnerButton.setAttribute('aria-pressed', 'false');
+    winnerButton.addEventListener('click', () => {
+      if (!splitMode) {
+        awardFunction(player.number);
+        return;
+      }
+
+      if (selectedWinnerNumbers.has(player.number)) {
+        selectedWinnerNumbers.delete(player.number);
+      } else {
+        selectedWinnerNumbers.add(player.number);
+      }
+      const isSelected = selectedWinnerNumbers.has(player.number);
+      winnerButton.classList.toggle('selected', isSelected);
+      winnerButton.setAttribute('aria-pressed', String(isSelected));
+      if (confirmSplitButton) confirmSplitButton.disabled = selectedWinnerNumbers.size < 2;
+    });
+    playerButtons.push(winnerButton);
     winnerOptions.append(winnerButton);
   });
+
+  if (splitFunction && players.length > 1) {
+    const splitButton = document.createElement('button');
+    splitButton.type = 'button';
+    splitButton.className = 'split-pot-button';
+    splitButton.textContent = 'Split pot';
+
+    confirmSplitButton = document.createElement('button');
+    confirmSplitButton.type = 'button';
+    confirmSplitButton.className = 'confirm-split-button';
+    confirmSplitButton.textContent = 'Confirm split';
+    confirmSplitButton.disabled = true;
+    confirmSplitButton.hidden = true;
+
+    splitButton.addEventListener('click', () => {
+      splitMode = !splitMode;
+      selectedWinnerNumbers.clear();
+      playerButtons.forEach((button) => {
+        button.classList.remove('selected');
+        button.setAttribute('aria-pressed', 'false');
+      });
+      winnerQuestion.textContent = splitMode ? 'Who tied for this pot?' : question;
+      splitButton.textContent = splitMode ? 'Cancel split' : 'Split pot';
+      confirmSplitButton.hidden = !splitMode;
+      confirmSplitButton.disabled = true;
+    });
+    confirmSplitButton.addEventListener('click', () => splitFunction([...selectedWinnerNumbers]));
+    winnerOptions.append(splitButton, confirmSplitButton);
+  }
 
   winnerPicker.hidden = false;
 }
@@ -1345,7 +1436,41 @@ function awardPot(potIndex, winnerNumber) {
   winner.chips += potLayer.amount;
   potLayer.amount = 0;
   lastPotWinnerNumber = winnerNumber;
+  if (!handWinnerNumbers.includes(winnerNumber)) handWinnerNumbers.push(winnerNumber);
   potAwardIndex = potIndex + 1;
+  syncPotsToGameSettings();
+  drawPlayerSeats();
+  awardNextPot();
+}
+
+function playersInOddChipOrder(winnerNumbers) {
+  const playerNumbers = Object.keys(playersByNumber).map(Number);
+  const dealerIndex = playerNumbers.indexOf(gameSettings.dealerNumber);
+  return [...new Set(winnerNumbers)].sort((first, second) => {
+    const firstDistance = (playerNumbers.indexOf(first) - dealerIndex + playerNumbers.length) % playerNumbers.length || playerNumbers.length;
+    const secondDistance = (playerNumbers.indexOf(second) - dealerIndex + playerNumbers.length) % playerNumbers.length || playerNumbers.length;
+    return firstDistance - secondDistance;
+  });
+}
+
+function awardSplitPot(potIndex, winnerNumbers) {
+  const potLayer = pots[potIndex];
+  const validWinnerNumbers = playersInOddChipOrder(winnerNumbers)
+    .filter((number) => potLayer?.eligiblePlayerNumbers.includes(number));
+  if (!potLayer || potLayer.amount <= 0 || validWinnerNumbers.length < 2) return;
+
+  const originalAmount = potLayer.amount;
+  const awards = splitPotAmount(originalAmount, validWinnerNumbers);
+  awards.forEach((award) => {
+    playersByNumber[award.number].chips += award.amount;
+    if (!handWinnerNumbers.includes(award.number)) handWinnerNumbers.push(award.number);
+  });
+  potLayer.amount = 0;
+  lastPotWinnerNumber = awards[0].number;
+  potAwardIndex = potIndex + 1;
+  const winnerNames = formatNameList(awards.map((award) => playersByNumber[award.number].name));
+  logGameEvent(`${winnerNames} split ${potLayerName(potIndex).toLowerCase()}, ${originalAmount}.`);
+  speak(`${winnerNames} split the pot.`);
   syncPotsToGameSettings();
   drawPlayerSeats();
   awardNextPot();
@@ -1356,7 +1481,8 @@ function awardNextPot() {
 
   if (potAwardIndex >= pots.length) {
     const fallbackWinner = Object.values(playersByNumber).find((player) => !player.folded && !player.eliminated);
-    finishHand(playersByNumber[lastPotWinnerNumber] || fallbackWinner);
+    const winners = handWinnerNumbers.map((number) => playersByNumber[number]).filter(Boolean);
+    finishHand(winners.length > 0 ? winners : [playersByNumber[lastPotWinnerNumber] || fallbackWinner]);
     return;
   }
 
@@ -1371,7 +1497,12 @@ function awardNextPot() {
   const question = potAwardIndex === 0
     ? 'Who had the best cards?'
     : `Who wins side pot ${potAwardIndex}?`;
-  showPotWinnerPicker(question, eligiblePlayers, (winnerNumber) => awardPot(potAwardIndex, winnerNumber));
+  showPotWinnerPicker(
+    question,
+    eligiblePlayers,
+    (winnerNumber) => awardPot(potAwardIndex, winnerNumber),
+    (winnerNumbers) => awardSplitPot(potAwardIndex, winnerNumbers),
+  );
 }
 
 function awardAllPotsTo(winnerNumber) {
@@ -1381,11 +1512,13 @@ function awardAllPotsTo(winnerNumber) {
     potLayer.amount = 0;
   });
   lastPotWinnerNumber = winnerNumber;
+  handWinnerNumbers = [winnerNumber];
   syncPotsToGameSettings();
   finishHand(winner);
 }
 
-function finishHand(winner) {
+function finishHand(winnerOrWinners) {
+  const winners = (Array.isArray(winnerOrWinners) ? winnerOrWinners : [winnerOrWinners]).filter(Boolean);
   Object.values(playersByNumber).forEach((player) => {
     if (player.chips === 0) player.eliminated = true;
   });
@@ -1400,9 +1533,10 @@ function finishHand(winner) {
   turnIndicator.hidden = true;
   actionButtons.hidden = true;
   winnerPicker.hidden = false;
-  winnerQuestion.textContent = `${winner.name} wins the hand!`;
-  logGameEvent(`${winner.name} wins hand ${gameHandNumber}.`);
-  speak(`${winner.name} wins the hand.`);
+  const winnerNames = formatNameList(winners.map((winner) => winner.name));
+  winnerQuestion.textContent = `${winnerNames} ${winners.length === 1 ? 'wins' : 'win'} the hand!`;
+  logGameEvent(`${winnerNames} ${winners.length === 1 ? 'wins' : 'win'} hand ${gameHandNumber}.`);
+  speak(`${winnerNames} ${winners.length === 1 ? 'wins' : 'win'} the hand.`);
   winnerOptions.replaceChildren();
   const closeButton = document.createElement('button');
   closeButton.type = 'button';
@@ -1441,6 +1575,7 @@ function startHand() {
   pots = [];
   potAwardIndex = 0;
   lastPotWinnerNumber = null;
+  handWinnerNumbers = [];
   highestRoundBet = 0;
   pendingBet = 0;
   pendingFold = false;
@@ -1598,6 +1733,15 @@ function cardsAreDealt() {
     openingTurnAnnouncementPending = true;
     logGameEvent('Two cards were dealt face down to each player. Preflop betting started.');
     drawPlayerSeats();
+    return true;
+  }
+
+  if (dealPromptKind === 'all-in-runout') {
+    dealPromptKind = null;
+    dealPrompt.hidden = true;
+    roundNumber = 4;
+    logGameEvent('All remaining community cards were dealt. Go to showdown.');
+    showWinnerPicker();
     return true;
   }
 

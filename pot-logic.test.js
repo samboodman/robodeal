@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { calculatePots, hasBettingRoundFinished } from './pot-logic.js';
+import { calculatePots, hasBettingRoundFinished, splitPotAmount } from './pot-logic.js';
 
 function player(number, handContribution, { folded = false, eliminated = false } = {}) {
   return { number, handContribution, folded, eliminated };
@@ -63,4 +63,19 @@ test('does not finish while the sole player with chips still owes a call', () =>
     { chips: 5, folded: false, eliminated: false, hasActedThisRound: true, roundBet: 10 },
     { chips: 0, folded: false, eliminated: false, hasActedThisRound: true, roundBet: 15 },
   ], 15), false);
+});
+
+test('splits a pot evenly and awards odd chips in the supplied table order', () => {
+  assert.deepEqual(splitPotAmount(11, [3, 1, 2]), [
+    { number: 3, amount: 4 },
+    { number: 1, amount: 4 },
+    { number: 2, amount: 3 },
+  ]);
+});
+
+test('does not duplicate a winner when splitting a pot', () => {
+  assert.deepEqual(splitPotAmount(10, [2, 2, 3]), [
+    { number: 2, amount: 5 },
+    { number: 3, amount: 5 },
+  ]);
 });
