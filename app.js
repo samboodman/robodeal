@@ -519,9 +519,15 @@ function flushRealtimeResponseQueue() {
             input: [{ type: 'item_reference', id: queuedUserResponse.itemId }],
           } : {}),
           instructions: `${realtimeInstructions()}${queuedUserResponse.actionInstruction ? `\n\n${queuedUserResponse.actionInstruction}` : ''}`,
-          tool_choice: queuedUserResponse.toolName
-            ? { type: 'function', name: queuedUserResponse.toolName }
-            : 'none',
+          ...(queuedUserResponse.toolName ? {
+            // gpt-realtime-mini currently honors "required" reliably but can
+            // ignore a named function choice. Supplying only the intended tool
+            // makes "required" deterministic.
+            tools: realtimeTools.filter((tool) => tool.name === queuedUserResponse.toolName),
+            tool_choice: 'required',
+          } : {
+            tool_choice: 'none',
+          }),
         };
     sendRealtimeEvent({
       type: 'response.create',
