@@ -384,31 +384,30 @@ body {
 .player-chip-piles {
   position: absolute;
   left: 50%;
-  bottom: 6px;
+  bottom: 3px;
   display: flex;
-  max-width: 124px;
-  min-height: 34px;
+  max-width: 190px;
+  min-height: 46px;
   align-items: end;
   justify-content: center;
-  gap: 1px;
+  gap: 2px;
   overflow: visible;
   pointer-events: none;
   transform: translateX(-50%);
 }
 .player-chip-stack {
   display: flex;
-  width: 17px;
+  width: 30px;
   flex-direction: column-reverse;
-  flex: 0 0 17px;
+  flex: 0 0 30px;
 }
 .player-chip-rectangle {
   display: block;
-  width: 17px;
-  height: 5px;
-  margin-top: -2px;
-  border-right: 2px solid var(--chip-trim);
-  border-left: 2px solid var(--chip-trim);
-  border-radius: 2px;
+  width: 30px;
+  height: 9px;
+  margin-top: -3px;
+  border: 2px solid var(--chip-trim);
+  border-radius: 3px;
   background: var(--chip-color);
   box-shadow: 0 1px 1px #04160f55;
 }
@@ -643,8 +642,9 @@ button:active {
   display: block;
   width: 64px;
   height: 18px;
-  border-right: 7px solid var(--chip-trim);
-  border-left: 7px solid var(--chip-trim);
+  border: 2px solid var(--chip-trim);
+  border-right-width: 7px;
+  border-left-width: 7px;
   border-radius: 5px;
   background: var(--chip-color);
   box-shadow: 0 2px 2px #04160f33;
