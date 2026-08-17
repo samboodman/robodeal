@@ -41,6 +41,7 @@ const voiceCustomizationBack = document.querySelector('#voice-customization-back
 const chipDenominationsButton = document.querySelector('#chip-denominations-button');
 const chipDenominationsBack = document.querySelector('#chip-denominations-back');
 const chipDisplayModeButton = document.querySelector('#chip-display-mode');
+const chipDenominationInputs = [...document.querySelectorAll('[data-chip-color]')];
 const voiceChoice = document.querySelector('#voice-choice');
 const voiceAccent = document.querySelector('#voice-accent');
 const voicePersonality = document.querySelector('#voice-personality');
@@ -115,6 +116,21 @@ function updateChipDisplayModeButton() {
   chipDisplayModeButton.setAttribute('aria-pressed', String(showsChipPile));
 }
 
+function selectedChipDenominations() {
+  return Object.fromEntries(chipDenominationInputs.map((input) => [
+    input.dataset.chipColor,
+    Math.max(1, Number(input.value) || 1),
+  ]));
+}
+
+function restoreChipDenominations(savedDenominations) {
+  if (!savedDenominations || typeof savedDenominations !== 'object') return;
+  chipDenominationInputs.forEach((input) => {
+    const savedValue = Number(savedDenominations[input.dataset.chipColor]);
+    if (Number.isFinite(savedValue) && savedValue >= 1) input.value = savedValue;
+  });
+}
+
 function getLastGameSettings() {
   try {
     const savedGame = JSON.parse(localStorage.getItem(lastGameSettingsKey));
@@ -145,6 +161,7 @@ function restoreLastGameSettings() {
   showVoiceTranscriptCheckbox.checked = Boolean(savedGame.showVoiceTranscript);
   chipDisplayMode = settings.chipDisplayMode === 'pile' ? 'pile' : 'value';
   updateChipDisplayModeButton();
+  restoreChipDenominations(settings.chipDenominations);
 
   if (settings.voice) {
     if ([...voiceChoice.options].some((option) => option.value === settings.voice.name)) voiceChoice.value = settings.voice.name;
@@ -1830,6 +1847,7 @@ form.addEventListener('submit', (event) => {
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
     startMicrophoneAutomatically: startMicrophoneAutomaticallyCheckbox.checked,
     chipDisplayMode,
+    chipDenominations: selectedChipDenominations(),
     voice: selectedVoiceSettings(),
   };
   showVoiceTranscript = showVoiceTranscriptCheckbox.checked;

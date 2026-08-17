@@ -558,6 +558,65 @@ button:active {
   background: #2875c7;
   box-shadow: 0 4px 0 #174f91;
 }
+.chip-denomination-list {
+  display: grid;
+  gap: 10px;
+  margin: 24px 0;
+}
+.chip-denomination-row {
+  display: grid;
+  grid-template-columns: 72px 1fr 100px;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+}
+.chip-denomination-row input {
+  min-height: 44px;
+  padding: 8px 10px;
+  text-align: right;
+}
+.chip-swatch {
+  display: block;
+  width: 72px;
+  height: 18px;
+  border-right: 7px solid var(--chip-trim);
+  border-left: 7px solid var(--chip-trim);
+  border-radius: 5px;
+  background: var(--chip-color);
+  box-shadow: 0 2px 2px #04160f33;
+}
+.chip-white {
+  --chip-color: #fffdf6;
+  --chip-trim: #aaa69d;
+}
+.chip-red {
+  --chip-color: #d84135;
+  --chip-trim: #87231c;
+}
+.chip-blue {
+  --chip-color: #2d78c9;
+  --chip-trim: #164779;
+}
+.chip-green {
+  --chip-color: #329565;
+  --chip-trim: #18553a;
+}
+.chip-black {
+  --chip-color: #292929;
+  --chip-trim: #050505;
+}
+.chip-purple {
+  --chip-color: #8650b2;
+  --chip-trim: #4b2968;
+}
+.chip-yellow {
+  --chip-color: #e0bc31;
+  --chip-trim: #8c7011;
+}
+.chip-orange {
+  --chip-color: #df7629;
+  --chip-trim: #8a400f;
+}
 .voice-transcript-setting {
   display: flex;
   align-items: center;
