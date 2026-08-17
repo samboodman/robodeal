@@ -42,6 +42,7 @@ const chipDenominationsButton = document.querySelector('#chip-denominations-butt
 const chipDenominationsBack = document.querySelector('#chip-denominations-back');
 const chipDisplayModeButton = document.querySelector('#chip-display-mode');
 const chipDenominationInputs = [...document.querySelectorAll('[data-chip-color]')];
+const chipEnabledCheckboxes = [...document.querySelectorAll('[data-chip-enabled]')];
 const voiceChoice = document.querySelector('#voice-choice');
 const voiceAccent = document.querySelector('#voice-accent');
 const voicePersonality = document.querySelector('#voice-personality');
@@ -119,15 +120,32 @@ function updateChipDisplayModeButton() {
 function selectedChipDenominations() {
   return Object.fromEntries(chipDenominationInputs.map((input) => [
     input.dataset.chipColor,
-    Math.max(1, Number(input.value) || 1),
+    chipEnabledCheckboxes.find((checkbox) => checkbox.dataset.chipEnabled === input.dataset.chipColor)?.checked
+      ? Math.max(1, Number(input.value) || 1)
+      : null,
   ]));
+}
+
+function updateChipDenominationAvailability(checkbox) {
+  const row = checkbox.closest('.chip-denomination-row');
+  const valueInput = row.querySelector('[data-chip-color]');
+  const status = checkbox.nextElementSibling;
+  valueInput.disabled = !checkbox.checked;
+  row.classList.toggle('unused', !checkbox.checked);
+  status.textContent = checkbox.checked ? 'Use' : 'Do not use';
 }
 
 function restoreChipDenominations(savedDenominations) {
   if (!savedDenominations || typeof savedDenominations !== 'object') return;
   chipDenominationInputs.forEach((input) => {
-    const savedValue = Number(savedDenominations[input.dataset.chipColor]);
+    const color = input.dataset.chipColor;
+    if (!Object.hasOwn(savedDenominations, color)) return;
+    const savedDenomination = savedDenominations[color];
+    const checkbox = chipEnabledCheckboxes.find((candidate) => candidate.dataset.chipEnabled === color);
+    checkbox.checked = savedDenomination !== null && savedDenomination !== false;
+    const savedValue = Number(savedDenomination);
     if (Number.isFinite(savedValue) && savedValue >= 1) input.value = savedValue;
+    updateChipDenominationAvailability(checkbox);
   });
 }
 
@@ -1800,6 +1818,10 @@ chipDenominationsBack.addEventListener('click', () => {
 chipDisplayModeButton.addEventListener('click', () => {
   chipDisplayMode = chipDisplayMode === 'value' ? 'pile' : 'value';
   updateChipDisplayModeButton();
+});
+chipEnabledCheckboxes.forEach((checkbox) => {
+  checkbox.addEventListener('change', () => updateChipDenominationAvailability(checkbox));
+  updateChipDenominationAvailability(checkbox);
 });
 testVoiceButton.addEventListener('click', previewVoice);
 document.addEventListener('visibilitychange', () => {

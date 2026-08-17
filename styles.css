@@ -565,19 +565,37 @@ button:active {
 }
 .chip-denomination-row {
   display: grid;
-  grid-template-columns: 72px 1fr 100px;
+  grid-template-columns: 64px minmax(42px, 1fr) 78px 98px;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   margin: 0;
+  transition: opacity 160ms ease;
 }
 .chip-denomination-row input {
   min-height: 44px;
   padding: 8px 10px;
   text-align: right;
 }
+.chip-denomination-row.unused {
+  opacity: 0.5;
+}
+.chip-use-control {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #3b6755;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+.chip-use-control input {
+  width: 18px;
+  min-height: 18px;
+  padding: 0;
+  accent-color: #2875c7;
+}
 .chip-swatch {
   display: block;
-  width: 72px;
+  width: 64px;
   height: 18px;
   border-right: 7px solid var(--chip-trim);
   border-left: 7px solid var(--chip-trim);
