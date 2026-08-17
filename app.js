@@ -1,4 +1,5 @@
 import { calculatePots, hasBettingRoundFinished, splitPotAmount } from './pot-logic.js';
+import { classifyVoiceCommand } from './voice-command.js';
 
 const playerCount = document.querySelector('#player-count');
 const playerNames = document.querySelector('#player-names');
@@ -94,6 +95,7 @@ let realtimeResponseActive = false;
 let realtimeNarrationResponseActive = false;
 let realtimeOutputAudioPlaying = false;
 let realtimeUserResponseQueued = null;
+let pendingVoiceWagerKind = null;
 let queuedRealtimeNarration = null;
 let lastRealtimeNarration = null;
 let showVoiceTranscript = false;
@@ -499,16 +501,31 @@ function flushRealtimeResponseQueue() {
     realtimeUserResponseQueued = null;
     realtimeResponseActive = true;
     realtimeNarrationResponseActive = false;
+    const response = queuedUserResponse.exactSpeech
+      ? {
+          conversation: 'none',
+          input: [{
+            type: 'message',
+            role: 'user',
+            content: [{
+              type: 'input_text',
+              text: `Say exactly this and nothing else: ${queuedUserResponse.exactSpeech}`,
+            }],
+          }],
+          tool_choice: 'none',
+        }
+      : {
+          ...(queuedUserResponse.itemId ? {
+            input: [{ type: 'item_reference', id: queuedUserResponse.itemId }],
+          } : {}),
+          instructions: `${realtimeInstructions()}${queuedUserResponse.actionInstruction ? `\n\n${queuedUserResponse.actionInstruction}` : ''}`,
+          tool_choice: queuedUserResponse.toolName
+            ? { type: 'function', name: queuedUserResponse.toolName }
+            : 'none',
+        };
     sendRealtimeEvent({
       type: 'response.create',
-      response: {
-        // Consider only this voice turn. Earlier microphone items may contain
-        // ignored background speech and must never influence a later reply.
-        ...(queuedUserResponse.itemId ? {
-          input: [{ type: 'item_reference', id: queuedUserResponse.itemId }],
-        } : {}),
-        instructions: realtimeInstructions(),
-      },
+      response,
     });
     return;
   }
@@ -612,7 +629,9 @@ function updateRealtimeGameState({ force = false, narrate = true } = {}) {
     type: 'realtime',
     instructions: realtimeInstructions(),
     tools: realtimeTools,
-    tool_choice: 'auto',
+    // Each transcript is classified before its response is created. Questions
+    // are speech-only; clear actions override this with one required function.
+    tool_choice: 'none',
     output_modalities: ['audio'],
   };
 
@@ -685,14 +704,36 @@ function handleRealtimeEvent(event) {
 
   if (event.type === 'conversation.item.input_audio_transcription.completed') {
     setVoiceTranscript(`Heard: “${event.transcript}”`);
-    if (!shouldRespondToTranscript(event.transcript)) {
+    const voiceCommand = classifyVoiceCommand(event.transcript, pendingVoiceWagerKind);
+    if (!voiceCommand && !shouldRespondToTranscript(event.transcript)) {
       setVoiceTranscript(`Ignored unrelated speech: “${event.transcript}”`);
       return;
     }
     logGameEvent(`Table heard: “${event.transcript}”`);
+    if (voiceCommand?.type === 'clarification') {
+      pendingVoiceWagerKind = voiceCommand.wagerKind;
+      realtimeUserResponseQueued = {
+        exactSpeech: `How much would you like to ${voiceCommand.wagerKind}?`,
+      };
+      flushRealtimeResponseQueue();
+      return;
+    }
+
+    const actionInstruction = voiceCommand?.toolName === 'betCurrentPlayer'
+      ? voiceCommand.wagerKind === 'raise'
+        ? 'This is a clear raise command. You must call betCurrentPlayer and must not speak. The tool amount is the total number of additional chips to take from the player now. For "raise by 5" or "raise 5", add 5 to the amount currently needed to call. For "raise to 15", subtract the player\'s existing round bet from 15.'
+        : 'This is a clear bet command. You must call betCurrentPlayer with the stated number of additional chips and must not speak.'
+      : voiceCommand
+        ? `This is a clear poker action. You must call ${voiceCommand.toolName} and must not speak.`
+        : null;
+    if (voiceCommand?.type === 'action') pendingVoiceWagerKind = null;
     // The transcript marks the completed user turn. Refresh the session first,
     // then create its response; data-channel events are processed in order.
-    realtimeUserResponseQueued = { itemId: event.item_id };
+    realtimeUserResponseQueued = {
+      itemId: event.item_id,
+      toolName: voiceCommand?.toolName || null,
+      actionInstruction,
+    };
     updateRealtimeGameState({ force: true });
     flushRealtimeResponseQueue();
     return;
@@ -772,6 +813,7 @@ function stopRealtimeConversation() {
   realtimeNarrationResponseActive = false;
   realtimeOutputAudioPlaying = false;
   realtimeUserResponseQueued = null;
+  pendingVoiceWagerKind = null;
   queuedRealtimeNarration = null;
   lastRealtimeNarration = null;
   setVoiceStatus('');
