@@ -1177,6 +1177,49 @@ function playerToDealersLeft(dealerNumber) {
   return dealerNumber;
 }
 
+function makePlayerChipPiles(amount) {
+  const container = document.createElement('div');
+  container.className = 'player-chip-piles';
+  container.setAttribute('aria-hidden', 'true');
+  const allowedColors = new Set(chipDenominationInputs.map((input) => input.dataset.chipColor));
+  const denominations = Object.entries(gameSettings.chipDenominations || {})
+    .filter(([color, value]) => allowedColors.has(color) && Number.isFinite(Number(value)) && Number(value) > 0)
+    .map(([color, value]) => ({ color, value: Number(value) }))
+    .sort((first, second) => second.value - first.value);
+  let remaining = Math.max(0, Math.floor(amount));
+
+  denominations.forEach(({ color, value }) => {
+    const chipCount = Math.floor(remaining / value);
+    remaining %= value;
+    if (chipCount === 0) return;
+
+    // Ten chips per column keeps the stacks readable at every seat. Extremely
+    // large stacks are intentionally capped visually, like an estimate across
+    // a real table; the exact amount remains available to screen readers.
+    const visibleChipCount = Math.min(chipCount, 100);
+    for (let firstChip = 0; firstChip < visibleChipCount; firstChip += 10) {
+      const stack = document.createElement('span');
+      stack.className = 'player-chip-stack';
+      const chipsInStack = Math.min(10, visibleChipCount - firstChip);
+      for (let index = 0; index < chipsInStack; index += 1) {
+        const chip = document.createElement('i');
+        chip.className = `player-chip-rectangle chip-${color}`;
+        stack.append(chip);
+      }
+      container.append(stack);
+    }
+  });
+
+  if (remaining > 0 || denominations.length === 0) {
+    const remainder = document.createElement('span');
+    remainder.className = 'player-chip-remainder';
+    remainder.textContent = denominations.length === 0 ? amount : `+${remaining}`;
+    container.append(remainder);
+  }
+
+  return container;
+}
+
 function drawPlayerSeats() {
   playerSeats.replaceChildren();
   const players = Object.values(playersByNumber);
@@ -1199,10 +1242,14 @@ function drawPlayerSeats() {
     seat.append(name);
 
     if (!player.eliminated) {
-      const chips = document.createElement('span');
-      chips.className = 'player-seat-chips';
-      chips.textContent = player.chips;
-      seat.append(chips);
+      if (gameSettings.chipDisplayMode === 'pile') {
+        seat.append(makePlayerChipPiles(player.chips));
+      } else {
+        const chips = document.createElement('span');
+        chips.className = 'player-seat-chips';
+        chips.textContent = player.chips;
+        seat.append(chips);
+      }
     }
     seat.setAttribute('aria-label', `${player.name}${player.eliminated ? ', out of the game' : `: ${player.chips} chips`}${player.isDealer ? ', dealer' : ''}${isCurrentPlayer ? ', current turn' : ''}${player.folded ? ', folded' : ''}`);
     seat.setAttribute('role', 'button');

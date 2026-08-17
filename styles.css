@@ -381,6 +381,52 @@ body {
   font-size: 1.1rem;
   line-height: 1.05;
 }
+.player-chip-piles {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  display: flex;
+  max-width: 124px;
+  min-height: 34px;
+  align-items: end;
+  justify-content: center;
+  gap: 1px;
+  overflow: visible;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+.player-chip-stack {
+  display: flex;
+  width: 17px;
+  flex-direction: column-reverse;
+  flex: 0 0 17px;
+}
+.player-chip-rectangle {
+  display: block;
+  width: 17px;
+  height: 5px;
+  margin-top: -2px;
+  border-right: 2px solid var(--chip-trim);
+  border-left: 2px solid var(--chip-trim);
+  border-radius: 2px;
+  background: var(--chip-color);
+  box-shadow: 0 1px 1px #04160f55;
+}
+.player-chip-stack .player-chip-rectangle:first-child {
+  margin-top: 0;
+}
+.player-chip-remainder {
+  align-self: center;
+  padding: 2px 3px;
+  border-radius: 3px;
+  background: #fffdf6;
+  color: #7a3a35;
+  font-size: 0.58rem;
+  line-height: 1;
+}
+.player-seat.folded .player-chip-piles {
+  visibility: hidden;
+}
 .player-seat.current-player {
   border-color: #ffe18a;
   background: #e34d2f;
