@@ -8,6 +8,7 @@ const dealerSelect = document.querySelector('#dealer');
 const debugPresetSelect = document.querySelector('#debug-preset');
 const setupScreen = document.querySelector('#setup-screen');
 const voiceCustomizationScreen = document.querySelector('#voice-customization-screen');
+const chipDenominationsScreen = document.querySelector('#chip-denominations-screen');
 const gameScreen = document.querySelector('#game-screen');
 const gameWinnerScreen = document.querySelector('#game-winner-screen');
 const gameWinnerMessage = document.querySelector('#game-winner-message');
@@ -37,6 +38,8 @@ const startMicrophoneAutomaticallyCheckbox = document.querySelector('#start-micr
 const showVoiceTranscriptCheckbox = document.querySelector('#show-voice-transcript');
 const voiceCustomizationButton = document.querySelector('#voice-customization-button');
 const voiceCustomizationBack = document.querySelector('#voice-customization-back');
+const chipDenominationsButton = document.querySelector('#chip-denominations-button');
+const chipDenominationsBack = document.querySelector('#chip-denominations-back');
 const voiceChoice = document.querySelector('#voice-choice');
 const voiceAccent = document.querySelector('#voice-accent');
 const voicePersonality = document.querySelector('#voice-personality');
@@ -1759,6 +1762,14 @@ voiceCustomizationBack.addEventListener('click', () => {
   voiceCustomizationScreen.hidden = true;
   setupScreen.hidden = false;
 });
+chipDenominationsButton.addEventListener('click', () => {
+  setupScreen.hidden = true;
+  chipDenominationsScreen.hidden = false;
+});
+chipDenominationsBack.addEventListener('click', () => {
+  chipDenominationsScreen.hidden = true;
+  setupScreen.hidden = false;
+});
 testVoiceButton.addEventListener('click', previewVoice);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && !gameScreen.hidden && !isGameWon) {
@@ -1813,6 +1824,7 @@ form.addEventListener('submit', (event) => {
   makePlayers();
   setupScreen.hidden = true;
   voiceCustomizationScreen.hidden = true;
+  chipDenominationsScreen.hidden = true;
   gameScreen.hidden = false;
   gameWinnerScreen.hidden = true;
   winnerPicker.hidden = true;

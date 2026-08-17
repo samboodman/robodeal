@@ -531,7 +531,9 @@ button:active {
   font-size: 0.98rem;
 }
 .voice-customization-button,
-.voice-customization-back {
+.voice-customization-back,
+.chip-denominations-button,
+.chip-denominations-back {
   min-height: 46px;
   margin-top: 22px;
   background: #557066;
@@ -540,6 +542,16 @@ button:active {
 }
 .voice-customization-back {
   margin-top: 32px;
+}
+.chip-denominations-screen {
+  min-height: min(85svh, 620px);
+  flex-direction: column;
+}
+.chip-denominations-screen:not([hidden]) {
+  display: flex;
+}
+.chip-denominations-back {
+  margin-top: auto;
 }
 .voice-transcript-setting {
   display: flex;
