@@ -1,3 +1,11 @@
+export function realtimeResponseText(response) {
+  return (response?.output || [])
+    .flatMap((item) => item.content || [])
+    .map((content) => content.text || content.transcript || '')
+    .join('')
+    .trim();
+}
+
 export class VoiceAgent {
   constructor({ getInstructions, tools = [], executeTool, onTranscript = () => {}, onStatus = () => {} }) {
     this.getInstructions = getInstructions;
@@ -10,6 +18,8 @@ export class VoiceAgent {
     this.sender = null;
     this.audio = null;
     this.microphoneStream = null;
+    this.pendingRelevanceChecks = new Map();
+    this.nextUtteranceNumber = 1;
   }
 
   get connected() {
@@ -31,7 +41,7 @@ export class VoiceAgent {
         input: {
           noise_reduction: { type: 'far_field' },
           transcription: { model: 'gpt-4o-mini-transcribe', language: 'en' },
-          turn_detection: { type: 'server_vad', create_response: true, interrupt_response: true },
+          turn_detection: { type: 'server_vad', create_response: false, interrupt_response: false },
         },
         output: { voice },
       },
@@ -135,15 +145,75 @@ export class VoiceAgent {
     this.connection = null;
     this.sender = null;
     this.audio = null;
+    this.pendingRelevanceChecks.forEach(({ cleanupTimer }) => clearTimeout(cleanupTimer));
+    this.pendingRelevanceChecks.clear();
   }
 
   send(event) {
     if (this.connected) this.channel.send(JSON.stringify(event));
   }
 
+  checkTranscriptRelevance(transcript, itemId) {
+    const utteranceId = `utterance-${this.nextUtteranceNumber++}`;
+    const cleanupTimer = setTimeout(() => {
+      this.pendingRelevanceChecks.delete(utteranceId);
+    }, 30_000);
+    this.pendingRelevanceChecks.set(utteranceId, { itemId, cleanupTimer });
+
+    this.send({
+      type: 'response.create',
+      response: {
+        conversation: 'none',
+        output_modalities: ['text'],
+        metadata: { kind: 'relevance-check', utteranceId },
+        max_output_tokens: 8,
+        instructions: [
+          'Classify the meaning of the entire heard sentence, not isolated words.',
+          'Output exactly GAME if the speaker is genuinely talking about, asking about, or controlling the current poker game.',
+          'Output exactly UNRELATED for everything else and whenever uncertain.',
+          'For example, “I call” during play is GAME, but “I’m going to call my dad” is UNRELATED.',
+          'Do not answer the speaker and do not call a tool.',
+        ].join(' '),
+        input: [{
+          type: 'message',
+          role: 'user',
+          content: [{
+            type: 'input_text',
+            text: `Current game context:\n${this.getInstructions()}\n\nHeard sentence:\n${transcript}`,
+          }],
+        }],
+        tools: [],
+        tool_choice: 'none',
+      },
+    });
+  }
+
+  handleRelevanceResult(response) {
+    const utteranceId = response.metadata?.utteranceId;
+    const pending = this.pendingRelevanceChecks.get(utteranceId);
+    if (!pending) return;
+
+    clearTimeout(pending.cleanupTimer);
+    this.pendingRelevanceChecks.delete(utteranceId);
+    if (realtimeResponseText(response).toUpperCase() === 'GAME') {
+      this.updateContext();
+      this.send({ type: 'response.create' });
+      return;
+    }
+
+    if (pending.itemId) {
+      this.send({ type: 'conversation.item.delete', item_id: pending.itemId });
+    }
+  }
+
   async handleEvent(event) {
     if (event.type === 'conversation.item.input_audio_transcription.completed') {
       this.onTranscript(`Heard: “${event.transcript}”`);
+      this.checkTranscriptRelevance(event.transcript, event.item_id);
+      return;
+    }
+    if (event.type === 'response.done' && event.response?.metadata?.kind === 'relevance-check') {
+      this.handleRelevanceResult(event.response);
       return;
     }
     if (event.type === 'response.output_audio_transcript.done') {
