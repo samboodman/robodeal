@@ -1,4 +1,5 @@
 import { calculatePots, hasBettingRoundFinished, splitPotAmount } from './pot-logic.js';
+import { VoiceAgent } from './voice-agent.js';
 
 const playerCount = document.querySelector('#player-count');
 const playerNames = document.querySelector('#player-names');
@@ -32,8 +33,18 @@ const winnerOptions = document.querySelector('#winner-options');
 const dealPrompt = document.querySelector('#deal-prompt');
 const dealMessage = document.querySelector('#deal-message');
 const dealOkButton = document.querySelector('#deal-ok-button');
+const recordingButton = document.querySelector('#recording-button');
+const voiceTranscript = document.querySelector('#voice-transcript');
+const startMicrophoneAutomaticallyCheckbox = document.querySelector('#start-microphone-automatically');
+const showVoiceTranscriptCheckbox = document.querySelector('#show-voice-transcript');
 const voiceCustomizationButton = document.querySelector('#voice-customization-button');
 const voiceCustomizationBack = document.querySelector('#voice-customization-back');
+const testVoiceButton = document.querySelector('#test-voice-button');
+const voiceChoice = document.querySelector('#voice-choice');
+const voiceAccent = document.querySelector('#voice-accent');
+const voicePersonality = document.querySelector('#voice-personality');
+const voicePace = document.querySelector('#voice-pace');
+const voicePreviewStatus = document.querySelector('#voice-preview-status');
 const chipDenominationsButton = document.querySelector('#chip-denominations-button');
 const chipDenominationsBack = document.querySelector('#chip-denominations-back');
 const chipDisplayModeButton = document.querySelector('#chip-display-mode');
@@ -62,7 +73,19 @@ let gameHandNumber = 0;
 let dealPromptKind = null;
 let chipDisplayMode = 'value';
 let screenWakeLock = null;
+let voiceAgent = null;
+let voicePreviewAgent = null;
+let voiceConnectionPromise = null;
 const lastGameSettingsKey = 'robodeal-last-game-settings';
+
+function selectedVoiceSettings() {
+  return {
+    name: voiceChoice.value,
+    accent: voiceAccent.value,
+    personality: voicePersonality.value,
+    pace: voicePace.value,
+  };
+}
 
 function updateChipDisplayModeButton() {
   const showsChipPile = chipDisplayMode === 'pile';
@@ -129,9 +152,17 @@ function restoreLastGameSettings() {
   });
   drawDealerOptions(String(settings.dealerNumber));
   dealerSelect.value = String(settings.dealerNumber);
+  startMicrophoneAutomaticallyCheckbox.checked = settings.startMicrophoneAutomatically !== false;
+  showVoiceTranscriptCheckbox.checked = Boolean(settings.showVoiceTranscript);
   chipDisplayMode = settings.chipDisplayMode === 'pile' ? 'pile' : 'value';
   updateChipDisplayModeButton();
   restoreChipDenominations(settings.chipDenominations);
+  if (settings.voice) {
+    voiceChoice.value = settings.voice.name || voiceChoice.value;
+    voiceAccent.value = settings.voice.accent || voiceAccent.value;
+    voicePersonality.value = settings.voice.personality || voicePersonality.value;
+    voicePace.value = settings.voice.pace || voicePace.value;
+  }
 
   message.textContent = 'Last game settings restored.';
 }
@@ -294,6 +325,169 @@ function updatePotDisplay() {
     potAnimationTimer = setTimeout(continuePotLayerAnimation, 120);
   } else if (targetLayerCount === renderedPotLayerCount && potAnimationTimer === null) {
     drawPotLayers(renderedPotLayerCount);
+  }
+}
+
+function setVoiceTranscript(text) {
+  const shouldShow = Boolean(gameSettings?.showVoiceTranscript);
+  voiceTranscript.textContent = shouldShow ? text : '';
+  voiceTranscript.hidden = !shouldShow || !text;
+}
+
+function updateRecordingButton() {
+  const recording = Boolean(voiceAgent?.recording);
+  recordingButton.setAttribute('aria-pressed', String(recording));
+  recordingButton.textContent = recording ? 'Stop recording' : 'Start recording';
+}
+
+function getVoiceSnapshot() {
+  const player = playersByNumber[currentPlayerNumber] || null;
+  return {
+    phase: gameScreen.hidden ? 'setup' : !dealPrompt.hidden ? 'waiting for cards' : !winnerPicker.hidden ? 'choosing winner' : 'betting',
+    round: ['preflop', 'flop', 'turn', 'river'][roundNumber - 1] || 'between hands',
+    currentPlayerNumber,
+    currentPlayer: player ? {
+      name: player.name,
+      chips: player.chips,
+      roundBet: player.roundBet,
+      amountToCall: Math.min(Math.max(0, highestRoundBet - player.roundBet), player.chips),
+    } : null,
+    highestRoundBet,
+    pendingBet,
+    pendingFold,
+    pot: totalPotAmount(),
+    dealInstruction: dealPrompt.hidden ? null : dealMessage.textContent,
+    players: Object.values(playersByNumber).map((candidate) => ({
+      number: candidate.number,
+      name: candidate.name,
+      chips: candidate.chips,
+      folded: candidate.folded,
+      eliminated: candidate.eliminated,
+    })),
+  };
+}
+
+function getVoiceInstructions() {
+  const voice = gameSettings?.voice || selectedVoiceSettings();
+  return `You are RoboDeal, a concise voice controller for a casual real-card poker game.
+Current authoritative game state: ${JSON.stringify(getVoiceSnapshot())}
+
+Use a ${voice.personality} personality, a ${voice.accent} accent, and a ${voice.pace} speaking pace. Respond only to clear poker commands, poker questions, or speech directly addressed to RoboDeal, robot, bot, or AI. Ignore unrelated table conversation completely. Keep every spoken response to one short sentence.
+
+For a clear action, call exactly one matching tool. Never say an action succeeded before its tool result says it succeeded. Every betting tool must use the currentPlayerNumber from the state as playerNumber. "Bet 5" means make the player's total round bet 5, so the additional amount is 5 minus roundBet. "Raise 5" means call and add 5 more, so the additional amount is amountToCall plus 5. If the request is ambiguous, ask one short question and do not call a tool.`;
+}
+
+const voicePlayerNumber = {
+  type: 'number',
+  description: 'The currentPlayerNumber from the latest game state.',
+};
+
+const voiceTools = [
+  { type: 'function', name: 'fold', description: 'Fold and finish the current player turn.', parameters: { type: 'object', properties: { playerNumber: voicePlayerNumber }, required: ['playerNumber'], additionalProperties: false } },
+  { type: 'function', name: 'check', description: 'Check and finish the current player turn when nothing is owed.', parameters: { type: 'object', properties: { playerNumber: voicePlayerNumber }, required: ['playerNumber'], additionalProperties: false } },
+  { type: 'function', name: 'call', description: 'Call the current bet and finish the current player turn.', parameters: { type: 'object', properties: { playerNumber: voicePlayerNumber }, required: ['playerNumber'], additionalProperties: false } },
+  { type: 'function', name: 'bet', description: 'Bet an additional number of chips now and finish the current player turn.', parameters: { type: 'object', properties: { playerNumber: voicePlayerNumber, amount: { type: 'number', description: 'Additional chips to take from the current player now.' } }, required: ['playerNumber', 'amount'], additionalProperties: false } },
+  { type: 'function', name: 'allIn', description: 'Bet all remaining chips and finish the current player turn.', parameters: { type: 'object', properties: { playerNumber: voicePlayerNumber }, required: ['playerNumber'], additionalProperties: false } },
+  { type: 'function', name: 'cardsDealt', description: 'Continue after the requested physical cards have been dealt.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+];
+
+function executeVoiceTool(name, args) {
+  if (name === 'cardsDealt') {
+    if (!cardsAreDealt()) return { ok: false, message: 'The game is not waiting for cards.' };
+    return { ok: true, message: 'Cards confirmed.' };
+  }
+
+  const player = playersByNumber[currentPlayerNumber];
+  if (!player || Number(args.playerNumber) !== currentPlayerNumber) {
+    return { ok: false, message: 'The turn changed before the command arrived.' };
+  }
+  if (gameScreen.hidden || !dealPrompt.hidden || !winnerPicker.hidden || !gameWinnerScreen.hidden) {
+    return { ok: false, message: 'A betting action is not available right now.' };
+  }
+
+  const amountToCall = Math.min(Math.max(0, highestRoundBet - player.roundBet), player.chips);
+  if (name === 'fold') {
+    foldCurrentPlayer();
+    confirm();
+    return { ok: true, message: `${player.name} folds.` };
+  }
+  if (name === 'check') {
+    if (amountToCall > 0) return { ok: false, message: `${player.name} must call ${amountToCall} or fold.` };
+    betCurrentPlayer(0);
+    confirm();
+    return { ok: true, message: `${player.name} checks.` };
+  }
+  if (name === 'call') {
+    betCurrentPlayer(amountToCall);
+    confirm();
+    return { ok: true, message: `${player.name} calls ${amountToCall}.` };
+  }
+  if (name === 'allIn') {
+    const amount = player.chips;
+    betCurrentPlayer(amount);
+    confirm();
+    return { ok: true, message: `${player.name} is all in for ${amount}.` };
+  }
+  if (name === 'bet') {
+    const amount = Number(args.amount);
+    if (!Number.isFinite(amount) || amount < amountToCall || amount > player.chips) {
+      return { ok: false, message: `The additional bet must be from ${amountToCall} to ${player.chips}.` };
+    }
+    betCurrentPlayer(amount);
+    confirm();
+    return { ok: true, message: `${player.name} bets ${amount}.` };
+  }
+  return { ok: false, message: 'Unknown poker action.' };
+}
+
+async function connectVoiceAgent() {
+  if (voiceAgent?.connected) return voiceAgent;
+  if (voiceConnectionPromise) return voiceConnectionPromise;
+
+  voiceAgent?.disconnect();
+  voiceAgent = new VoiceAgent({
+    getInstructions: getVoiceInstructions,
+    tools: voiceTools,
+    executeTool: executeVoiceTool,
+    onTranscript: setVoiceTranscript,
+    onStatus: setVoiceTranscript,
+  });
+  voiceConnectionPromise = voiceAgent.connect(gameSettings?.voice?.name || voiceChoice.value)
+    .then(() => voiceAgent)
+    .finally(() => { voiceConnectionPromise = null; });
+  return voiceConnectionPromise;
+}
+
+async function toggleRecording() {
+  try {
+    const agent = await connectVoiceAgent();
+    if (agent.recording) await agent.stopMicrophone();
+    else await agent.startMicrophone();
+  } catch (error) {
+    setVoiceTranscript(`AI could not connect: ${error.message}`);
+  }
+  updateRecordingButton();
+}
+
+async function previewVoice() {
+  testVoiceButton.disabled = true;
+  voicePreviewStatus.textContent = 'Loading voice…';
+  voicePreviewAgent?.disconnect();
+  voicePreviewAgent = new VoiceAgent({
+    getInstructions: () => 'Speak exactly as requested and say nothing else.',
+    onStatus: (status) => { voicePreviewStatus.textContent = status; },
+  });
+  try {
+    await voicePreviewAgent.connect(voiceChoice.value);
+    voicePreviewAgent.speak('Welcome to RoboDeal. Place your bets.');
+    window.setTimeout(() => {
+      voicePreviewAgent?.disconnect();
+      voicePreviewStatus.textContent = '';
+      testVoiceButton.disabled = false;
+    }, 5_000);
+  } catch (error) {
+    voicePreviewStatus.textContent = `Voice preview could not start: ${error.message}`;
+    testVoiceButton.disabled = false;
   }
 }
 
@@ -592,6 +786,7 @@ function drawPlayerSeats() {
   roundLabel.textContent = ['Preflop', 'Flop', 'Turn', 'River'][roundNumber - 1];
   turnIndicator.setAttribute('aria-label', `Your bet: ${pendingBet}. Total pot: ${totalPotAmount()}`);
   updateBetControls();
+  voiceAgent?.updateContext();
 }
 
 function setCurrentPlayer(number) {
@@ -1130,6 +1325,7 @@ chipEnabledCheckboxes.forEach((checkbox) => {
   checkbox.addEventListener('change', () => updateChipDenominationAvailability(checkbox));
   updateChipDenominationAvailability(checkbox);
 });
+testVoiceButton.addEventListener('click', previewVoice);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && !gameScreen.hidden && !isGameWon) {
     keepScreenAwake();
@@ -1155,6 +1351,7 @@ foldButton.addEventListener('click', () => {
 confirmButton.addEventListener('click', confirm);
 undoButton.addEventListener('click', undoLastTurn);
 dealOkButton.addEventListener('click', cardsAreDealt);
+recordingButton.addEventListener('click', toggleRecording);
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   gameSettings = {
@@ -1166,8 +1363,11 @@ form.addEventListener('submit', (event) => {
     dealerNumber: Number(dealerSelect.value),
     firstDealerNumber: Number(dealerSelect.value),
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
+    startMicrophoneAutomatically: startMicrophoneAutomaticallyCheckbox.checked,
+    showVoiceTranscript: showVoiceTranscriptCheckbox.checked,
     chipDisplayMode,
     chipDenominations: selectedChipDenominations(),
+    voice: selectedVoiceSettings(),
   };
   gameHandNumber = 0;
   saveLastGameSettings();
@@ -1183,6 +1383,12 @@ form.addEventListener('submit', (event) => {
   actionButtons.hidden = false;
   keepScreenAwake();
   startDebugPreset(debugPresetSelect.value);
+  connectVoiceAgent()
+    .then(async (agent) => {
+      if (gameSettings.startMicrophoneAutomatically) await agent.startMicrophone();
+      updateRecordingButton();
+    })
+    .catch((error) => setVoiceTranscript(`AI could not connect: ${error.message}`));
 
 
   // Add the game-table interface inside gameScreen in the next step.

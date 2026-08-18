@@ -71,6 +71,21 @@ body {
   height: min(48vw, 220px);
   transform: translate(-50%, -50%) rotate(var(--rotation));
 }
+.voice-transcript {
+  position: fixed;
+  z-index: 2;
+  left: 50%;
+  top: 48px;
+  width: min(90%, 340px);
+  margin: 0;
+  color: #fffdf6;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  text-shadow: 0 1px 3px #04160f;
+  transform: translateX(-50%);
+}
 .game-winner-screen {
   position: relative;
   display: grid;

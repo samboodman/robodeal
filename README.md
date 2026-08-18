@@ -13,16 +13,19 @@ The project is a learning project for Sam. The game is intentionally one small s
 - Show whose turn it is around the table and rotate the controls toward that player.
 - Keep the phone screen awake during an active game when the browser supports it.
 - Remember the latest setup in that browser, including players and chip settings.
-- Keep the former recording and voice-test buttons visible as nonfunctional placeholders while the voice system is rebuilt. The voice customization page remains available, but its choices do not affect the game.
+- Connect a small OpenAI Realtime voice agent when a game starts. It can answer short poker questions and call six guarded game actions: fold, check, call, bet, all-in, and cards-dealt. The recording button controls only the microphone, and the voice customization page selects the output voice and speaking style.
 
 ## How it is built
 
 - `index.html`, `styles.css`, and `app.js` contain the game interface and main game flow.
 - `pot-logic.js` calculates contribution-based main and side pots and decides when betting rounds are complete. `pot-logic.test.js` tests that logic.
 - Vite runs the local development server and builds the site for deployment.
+- `voice-agent.js` owns the WebRTC voice connection, while `api/realtime-call.js` keeps the OpenAI API key on the server.
 - The app does not use React or a large UI framework.
 
 ## Run locally
+
+Create `.env.local` with `OPENAI_API_KEY=your_key_here`, then run:
 
 ```sh
 npm install
