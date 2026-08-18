@@ -8,6 +8,7 @@ const dealerSelect = document.querySelector('#dealer');
 const debugPresetSelect = document.querySelector('#debug-preset');
 const useBigBlindCheckbox = document.querySelector('#use-big-blind');
 const setupScreen = document.querySelector('#setup-screen');
+const voiceCustomizationScreen = document.querySelector('#voice-customization-screen');
 const chipDenominationsScreen = document.querySelector('#chip-denominations-screen');
 const gameScreen = document.querySelector('#game-screen');
 const gameWinnerScreen = document.querySelector('#game-winner-screen');
@@ -31,6 +32,8 @@ const winnerOptions = document.querySelector('#winner-options');
 const dealPrompt = document.querySelector('#deal-prompt');
 const dealMessage = document.querySelector('#deal-message');
 const dealOkButton = document.querySelector('#deal-ok-button');
+const voiceCustomizationButton = document.querySelector('#voice-customization-button');
+const voiceCustomizationBack = document.querySelector('#voice-customization-back');
 const chipDenominationsButton = document.querySelector('#chip-denominations-button');
 const chipDenominationsBack = document.querySelector('#chip-denominations-back');
 const chipDisplayModeButton = document.querySelector('#chip-display-mode');
@@ -1103,6 +1106,14 @@ playerCount.addEventListener('change', () => {
   useBigBlindCheckbox.checked = Number(playerCount.value) >= 6;
 });
 debugPresetSelect.addEventListener('change', selectDebugPreset);
+voiceCustomizationButton.addEventListener('click', () => {
+  setupScreen.hidden = true;
+  voiceCustomizationScreen.hidden = false;
+});
+voiceCustomizationBack.addEventListener('click', () => {
+  voiceCustomizationScreen.hidden = true;
+  setupScreen.hidden = false;
+});
 chipDenominationsButton.addEventListener('click', () => {
   setupScreen.hidden = true;
   chipDenominationsScreen.hidden = false;
@@ -1162,6 +1173,7 @@ form.addEventListener('submit', (event) => {
   saveLastGameSettings();
   makePlayers();
   setupScreen.hidden = true;
+  voiceCustomizationScreen.hidden = true;
   chipDenominationsScreen.hidden = true;
   gameScreen.hidden = false;
   gameWinnerScreen.hidden = true;

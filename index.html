@@ -63,10 +63,68 @@
             <option value="game-won">Game winner screen</option>
           </select>
 
+          <label class="checkbox-setting" for="start-microphone-automatically">
+            <input id="start-microphone-automatically" name="startMicrophoneAutomatically" type="checkbox" checked />
+            Start microphone automatically
+          </label>
+          <label class="checkbox-setting" for="show-voice-transcript">
+            <input id="show-voice-transcript" name="showVoiceTranscript" type="checkbox" />
+            Show voice transcript while playing
+          </label>
+          <button id="voice-customization-button" class="voice-customization-button" type="button">Voice customization</button>
           <button id="chip-denominations-button" class="chip-denominations-button" type="button">Chip denominations</button>
           <button type="submit">Start game</button>
           <p id="message" class="message" role="status"></p>
         </form>
+      </section>
+
+      <section id="voice-customization-screen" class="setup-card" aria-labelledby="voice-customization-title" hidden>
+        <p class="eyebrow">Poker night</p>
+        <h1 id="voice-customization-title">Customize the voice</h1>
+        <p class="intro">These controls are placeholders while voice support is rebuilt.</p>
+
+        <label for="voice-choice">Voice</label>
+        <select id="voice-choice" name="voiceChoice">
+          <option value="marin" selected>Marin</option>
+          <option value="cedar">Cedar</option>
+          <option value="alloy">Alloy</option>
+          <option value="ash">Ash</option>
+          <option value="coral">Coral</option>
+          <option value="sage">Sage</option>
+          <option value="shimmer">Shimmer</option>
+          <option value="verse">Verse</option>
+          <option value="ballad">Ballad</option>
+          <option value="echo">Echo</option>
+        </select>
+
+        <label for="voice-accent">Accent</label>
+        <select id="voice-accent" name="voiceAccent">
+          <option value="neutral" selected>Neutral</option>
+          <option value="American">American</option>
+          <option value="British">British</option>
+          <option value="Australian">Australian</option>
+          <option value="Irish">Irish</option>
+        </select>
+
+        <label for="voice-personality">Personality</label>
+        <select id="voice-personality" name="voicePersonality">
+          <option value="friendly" selected>Friendly dealer</option>
+          <option value="calm">Calm and focused</option>
+          <option value="energetic">Energetic</option>
+          <option value="dramatic">Dramatic</option>
+          <option value="funny">Lighthearted</option>
+        </select>
+
+        <label for="voice-pace">Speaking pace</label>
+        <select id="voice-pace" name="voicePace">
+          <option value="steady" selected>Steady</option>
+          <option value="slow">Slow</option>
+          <option value="quick">Quick</option>
+        </select>
+
+        <button id="test-voice-button" class="test-voice-button" type="button">Test voice</button>
+        <p id="voice-preview-status" class="message" role="status"></p>
+        <button id="voice-customization-back" class="voice-customization-back" type="button">Back to game setup</button>
       </section>
 
       <section id="chip-denominations-screen" class="setup-card chip-denominations-screen" aria-labelledby="chip-denominations-title" hidden>

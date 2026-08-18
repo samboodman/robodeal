@@ -544,6 +544,15 @@ button:active {
   transform: translateY(2px);
   box-shadow: 0 2px 0 #7c2517;
 }
+.test-voice-button {
+  min-height: 46px;
+  margin-top: 22px;
+  background: #2875c7;
+  box-shadow: 0 4px 0 #174f91;
+  font-size: 0.98rem;
+}
+.voice-customization-button,
+.voice-customization-back,
 .chip-denominations-button,
 .chip-denominations-back {
   min-height: 46px;
@@ -551,6 +560,9 @@ button:active {
   background: #557066;
   box-shadow: 0 4px 0 #31483e;
   font-size: 0.98rem;
+}
+.voice-customization-back {
+  margin-top: 32px;
 }
 .chip-denominations-screen {
   min-height: min(85svh, 620px);

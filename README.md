@@ -13,7 +13,7 @@ The project is a learning project for Sam. The game is intentionally one small s
 - Show whose turn it is around the table and rotate the controls toward that player.
 - Keep the phone screen awake during an active game when the browser supports it.
 - Remember the latest setup in that browser, including players and chip settings.
-- Keep the former recording button visible as a nonfunctional placeholder while the voice system is rebuilt.
+- Keep the former recording and voice-test buttons visible as nonfunctional placeholders while the voice system is rebuilt. The voice customization page remains available, but its choices do not affect the game.
 
 ## How it is built
 
