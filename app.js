@@ -1,6 +1,5 @@
 import { calculatePots, hasBettingRoundFinished, splitPotAmount } from './pot-logic.js';
 import { VoiceAgent } from './voice-agent.js';
-import { isGameRelatedTranscript } from './voice-relevance.js';
 
 const playerCount = document.querySelector('#player-count');
 const playerNames = document.querySelector('#player-names');
@@ -373,7 +372,7 @@ function getVoiceInstructions() {
   return `You are RoboDeal, a concise voice controller for a casual real-card poker game.
 Current authoritative game state: ${JSON.stringify(getVoiceSnapshot())}
 
-Use a ${voice.personality} personality, a ${voice.accent} accent, and a ${voice.pace} speaking pace. Respond only about this poker game. Ignore unrelated table conversation completely, even when someone addresses RoboDeal, robot, bot, or AI. Keep every spoken response to one short sentence.
+Use a ${voice.personality} personality, a ${voice.accent} accent, and a ${voice.pace} speaking pace. Before responding, use the full meaning and context of the utterance to decide whether the speaker is actually discussing or controlling this poker game. An isolated word that could have a poker meaning is not enough. If the meaning is unrelated to this game, produce no speech, no text, and no tool call, even when someone addresses RoboDeal, robot, bot, or AI. Keep every spoken response to one short sentence.
 
 For a clear action, call exactly one matching tool. Never say an action succeeded before its tool result says it succeeded. Every betting tool must use the currentPlayerNumber from the state as playerNumber. "Bet 5" means make the player's total round bet 5, so the additional amount is 5 minus roundBet. "Raise 5" means call and add 5 more, so the additional amount is amountToCall plus 5. If the request is ambiguous, ask one short question and do not call a tool.`;
 }
@@ -450,10 +449,6 @@ async function connectVoiceAgent() {
     getInstructions: getVoiceInstructions,
     tools: voiceTools,
     executeTool: executeVoiceTool,
-    shouldRespond: (transcript) => isGameRelatedTranscript(transcript, {
-      playerNames: Object.values(playersByNumber).map((player) => player.name),
-      waitingForCards: !dealPrompt.hidden,
-    }),
     onTranscript: setVoiceTranscript,
     onStatus: setVoiceTranscript,
   });
