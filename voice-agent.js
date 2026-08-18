@@ -1,11 +1,3 @@
-export function realtimeResponseText(response) {
-  return (response?.output || [])
-    .flatMap((item) => item.content || [])
-    .map((content) => content.text || content.transcript || '')
-    .join('')
-    .trim();
-}
-
 export class VoiceAgent {
   constructor({ getInstructions, tools = [], executeTool, onTranscript = () => {}, onStatus = () => {} }) {
     this.getInstructions = getInstructions;
@@ -166,41 +158,66 @@ export class VoiceAgent {
         conversation: 'none',
         output_modalities: ['text'],
         metadata: { kind: 'relevance-check', utteranceId },
-        max_output_tokens: 8,
+        max_output_tokens: 64,
         instructions: [
-          'Classify the meaning of the entire heard sentence, not isolated words.',
-          'Output exactly GAME if the speaker is genuinely talking about, asking about, or controlling the current poker game.',
-          'Output exactly UNRELATED for everything else and whenever uncertain.',
-          'For example, “I call” during play is GAME, but “I’m going to call my dad” is UNRELATED.',
-          'Do not answer the speaker and do not call a tool.',
+          'Judge the meaning of the entire heard sentence, not isolated words.',
+          'Call approve_game_utterance if the speaker is genuinely making a poker-table command, asking about the current poker game, or addressing the poker dealer assistant.',
+          'For example, “call”, “I call”, and “raise 10” must be approved, but “I’m going to call my dad” must not be approved.',
+          'For anything unrelated or uncertain, do not call the function and output only UNRELATED.',
+          'Do not answer the speaker.',
         ].join(' '),
         input: [{
           type: 'message',
           role: 'user',
           content: [{
             type: 'input_text',
-            text: `Current game context:\n${this.getInstructions()}\n\nHeard sentence:\n${transcript}`,
+            text: `A poker game is currently in progress.\n\nHeard sentence:\n${transcript}`,
           }],
         }],
-        tools: [],
-        tool_choice: 'none',
+        tools: [{
+          type: 'function',
+          name: 'approve_game_utterance',
+          description: 'Approve the complete utterance only when its actual meaning concerns or controls the poker game or addresses the dealer assistant.',
+          parameters: {
+            type: 'object',
+            properties: {
+              utteranceId: {
+                type: 'string',
+                enum: [utteranceId],
+              },
+            },
+            required: ['utteranceId'],
+            additionalProperties: false,
+          },
+        }],
+        tool_choice: 'auto',
       },
     });
   }
 
-  handleRelevanceResult(response) {
+  approveGameUtterance(argumentsJson) {
+    let utteranceId;
+    try {
+      utteranceId = JSON.parse(argumentsJson || '{}').utteranceId;
+    } catch {
+      return;
+    }
+    const pending = this.pendingRelevanceChecks.get(utteranceId);
+    if (!pending) return;
+
+    clearTimeout(pending.cleanupTimer);
+    this.pendingRelevanceChecks.delete(utteranceId);
+    this.updateContext();
+    this.send({ type: 'response.create' });
+  }
+
+  rejectUnapprovedUtterance(response) {
     const utteranceId = response.metadata?.utteranceId;
     const pending = this.pendingRelevanceChecks.get(utteranceId);
     if (!pending) return;
 
     clearTimeout(pending.cleanupTimer);
     this.pendingRelevanceChecks.delete(utteranceId);
-    if (realtimeResponseText(response).toUpperCase() === 'GAME') {
-      this.updateContext();
-      this.send({ type: 'response.create' });
-      return;
-    }
-
     if (pending.itemId) {
       this.send({ type: 'conversation.item.delete', item_id: pending.itemId });
     }
@@ -213,7 +230,7 @@ export class VoiceAgent {
       return;
     }
     if (event.type === 'response.done' && event.response?.metadata?.kind === 'relevance-check') {
-      this.handleRelevanceResult(event.response);
+      this.rejectUnapprovedUtterance(event.response);
       return;
     }
     if (event.type === 'response.output_audio_transcript.done') {
@@ -225,6 +242,10 @@ export class VoiceAgent {
       return;
     }
     if (event.type !== 'response.function_call_arguments.done') return;
+    if (event.name === 'approve_game_utterance') {
+      this.approveGameUtterance(event.arguments);
+      return;
+    }
 
     let result;
     try {
