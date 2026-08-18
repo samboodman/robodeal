@@ -71,35 +71,6 @@ body {
   height: min(48vw, 220px);
   transform: translate(-50%, -50%) rotate(var(--rotation));
 }
-.voice-status {
-  position: fixed;
-  z-index: 1;
-  left: 50%;
-  top: 48px;
-  width: min(90%, 280px);
-  margin: 0;
-  color: #fffdf6;
-  font-size: 0.78rem;
-  font-weight: 750;
-  text-align: center;
-  text-shadow: 0 1px 3px #04160f;
-  transform: translateX(-50%);
-}
-.voice-transcript {
-  position: fixed;
-  z-index: 1;
-  left: 50%;
-  top: 70px;
-  width: min(90%, 320px);
-  margin: 0;
-  color: #fffdf6;
-  font-size: 0.78rem;
-  font-weight: 600;
-  line-height: 1.25;
-  text-align: center;
-  text-shadow: 0 1px 3px #04160f;
-  transform: translateX(-50%);
-}
 .game-winner-screen {
   position: relative;
   display: grid;
@@ -573,15 +544,6 @@ button:active {
   transform: translateY(2px);
   box-shadow: 0 2px 0 #7c2517;
 }
-.test-voice-button {
-  min-height: 46px;
-  margin-top: 22px;
-  background: #2875c7;
-  box-shadow: 0 4px 0 #174f91;
-  font-size: 0.98rem;
-}
-.voice-customization-button,
-.voice-customization-back,
 .chip-denominations-button,
 .chip-denominations-back {
   min-height: 46px;
@@ -589,9 +551,6 @@ button:active {
   background: #557066;
   box-shadow: 0 4px 0 #31483e;
   font-size: 0.98rem;
-}
-.voice-customization-back {
-  margin-top: 32px;
 }
 .chip-denominations-screen {
   min-height: min(85svh, 620px);
@@ -686,7 +645,7 @@ button:active {
   --chip-color: #df7629;
   --chip-trim: #8a400f;
 }
-.voice-transcript-setting {
+.checkbox-setting {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -695,7 +654,7 @@ button:active {
   font-size: 0.92rem;
   font-weight: 700;
 }
-.voice-transcript-setting input {
+.checkbox-setting input {
   width: 20px;
   min-height: 20px;
   accent-color: #2875c7;

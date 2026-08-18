@@ -12,35 +12,24 @@ The project is a learning project for Sam. The game is intentionally one small s
 - Automatically post the configured small blind and, when enabled, a big blind worth twice the small blind.
 - Show whose turn it is around the table and rotate the controls toward that player.
 - Keep the phone screen awake during an active game when the browser supports it.
-- Remember the latest setup in that browser, including players, chip settings, and voice choices.
-- Attempt to connect an OpenAI Realtime dealer when the game starts and keep that session running unless the connection ends. The microphone can be started or stopped independently while a connected dealer continues making table announcements. The AI receives a read-only copy of the game state and can change the game only by calling approved action functions: fold, check, call, bet, all-in, and continue after cards are dealt. Each betting action confirms itself automatically.
-- Let players choose a built-in dealer voice, accent preference, personality, and speaking pace, then preview that voice before a game.
+- Remember the latest setup in that browser, including players and chip settings.
+- Keep the former recording button visible as a nonfunctional placeholder while the voice system is rebuilt.
 
 ## How it is built
 
 - `index.html`, `styles.css`, and `app.js` contain the game interface and main game flow.
 - `pot-logic.js` calculates contribution-based main and side pots and decides when betting rounds are complete. `pot-logic.test.js` tests that logic.
 - Vite runs the local development server and builds the site for deployment.
-- `api/realtime-call.js` is a small Vercel server function. It keeps `OPENAI_API_KEY` on the server and creates the OpenAI Realtime WebRTC connection without exposing the key to the browser.
-- `vite.config.mjs` provides the same protected Realtime endpoint during local development, so running locally does not require Vercel.
 - The app does not use React or a large UI framework.
 
 ## Run locally
-
-Create a `.env.local` file containing your OpenAI API key:
-
-```sh
-OPENAI_API_KEY=your_key_here
-```
-
-The file is ignored by Git and the key is used only by the local Vite server. Then run:
 
 ```sh
 npm install
 npm run dev
 ```
 
-Open the local address Vite prints. A deployed copy separately needs `OPENAI_API_KEY` configured on whichever hosting service runs `api/realtime-call.js`.
+Open the local address Vite prints.
 
 ## Development practice
 

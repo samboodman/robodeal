@@ -1,5 +1,4 @@
 import { calculatePots, hasBettingRoundFinished, splitPotAmount } from './pot-logic.js';
-import { classifyVoiceCommand } from './voice-command.js';
 
 const playerCount = document.querySelector('#player-count');
 const playerNames = document.querySelector('#player-names');
@@ -9,7 +8,6 @@ const dealerSelect = document.querySelector('#dealer');
 const debugPresetSelect = document.querySelector('#debug-preset');
 const useBigBlindCheckbox = document.querySelector('#use-big-blind');
 const setupScreen = document.querySelector('#setup-screen');
-const voiceCustomizationScreen = document.querySelector('#voice-customization-screen');
 const chipDenominationsScreen = document.querySelector('#chip-denominations-screen');
 const gameScreen = document.querySelector('#game-screen');
 const gameWinnerScreen = document.querySelector('#game-winner-screen');
@@ -33,24 +31,11 @@ const winnerOptions = document.querySelector('#winner-options');
 const dealPrompt = document.querySelector('#deal-prompt');
 const dealMessage = document.querySelector('#deal-message');
 const dealOkButton = document.querySelector('#deal-ok-button');
-const testVoiceButton = document.querySelector('#test-voice-button');
-const recordingButton = document.querySelector('#recording-button');
-const voiceStatus = document.querySelector('#voice-status');
-const voiceTranscript = document.querySelector('#voice-transcript');
-const startMicrophoneAutomaticallyCheckbox = document.querySelector('#start-microphone-automatically');
-const showVoiceTranscriptCheckbox = document.querySelector('#show-voice-transcript');
-const voiceCustomizationButton = document.querySelector('#voice-customization-button');
-const voiceCustomizationBack = document.querySelector('#voice-customization-back');
 const chipDenominationsButton = document.querySelector('#chip-denominations-button');
 const chipDenominationsBack = document.querySelector('#chip-denominations-back');
 const chipDisplayModeButton = document.querySelector('#chip-display-mode');
 const chipDenominationInputs = [...document.querySelectorAll('[data-chip-color]')];
 const chipEnabledCheckboxes = [...document.querySelectorAll('[data-chip-enabled]')];
-const voiceChoice = document.querySelector('#voice-choice');
-const voiceAccent = document.querySelector('#voice-accent');
-const voicePersonality = document.querySelector('#voice-personality');
-const voicePace = document.querySelector('#voice-pace');
-const voicePreviewStatus = document.querySelector('#voice-preview-status');
 
 // This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
@@ -70,50 +55,11 @@ let potAwardIndex = 0;
 let lastPotWinnerNumber = null;
 let handWinnerNumbers = [];
 let lastTurnState = null;
-let gameHistory = [];
 let gameHandNumber = 0;
 let dealPromptKind = null;
-let openingTurnAnnouncementPending = false;
 let chipDisplayMode = 'value';
-// These are one-second audio files kept only in this browser's memory.
-// The newest minute is useful for a future speech-to-text feature; nothing
-// is saved to the phone's file system.
-let microphoneStream = null;
-let microphoneRecorder = null;
-let recentAudioFiles = [];
-let audioCleanupTimer = null;
-let realtimePeerConnection = null;
-let realtimeMicrophoneSender = null;
-let realtimeDataChannel = null;
-let realtimeAudio = null;
-let realtimeSessionConfigured = false;
-let realtimeStatePollTimer = null;
-let realtimeInitialNarrationTimer = null;
-let realtimeStateSyncQueued = false;
-let lastRealtimeGameStateFingerprint = null;
-let realtimeGameStateVersion = 0;
-let realtimeResponseActive = false;
-let realtimeNarrationResponseActive = false;
-let realtimeOutputAudioPlaying = false;
-let realtimeUserResponseQueued = null;
-let pendingVoiceWagerKind = null;
-let queuedRealtimeNarration = null;
-let lastRealtimeNarration = null;
-let showVoiceTranscript = false;
 let screenWakeLock = null;
-let voicePreviewConnection = null;
-let voicePreviewChannel = null;
-let voicePreviewAudio = null;
 const lastGameSettingsKey = 'robodeal-last-game-settings';
-
-function selectedVoiceSettings() {
-  return {
-    name: voiceChoice.value,
-    accent: voiceAccent.value,
-    personality: voicePersonality.value,
-    pace: voicePace.value,
-  };
-}
 
 function updateChipDisplayModeButton() {
   const showsChipPile = chipDisplayMode === 'pile';
@@ -180,36 +126,19 @@ function restoreLastGameSettings() {
   });
   drawDealerOptions(String(settings.dealerNumber));
   dealerSelect.value = String(settings.dealerNumber);
-  startMicrophoneAutomaticallyCheckbox.checked = (settings.startMicrophoneAutomatically ?? settings.startAiAutomatically) !== false;
-  showVoiceTranscriptCheckbox.checked = Boolean(savedGame.showVoiceTranscript);
   chipDisplayMode = settings.chipDisplayMode === 'pile' ? 'pile' : 'value';
   updateChipDisplayModeButton();
   restoreChipDenominations(settings.chipDenominations);
-
-  if (settings.voice) {
-    if ([...voiceChoice.options].some((option) => option.value === settings.voice.name)) voiceChoice.value = settings.voice.name;
-    if ([...voiceAccent.options].some((option) => option.value === settings.voice.accent)) voiceAccent.value = settings.voice.accent;
-    if ([...voicePersonality.options].some((option) => option.value === settings.voice.personality)) voicePersonality.value = settings.voice.personality;
-    if ([...voicePace.options].some((option) => option.value === settings.voice.pace)) voicePace.value = settings.voice.pace;
-  }
 
   message.textContent = 'Last game settings restored.';
 }
 
 function saveLastGameSettings() {
   try {
-    localStorage.setItem(lastGameSettingsKey, JSON.stringify({
-      settings: gameSettings,
-      showVoiceTranscript,
-    }));
+    localStorage.setItem(lastGameSettingsKey, JSON.stringify({ settings: gameSettings }));
   } catch {
     // The game still works if this browser has disabled saved site data.
   }
-}
-
-function voiceStyleInstructions(voiceSettings) {
-  const accentInstruction = voiceSettings.accent === 'neutral' ? 'Use a neutral accent.' : `Use a ${voiceSettings.accent} accent.`;
-  return `Your personality is ${voiceSettings.personality}. ${accentInstruction} Speak at a ${voiceSettings.pace} pace.`;
 }
 
 async function keepScreenAwake() {
@@ -230,38 +159,6 @@ async function keepScreenAwake() {
 async function allowScreenToSleep() {
   await screenWakeLock?.release();
   screenWakeLock = null;
-}
-
-function discardOldAudioFiles() {
-  const oneMinuteAgo = Date.now() - 60_000;
-  recentAudioFiles = recentAudioFiles.filter((audioFile) => audioFile.createdAt >= oneMinuteAgo);
-}
-
-function setVoiceStatus(status) {
-  voiceStatus.textContent = showVoiceTranscript ? status : '';
-  voiceStatus.hidden = !showVoiceTranscript || !status;
-}
-
-function setVoiceTranscript(transcript) {
-  voiceTranscript.textContent = transcript;
-  voiceTranscript.hidden = !showVoiceTranscript || !transcript;
-}
-
-function logGameEvent(text) {
-  gameHistory.push({
-    hand: gameHandNumber,
-    round: ['Preflop', 'Flop', 'Turn', 'River'][roundNumber - 1] || 'Setup',
-    text,
-  });
-  scheduleRealtimeGameStateSync();
-}
-
-function getGamePhase() {
-  if (!gameWinnerScreen.hidden) return 'game over';
-  if (gameScreen.hidden) return 'setup';
-  if (!dealPrompt.hidden) return dealPromptKind === 'hole-cards' ? 'waiting for hole cards to be dealt' : 'waiting for community cards to be dealt';
-  if (!winnerPicker.hidden) return isGameWon ? 'hand complete' : 'choosing a pot winner';
-  return 'betting';
 }
 
 function copyPots() {
@@ -395,638 +292,6 @@ function updatePotDisplay() {
   } else if (targetLayerCount === renderedPotLayerCount && potAnimationTimer === null) {
     drawPotLayers(renderedPotLayerCount);
   }
-}
-
-function getRealtimeGameState() {
-  // This makes a plain copy. The AI can read this copy, but cannot change the
-  // real game variables. Only the approved functions below can affect a turn.
-  return {
-    stateVersion: realtimeGameStateVersion,
-    gamePhase: getGamePhase(),
-    dealInstruction: dealPrompt.hidden ? null : dealMessage.textContent,
-    dealPromptKind,
-    winnerQuestion: winnerPicker.hidden ? null : winnerQuestion.textContent,
-    gameSettings: gameSettings ? { ...gameSettings } : null,
-    playersByNumber: Object.fromEntries(Object.entries(playersByNumber).map(([number, player]) => [number, { ...player }])),
-    currentPlayerNumber,
-    antePlayerNumber,
-    bigBlindPlayerNumber,
-    pot: totalPotAmount(),
-    pots: copyPots(),
-    highestRoundBet,
-    pendingBet,
-    pendingFold,
-    isGameWon,
-    roundNumber,
-    lastTurnState: lastTurnState ? JSON.parse(JSON.stringify(lastTurnState)) : null,
-    gameHistory: [...gameHistory],
-    recentAudioFileCount: recentAudioFiles.length,
-    isRecording: microphoneRecorder?.state === 'recording',
-  };
-}
-
-function realtimeGameStateFingerprint() {
-  const state = getRealtimeGameState();
-  // Recording bookkeeping changes continuously but does not alter the poker
-  // game. Everything else in the snapshot is authoritative game data.
-  delete state.stateVersion;
-  delete state.recentAudioFileCount;
-  delete state.isRecording;
-  return JSON.stringify(state);
-}
-
-function getRealtimeNarration() {
-  const player = playersByNumber[currentPlayerNumber];
-  if (!player) return null;
-
-  if (!dealPrompt.hidden) return dealMessage.textContent;
-  if (!winnerPicker.hidden || !gameWinnerScreen.hidden) return null;
-
-  if (openingTurnAnnouncementPending) {
-    const smallBlind = playersByNumber[antePlayerNumber];
-    const bigBlind = playersByNumber[bigBlindPlayerNumber];
-    const blindNarration = bigBlind
-      ? `${smallBlind.name}, you're the small blind. ${bigBlind.name}, you're the big blind.`
-      : `${smallBlind.name}, you're the small blind.`;
-    return `${blindNarration} ${player.name}, you're first.`;
-  }
-
-  const amountToCall = Math.max(0, highestRoundBet - player.roundBet);
-  const minimumBet = Math.min(amountToCall, player.chips);
-  const currentSidePots = sidePots();
-  const potNarration = currentSidePots.length > 0
-    ? `Main pot, ${mainPotAmount()}. ${currentSidePots.map((potLayer, index) => `Side pot ${index + 1}, ${potLayer.amount}.`).join(' ')}`
-    : `Pot, ${mainPotAmount()}.`;
-  return `${player.name}, it's your turn. Minimum bet, ${minimumBet}. ${potNarration} ${player.chips} chips behind.`;
-}
-
-function isDirectlyAddressingDealer(transcript) {
-  const normalizedTranscript = transcript.toLowerCase().trim();
-  if (/\bopen[\s-]*ai\b/.test(normalizedTranscript)) return false;
-
-  const dealerName = '(?:robo[\\s-]*deal(?:er)?|robot|bot|ai)';
-  const greeting = '(?:hey|hi|hello|okay|ok|yo|please|excuse\\s+me|um|uh)';
-  const questionOrRequest = '(?:can|could|would|will|do|did|are|is|am|what|when|where|who|why|how|tell|say|help|listen|hear)';
-  const addressedFirst = new RegExp(`^(?:${greeting}[\\s,!:.-]+)?${dealerName}[\\s,!:.-]+${questionOrRequest}\\b`);
-  const addressedLast = new RegExp(`\\b${questionOrRequest}\\b[\\s\\S]*[,\\s]+${dealerName}[?!.]*$`);
-  const greetingOnly = new RegExp(`^(?:${greeting}[\\s,!:.-]+)?${dealerName}[?!.]*$`);
-  return addressedFirst.test(normalizedTranscript) || addressedLast.test(normalizedTranscript) || greetingOnly.test(normalizedTranscript);
-}
-
-function shouldRespondToTranscript(transcript) {
-  const normalizedTranscript = transcript.toLowerCase();
-  const mentionsPlayer = Object.values(playersByNumber).some((player) =>
-    normalizedTranscript.includes(player.name.toLowerCase()));
-  const mentionsPoker = /\b(poker|turn|pot|chips?|money|bet|wager|fold|check|call|raise|all[ -]?in|deal|dealt|cards?|flop|river|ante|dealer|winner|showdown|undo)\b/.test(normalizedTranscript);
-  return mentionsPlayer || mentionsPoker || isDirectlyAddressingDealer(transcript);
-}
-
-function interruptObsoleteRealtimeNarration() {
-  if (realtimeNarrationResponseActive) {
-    sendRealtimeEvent({ type: 'response.cancel' });
-  }
-
-  if (realtimeOutputAudioPlaying) {
-    // WebRTC keeps unplayed model audio in a server-side buffer. Clearing it
-    // makes the old announcement stop immediately instead of finishing after
-    // the game has already advanced.
-    sendRealtimeEvent({ type: 'output_audio_buffer.clear' });
-    realtimeOutputAudioPlaying = false;
-  }
-}
-
-function flushRealtimeResponseQueue() {
-  if (realtimeResponseActive || realtimeDataChannel?.readyState !== 'open') return;
-
-  if (realtimeUserResponseQueued) {
-    const queuedUserResponse = realtimeUserResponseQueued;
-    realtimeUserResponseQueued = null;
-    realtimeResponseActive = true;
-    realtimeNarrationResponseActive = false;
-    const response = queuedUserResponse.exactSpeech
-      ? {
-          conversation: 'none',
-          input: [{
-            type: 'message',
-            role: 'user',
-            content: [{
-              type: 'input_text',
-              text: `Say exactly this and nothing else: ${queuedUserResponse.exactSpeech}`,
-            }],
-          }],
-          tool_choice: 'none',
-        }
-      : {
-          ...(queuedUserResponse.itemId ? {
-            input: [{ type: 'item_reference', id: queuedUserResponse.itemId }],
-          } : {}),
-          instructions: `${realtimeInstructions()}${queuedUserResponse.actionInstruction ? `\n\n${queuedUserResponse.actionInstruction}` : ''}`,
-          ...(queuedUserResponse.toolName ? {
-            // gpt-realtime-mini currently honors "required" reliably but can
-            // ignore a named function choice. Supplying only the intended tool
-            // makes "required" deterministic.
-            tools: realtimeTools.filter((tool) => tool.name === queuedUserResponse.toolName),
-            tool_choice: 'required',
-          } : {
-            tool_choice: 'none',
-          }),
-        };
-    sendRealtimeEvent({
-      type: 'response.create',
-      response,
-    });
-    return;
-  }
-
-  if (!queuedRealtimeNarration || queuedRealtimeNarration === lastRealtimeNarration) return;
-
-  const narration = queuedRealtimeNarration;
-  queuedRealtimeNarration = null;
-  lastRealtimeNarration = narration;
-  realtimeResponseActive = true;
-  realtimeNarrationResponseActive = true;
-  sendRealtimeEvent({
-    type: 'response.create',
-    response: {
-      // Keep deterministic announcements outside the user's conversation and
-      // give the model an explicit input instead of an empty-context prompt.
-      conversation: 'none',
-      metadata: { kind: 'game-state-narration' },
-      input: [{
-        type: 'message',
-        role: 'user',
-        content: [{
-          type: 'input_text',
-          text: `In a crisp professional poker dealer cadence, say exactly this and nothing else: ${narration}`,
-        }],
-      }],
-      tool_choice: 'none',
-    },
-  });
-}
-
-function queueRealtimeNarration() {
-  const narration = getRealtimeNarration();
-  if (!narration || narration === lastRealtimeNarration) return;
-
-  queuedRealtimeNarration = narration;
-  openingTurnAnnouncementPending = false;
-  flushRealtimeResponseQueue();
-}
-
-function scheduleRealtimeGameStateSync() {
-  if (realtimeStateSyncQueued) return;
-
-  realtimeStateSyncQueued = true;
-  queueMicrotask(() => {
-    realtimeStateSyncQueued = false;
-    updateRealtimeGameState();
-  });
-}
-
-function realtimeInstructions() {
-  const voiceSettings = gameSettings?.voice || { accent: 'neutral', personality: 'friendly', pace: 'steady' };
-  const playerNames = Object.values(playersByNumber).map((player) => player.name).join(', ');
-  return `You are the voice control and dealer for a real-card poker game. This response was created with the newest authoritative, read-only game snapshot: ${JSON.stringify(getRealtimeGameState())}
-
-Use only this snapshot for poker facts and actions in the current voice turn. Ignore conflicting or older game details elsewhere in the conversation. Never recite, summarize, or list the snapshot or its fields. Say only the short answer needed for the current poker request or direct question. Pass this snapshot's exact stateVersion to any action function; never guess or reuse a version from an older turn. The players are: ${playerNames}. Always use each player's name from playersByNumber. Never call a named player "Player 1", "Player 2", or any other number. ${voiceStyleInstructions(voiceSettings)}
-
-Respond to clear poker-related speech: a poker action, a poker question, or an instruction about dealing cards. Also respond when a question or request is clearly addressed directly to you as AI, Bot, Robot, RoboDeal, or RoboDealer, even when it is not about poker. Examples of direct address include "Can you hear me, AI?" and "Bot, can you help?" Merely mentioning those words in conversation is not direct address. In particular, do not respond just because people mention OpenAI while talking to each other.
-
-For all other speech, stay completely silent: do not speak, ask a question, or call a function. This includes casual conversation, background talk, unrelated jokes, and people talking to each other. Speak in exactly one very short dealer phrase after a successful poker action, clear poker question, or directly addressed question. For a direct non-poker question, answer in one short sentence and do not call a poker function. Say only the player, action, and amount when needed: "Sam bets 5." "Aaron calls." "Sam folds." "Deal the flop." Do not add greetings, explanations, commentary, or a second sentence. If a poker action is unclear, ask only one short poker question, such as "Call or raise?", and do not call an action function. Never claim to change the game yourself. To do anything in the game, use only the listed poker action functions. Use check only when it is legal. "Bet 5" means make the player's total bet for this round 5. "Raise 5" means call the current bet and then add 5 more. The betCurrentPlayer tool amount is always the number of additional chips to take from the player now, so convert either spoken amount before calling it. Clear action commands are immediately confirmed by their action function; call exactly one action function. When the table says the two hole cards, flop, turn, or river have been dealt, call cardsAreDealt.`;
-}
-
-const stateVersionProperty = {
-  stateVersion: {
-    type: 'number',
-    description: 'The exact stateVersion shown in the authoritative snapshot for this voice turn.',
-  },
-};
-
-const realtimeTools = [
-  { type: 'function', name: 'foldCurrentPlayer', description: 'Immediately fold and confirm the current player.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
-  { type: 'function', name: 'checkCurrentPlayer', description: 'Immediately check and confirm for the current player, only when checking is legal.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
-  { type: 'function', name: 'callCurrentPlayer', description: 'Immediately call and confirm the current bet for the current player.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
-  { type: 'function', name: 'betCurrentPlayer', description: 'Immediately bet and confirm this many additional chips for the current player.', parameters: { type: 'object', properties: { ...stateVersionProperty, amount: { type: 'number', description: 'Additional chips to bet now.' } }, required: ['stateVersion', 'amount'], additionalProperties: false } },
-  { type: 'function', name: 'goAllIn', description: 'Immediately bet every remaining chip and confirm for the current player.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
-  { type: 'function', name: 'cardsAreDealt', description: 'Continue after the physical hole cards, flop, turn, or river have been dealt. This does the same thing as pressing the OK button in the deal prompt.', parameters: { type: 'object', properties: stateVersionProperty, required: ['stateVersion'], additionalProperties: false } },
-];
-
-function sendRealtimeEvent(event) {
-  if (realtimeDataChannel?.readyState === 'open') {
-    realtimeDataChannel.send(JSON.stringify(event));
-  }
-}
-
-function updateRealtimeGameState({ force = false, narrate = true } = {}) {
-  if (realtimeDataChannel?.readyState !== 'open') return false;
-
-  const fingerprint = realtimeGameStateFingerprint();
-  const stateChanged = fingerprint !== lastRealtimeGameStateFingerprint;
-  if (!force && !stateChanged) return false;
-
-  const nextNarration = narrate ? getRealtimeNarration() : null;
-  if (stateChanged && nextNarration && nextNarration !== lastRealtimeNarration) {
-    interruptObsoleteRealtimeNarration();
-  }
-
-  lastRealtimeGameStateFingerprint = fingerprint;
-  realtimeGameStateVersion += 1;
-
-  const session = {
-    type: 'realtime',
-    instructions: realtimeInstructions(),
-    tools: realtimeTools,
-    // Each transcript is classified before its response is created. Questions
-    // are speech-only; clear actions override this with one required function.
-    tool_choice: 'none',
-    output_modalities: ['audio'],
-  };
-
-  // Voice settings can only be chosen before the AI has spoken. Later state
-  // updates deliberately leave them alone.
-  if (!realtimeSessionConfigured) {
-    session.audio = {
-      input: {
-        noise_reduction: { type: 'far_field' },
-        transcription: { model: 'gpt-4o-transcribe', language: 'en' },
-        // VAD still detects and commits each voice turn, but the app waits for
-        // its transcription and then creates a response with fresh game state.
-        turn_detection: { type: 'server_vad', create_response: false, interrupt_response: true },
-      },
-      output: { voice: gameSettings?.voice?.name || 'marin' },
-    };
-  }
-
-  sendRealtimeEvent({
-    event_id: `game-state-${realtimeGameStateVersion}`,
-    type: 'session.update',
-    session,
-  });
-  realtimeSessionConfigured = true;
-  if (narrate && realtimeInitialNarrationTimer === null) queueRealtimeNarration();
-  return true;
-}
-
-function callRealtimeTool(name, argumentsText) {
-  const args = argumentsText ? JSON.parse(argumentsText) : {};
-  if (args.stateVersion !== realtimeGameStateVersion) {
-    throw new Error(`Stale game state. Expected stateVersion ${realtimeGameStateVersion}, received ${args.stateVersion}. Use the latest gameState in this output.`);
-  }
-
-  const allowedFunctions = {
-    foldCurrentPlayer,
-    checkCurrentPlayer,
-    callCurrentPlayer,
-    betCurrentPlayer,
-    goAllIn,
-    cardsAreDealt,
-  };
-  const action = allowedFunctions[name];
-  if (!action) throw new Error(`The AI tried to call an unapproved function: ${name}`);
-
-  const actionText = name === 'betCurrentPlayer' ? `AI action: bet ${args.amount}` : `AI action: ${name.replace('CurrentPlayer', '').replace(/([A-Z])/g, ' $1').toLowerCase()}`;
-  setVoiceTranscript(actionText);
-
-  // This is the only bridge from OpenAI back into the poker game.
-  // The AI has no direct access to the real variables above.
-  if (name === 'betCurrentPlayer') {
-    if (!action(args.amount)) return false;
-    confirm();
-    return true;
-  }
-
-  if (name === 'cardsAreDealt') return action();
-
-  const selected = action();
-  if (selected === false) return false;
-  confirm();
-  return true;
-}
-
-function handleRealtimeEvent(event) {
-  if (event.type === 'conversation.item.input_audio_transcription.delta') {
-    setVoiceTranscript(`Hearing: ${event.delta}`);
-    return;
-  }
-
-  if (event.type === 'conversation.item.input_audio_transcription.completed') {
-    setVoiceTranscript(`Heard: “${event.transcript}”`);
-    const voiceCommand = classifyVoiceCommand(event.transcript, pendingVoiceWagerKind);
-    if (!voiceCommand && !shouldRespondToTranscript(event.transcript)) {
-      setVoiceTranscript(`Ignored unrelated speech: “${event.transcript}”`);
-      return;
-    }
-    logGameEvent(`Table heard: “${event.transcript}”`);
-    if (voiceCommand?.type === 'clarification') {
-      pendingVoiceWagerKind = voiceCommand.wagerKind;
-      realtimeUserResponseQueued = {
-        exactSpeech: `How much would you like to ${voiceCommand.wagerKind}?`,
-      };
-      flushRealtimeResponseQueue();
-      return;
-    }
-
-    const actionInstruction = voiceCommand?.toolName === 'betCurrentPlayer'
-      ? voiceCommand.wagerKind === 'raise'
-        ? 'This is a clear raise command. You must call betCurrentPlayer and must not speak. The tool amount is the total number of additional chips to take from the player now. For "raise by 5" or "raise 5", add 5 to the amount currently needed to call. For "raise to 15", subtract the player\'s existing round bet from 15.'
-        : 'This is a clear bet command. You must call betCurrentPlayer and must not speak. "Bet 5" means make the player\'s total round bet 5, so subtract the player\'s existing round bet from the stated value to get the tool\'s additional-chip amount.'
-      : voiceCommand
-        ? `This is a clear poker action. You must call ${voiceCommand.toolName} and must not speak.`
-        : null;
-    if (voiceCommand?.type === 'action') pendingVoiceWagerKind = null;
-    // The transcript marks the completed user turn. Refresh the session first,
-    // then create its response; data-channel events are processed in order.
-    realtimeUserResponseQueued = {
-      itemId: event.item_id,
-      toolName: voiceCommand?.toolName || null,
-      actionInstruction,
-    };
-    updateRealtimeGameState({ force: true });
-    flushRealtimeResponseQueue();
-    return;
-  }
-
-  if (event.type === 'response.created') {
-    realtimeResponseActive = true;
-    return;
-  }
-
-  if (event.type === 'response.done') {
-    realtimeResponseActive = false;
-    realtimeNarrationResponseActive = false;
-    flushRealtimeResponseQueue();
-    return;
-  }
-
-  if (event.type === 'output_audio_buffer.started') {
-    realtimeOutputAudioPlaying = true;
-    return;
-  }
-
-  if (event.type === 'output_audio_buffer.stopped' || event.type === 'output_audio_buffer.cleared') {
-    realtimeOutputAudioPlaying = false;
-    return;
-  }
-
-  if (event.type === 'response.output_audio_transcript.done') {
-    logGameEvent(`Dealer said: “${event.transcript}”`);
-    return;
-  }
-
-  if (event.type === 'error') {
-    console.error('Realtime API error:', event.error);
-    setVoiceStatus(`AI error: ${event.error?.message || 'unknown error'}`);
-    return;
-  }
-
-  if (event.type !== 'response.function_call_arguments.done') return;
-
-  let result;
-  try {
-    result = callRealtimeTool(event.name, event.arguments);
-  } catch (error) {
-    result = { error: error.message };
-  }
-
-  const gameState = getRealtimeGameState();
-
-  sendRealtimeEvent({
-    type: 'conversation.item.create',
-    item: {
-      type: 'function_call_output',
-      call_id: event.call_id,
-      output: JSON.stringify({ result, gameState }),
-    },
-  });
-  updateRealtimeGameState();
-}
-
-function stopRealtimeConversation() {
-  realtimeDataChannel?.close();
-  realtimePeerConnection?.close();
-  realtimeAudio?.remove();
-  realtimeDataChannel = null;
-  realtimePeerConnection = null;
-  realtimeMicrophoneSender = null;
-  realtimeAudio = null;
-  realtimeSessionConfigured = false;
-  window.clearInterval(realtimeStatePollTimer);
-  realtimeStatePollTimer = null;
-  window.clearTimeout(realtimeInitialNarrationTimer);
-  realtimeInitialNarrationTimer = null;
-  realtimeStateSyncQueued = false;
-  lastRealtimeGameStateFingerprint = null;
-  realtimeResponseActive = false;
-  realtimeNarrationResponseActive = false;
-  realtimeOutputAudioPlaying = false;
-  realtimeUserResponseQueued = null;
-  pendingVoiceWagerKind = null;
-  queuedRealtimeNarration = null;
-  lastRealtimeNarration = null;
-  setVoiceStatus('');
-  setVoiceTranscript('');
-}
-
-async function startRealtimeConversation() {
-  if (!window.RTCPeerConnection) throw new Error('This browser does not support WebRTC.');
-
-  realtimePeerConnection = new RTCPeerConnection();
-  realtimeMicrophoneSender = realtimePeerConnection.addTransceiver('audio', { direction: 'sendrecv' }).sender;
-  realtimePeerConnection.addEventListener('track', (event) => {
-    if (!realtimeAudio) {
-      realtimeAudio = document.createElement('audio');
-      realtimeAudio.autoplay = true;
-      realtimeAudio.playsInline = true;
-      realtimeAudio.hidden = true;
-      document.body.append(realtimeAudio);
-    }
-    realtimeAudio.srcObject = event.streams[0];
-    realtimeAudio.play().catch(() => {});
-  });
-
-  realtimeDataChannel = realtimePeerConnection.createDataChannel('oai-events');
-  realtimeDataChannel.addEventListener('open', () => {
-    window.clearTimeout(realtimeInitialNarrationTimer);
-    realtimeInitialNarrationTimer = window.setTimeout(() => {
-      realtimeInitialNarrationTimer = null;
-      queueRealtimeNarration();
-    }, 200);
-    updateRealtimeGameState({ force: true, narrate: false });
-    window.clearInterval(realtimeStatePollTimer);
-    // This catches every change to the authoritative game variables, even if
-    // a future code path forgets to request an immediate synchronization.
-    realtimeStatePollTimer = window.setInterval(updateRealtimeGameState, 100);
-    setVoiceStatus('AI is listening');
-  });
-  realtimeDataChannel.addEventListener('message', (event) => handleRealtimeEvent(JSON.parse(event.data)));
-  realtimeDataChannel.addEventListener('close', () => setVoiceStatus('Voice connection ended'));
-
-  const offer = await realtimePeerConnection.createOffer();
-  await realtimePeerConnection.setLocalDescription(offer);
-  const callResponse = await fetch('/api/realtime-call', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sdp: offer.sdp }),
-  });
-  const answer = await callResponse.text();
-  if (!callResponse.ok) throw new Error(answer);
-  await realtimePeerConnection.setRemoteDescription({ type: 'answer', sdp: answer });
-}
-
-function stopVoicePreview() {
-  voicePreviewChannel?.close();
-  voicePreviewConnection?.close();
-  voicePreviewAudio?.remove();
-  voicePreviewChannel = null;
-  voicePreviewConnection = null;
-  voicePreviewAudio = null;
-}
-
-async function previewVoice() {
-  stopVoicePreview();
-  testVoiceButton.disabled = true;
-  voicePreviewStatus.textContent = 'Loading voice…';
-
-  try {
-    const settings = selectedVoiceSettings();
-    const connection = new RTCPeerConnection();
-    voicePreviewConnection = connection;
-    connection.addTransceiver('audio', { direction: 'recvonly' });
-    connection.addEventListener('track', (event) => {
-      if (!voicePreviewAudio) {
-        voicePreviewAudio = document.createElement('audio');
-        voicePreviewAudio.autoplay = true;
-        voicePreviewAudio.playsInline = true;
-        voicePreviewAudio.hidden = true;
-        document.body.append(voicePreviewAudio);
-      }
-      voicePreviewAudio.srcObject = event.streams[0];
-      voicePreviewAudio.play().catch(() => {});
-    });
-
-    const channel = connection.createDataChannel('oai-events');
-    voicePreviewChannel = channel;
-    channel.addEventListener('open', () => {
-      channel.send(JSON.stringify({
-        type: 'session.update',
-        session: {
-          type: 'realtime',
-          instructions: `You are previewing a poker dealer voice. ${voiceStyleInstructions(settings)} Say exactly: "Welcome to RoboDeal. Place your bets."`,
-          output_modalities: ['audio'],
-          audio: { output: { voice: settings.name } },
-        },
-      }));
-      channel.send(JSON.stringify({ type: 'response.create' }));
-    });
-    channel.addEventListener('message', (event) => {
-      const update = JSON.parse(event.data);
-      if (update.type === 'error') {
-        voicePreviewStatus.textContent = `Voice preview could not start: ${update.error?.message || 'unknown problem'}`;
-        testVoiceButton.disabled = false;
-      }
-      if (update.type === 'output_audio_buffer.stopped') {
-        voicePreviewStatus.textContent = '';
-        testVoiceButton.disabled = false;
-        window.setTimeout(stopVoicePreview, 500);
-      }
-    });
-
-    const offer = await connection.createOffer();
-    await connection.setLocalDescription(offer);
-    const callResponse = await fetch('/api/realtime-call', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sdp: offer.sdp }),
-    });
-    const answer = await callResponse.text();
-    if (!callResponse.ok) throw new Error(answer);
-    await connection.setRemoteDescription({ type: 'answer', sdp: answer });
-  } catch (error) {
-    console.error('Voice preview could not start:', error);
-    voicePreviewStatus.textContent = 'Voice preview could not start.';
-    testVoiceButton.disabled = false;
-    stopVoicePreview();
-  }
-}
-
-async function stopRecording() {
-  await realtimeMicrophoneSender?.replaceTrack(null).catch(() => {});
-  if (microphoneRecorder && microphoneRecorder.state !== 'inactive') {
-    microphoneRecorder.stop();
-  }
-
-  microphoneStream?.getTracks().forEach((track) => track.stop());
-  microphoneRecorder = null;
-  microphoneStream = null;
-  window.clearInterval(audioCleanupTimer);
-  audioCleanupTimer = null;
-  recordingButton.setAttribute('aria-pressed', 'false');
-  recordingButton.textContent = 'Start recording';
-  setVoiceStatus('AI is running. Microphone is off.');
-}
-
-async function startRecording() {
-  try {
-    const newMicrophoneStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-      },
-    });
-    const newMicrophoneRecorder = new MediaRecorder(newMicrophoneStream);
-    microphoneStream = newMicrophoneStream;
-    microphoneRecorder = newMicrophoneRecorder;
-    const microphoneTrack = newMicrophoneStream.getAudioTracks()[0];
-    if (!realtimeMicrophoneSender || !microphoneTrack) throw new Error('The AI audio connection is not ready.');
-    await realtimeMicrophoneSender.replaceTrack(microphoneTrack);
-
-    newMicrophoneRecorder.addEventListener('dataavailable', (event) => {
-      if (event.data.size === 0) return;
-
-      // MediaRecorder gives us a fresh Blob about once per second.
-      recentAudioFiles.push({
-        audio: event.data,
-        createdAt: Date.now(),
-      });
-      discardOldAudioFiles();
-    });
-
-    newMicrophoneRecorder.addEventListener('stop', () => {
-      // Use this recording's stream, not the shared variable. The shared
-      // variable may already point at a newer recording session.
-      newMicrophoneStream.getTracks().forEach((track) => track.stop());
-    }, { once: true });
-
-    newMicrophoneRecorder.start(1_000);
-    audioCleanupTimer = window.setInterval(discardOldAudioFiles, 1_000);
-    recordingButton.setAttribute('aria-pressed', 'true');
-    recordingButton.textContent = 'Stop recording';
-    setVoiceStatus('AI is listening');
-    setVoiceTranscript('');
-  } catch (error) {
-    microphoneRecorder = null;
-    microphoneStream?.getTracks().forEach((track) => track.stop());
-    microphoneStream = null;
-    window.clearInterval(audioCleanupTimer);
-    audioCleanupTimer = null;
-    recordingButton.setAttribute('aria-pressed', 'false');
-    recordingButton.textContent = 'Start recording';
-    speak('Recording could not start. Please allow microphone access.');
-  }
-}
-
-function speak(message) {
-  // When the AI is connected, it is the table's voice. Browser speech remains
-  // available as a fallback when voice control is off.
-  if (realtimeDataChannel?.readyState === 'open') return;
-  if (!('speechSynthesis' in window)) return;
-
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.resume();
-  const speech = new SpeechSynthesisUtterance(message);
-  speech.rate = 1;
-  window.speechSynthesis.speak(speech);
 }
 
 function drawPlayerNames() {
@@ -1169,7 +434,6 @@ function startDebugPreset(presetName) {
   handWinnerNumbers = [];
   lastTurnState = null;
   pendingFold = false;
-  openingTurnAnnouncementPending = false;
   dealPromptKind = null;
   antePlayerNumber = playerToDealersLeft(gameSettings.dealerNumber);
   bigBlindPlayerNumber = null;
@@ -1193,7 +457,6 @@ function startDebugPreset(presetName) {
   winnerPicker.hidden = true;
   turnIndicator.hidden = false;
   actionButtons.hidden = false;
-  logGameEvent(`Debug preset "${presetName}" loaded.`);
   setCurrentPlayer(preset.currentPlayerNumber);
 
   if (preset.view === 'deal-flop') {
@@ -1326,7 +589,6 @@ function drawPlayerSeats() {
   roundLabel.textContent = ['Preflop', 'Flop', 'Turn', 'River'][roundNumber - 1];
   turnIndicator.setAttribute('aria-label', `Your bet: ${pendingBet}. Total pot: ${totalPotAmount()}`);
   updateBetControls();
-  updateRealtimeGameState();
 }
 
 function setCurrentPlayer(number) {
@@ -1373,7 +635,6 @@ function updateBetControls() {
   const undoIsAvailable = canUndoLastTurn();
   undoButton.hidden = !undoIsAvailable;
   actionButtons.classList.toggle('has-undo', undoIsAvailable);
-  scheduleRealtimeGameStateSync();
 }
 
 function captureTurnState() {
@@ -1409,7 +670,6 @@ function undoLastTurn() {
   pendingFold = false;
   gameSettings.currentPlayerNumber = currentPlayerNumber;
   lastTurnState = null;
-  speak('Last turn undone.');
   drawPlayerSeats();
 }
 
@@ -1445,24 +705,20 @@ function startNextRound() {
   if (playersWhoCanStillBet.length <= 1) {
     const cards = remainingCommunityCards();
     const cardsToDeal = formatCardList(cards);
-    logGameEvent(`No more betting is possible. Deal ${cardsToDeal}, then go to showdown.`);
     turnIndicator.hidden = true;
     actionButtons.hidden = true;
     dealPromptKind = 'all-in-runout';
     dealMessage.textContent = `Deal ${cardsToDeal}. Press OK for showdown.`;
     dealPrompt.hidden = false;
-    speak(dealMessage.textContent);
     return;
   }
 
   const nextCard = ['the flop', 'the turn', 'the river'][roundNumber - 1];
-  logGameEvent(`Betting round finished. Deal ${nextCard}.`);
   turnIndicator.hidden = true;
   actionButtons.hidden = true;
   dealPromptKind = 'community-cards';
   dealMessage.textContent = `Deal ${nextCard}. Press OK to continue.`;
   dealPrompt.hidden = false;
-  speak(`Deal ${nextCard}. Press OK to continue.`);
 }
 
 function beginNextRound() {
@@ -1471,7 +727,6 @@ function beginNextRound() {
   turnIndicator.hidden = false;
   actionButtons.hidden = false;
   roundNumber += 1;
-  logGameEvent(`${['Preflop', 'Flop', 'Turn', 'River'][roundNumber - 1]} betting round started.`);
   Object.values(playersByNumber).forEach((player) => {
     player.roundBet = 0;
     player.hasActedThisRound = false;
@@ -1489,8 +744,6 @@ function beginNextRound() {
 
 function showWinnerPicker() {
   const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded && !player.eliminated);
-  speak('Showdown. Choose the player with the best cards.');
-  logGameEvent('Showdown: choose the player with the best cards.');
   potAwardIndex = 0;
   lastPotWinnerNumber = null;
   handWinnerNumbers = [];
@@ -1614,9 +867,6 @@ function awardSplitPot(potIndex, winnerNumbers) {
   potLayer.amount = 0;
   lastPotWinnerNumber = awards[0].number;
   potAwardIndex = potIndex + 1;
-  const winnerNames = formatNameList(awards.map((award) => playersByNumber[award.number].name));
-  logGameEvent(`${winnerNames} split ${potLayerName(potIndex).toLowerCase()}, ${originalAmount}.`);
-  speak(`${winnerNames} split the pot.`);
   syncPotsToGameSettings();
   drawPlayerSeats();
   awardNextPot();
@@ -1681,8 +931,6 @@ function finishHand(winnerOrWinners) {
   winnerPicker.hidden = false;
   const winnerNames = formatNameList(winners.map((winner) => winner.name));
   winnerQuestion.textContent = `${winnerNames} ${winners.length === 1 ? 'wins' : 'win'} the hand!`;
-  logGameEvent(`${winnerNames} ${winners.length === 1 ? 'wins' : 'win'} hand ${gameHandNumber}.`);
-  speak(`${winnerNames} ${winners.length === 1 ? 'wins' : 'win'} the hand.`);
   winnerOptions.replaceChildren();
   const closeButton = document.createElement('button');
   closeButton.type = 'button';
@@ -1694,14 +942,12 @@ function finishHand(winnerOrWinners) {
 
 function showGameWinner(winner) {
   allowScreenToSleep();
-  logGameEvent(`${winner.name} wins the game.`);
   gameScreen.hidden = true;
   gameWinnerMessage.textContent = `${winner.name} wins!`;
   gameWinnerScreen.hidden = false;
-  speak(`Player ${winner.name} wins the game!`);
 }
 
-function postBlind(playerNumber, requestedAmount, blindName) {
+function postBlind(playerNumber, requestedAmount) {
   const player = playersByNumber[playerNumber];
   const amount = Math.min(requestedAmount, player.chips);
 
@@ -1711,7 +957,6 @@ function postBlind(playerNumber, requestedAmount, blindName) {
   player.hasActedThisRound = true;
   highestRoundBet = Math.max(highestRoundBet, player.roundBet);
   recalculatePots();
-  logGameEvent(`${player.name} posts the ${blindName} ${amount}.`);
 }
 
 function startHand() {
@@ -1727,7 +972,6 @@ function startHand() {
   pendingFold = false;
   lastTurnState = null;
   bigBlindPlayerNumber = null;
-  openingTurnAnnouncementPending = false;
 
   Object.values(playersByNumber).forEach((player) => {
     player.folded = player.eliminated;
@@ -1745,9 +989,9 @@ function startHand() {
   gameSettings.bigBlindPlayerNumber = bigBlindPlayerNumber;
   gameSettings.bigBlind = bigBlindPlayerNumber === null ? null : gameSettings.ante * 2;
 
-  postBlind(antePlayerNumber, gameSettings.ante, 'small blind');
+  postBlind(antePlayerNumber, gameSettings.ante);
   if (bigBlindPlayerNumber !== null) {
-    postBlind(bigBlindPlayerNumber, gameSettings.bigBlind, 'big blind');
+    postBlind(bigBlindPlayerNumber, gameSettings.bigBlind);
   }
 
   turnIndicator.hidden = true;
@@ -1759,15 +1003,12 @@ function startHand() {
   dealPrompt.hidden = false;
   setCurrentPlayer(bigBlindPlayerNumber ?? antePlayerNumber);
   nextPlayer();
-  logGameEvent('Waiting for the dealer to deal two cards face down to each player.');
-  if (gameHandNumber !== 1) speak(dealMessage.textContent);
 }
 
 function startNewHand() {
   const nextDealerNumber = playerToDealersLeft(gameSettings.dealerNumber);
   if (nextDealerNumber === gameSettings.firstDealerNumber) {
     gameSettings.ante += gameSettings.anteIncrease;
-    speak(`The ante is now ${gameSettings.ante}.`);
   }
   gameSettings.dealerNumber = nextDealerNumber;
   winnerPicker.hidden = true;
@@ -1798,8 +1039,6 @@ function confirmTurn() {
   if (pendingFold) {
     player.folded = true;
     recalculatePots();
-    logGameEvent(`${player.name} folds.`);
-    speak(`${player.name} folds.`);
   } else {
     const additionalChips = pendingBet;
     player.chips -= additionalChips;
@@ -1808,42 +1047,15 @@ function confirmTurn() {
     player.hasActedThisRound = true;
     highestRoundBet = Math.max(highestRoundBet, player.roundBet);
     recalculatePots();
-    logGameEvent(additionalChips === 0 ? `${player.name} checks.` : `${player.name} bets ${additionalChips}.`);
-    speak(additionalChips === 0 ? `${player.name} checks.` : `${player.name} bets ${additionalChips}.`);
   }
 
   finishTurn();
 }
 
-// These functions choose an action for the current player. They do not change
-// the game until confirm() is called, which makes them useful for voice control.
 function foldCurrentPlayer() {
   pendingFold = true;
   updateBetControls();
 
-}
-
-function checkCurrentPlayer(announceProblem = true) {
-  const player = playersByNumber[currentPlayerNumber];
-  const amountNeededToCall = Math.max(0, highestRoundBet - player.roundBet);
-
-  if (amountNeededToCall > 0) {
-    if (announceProblem) speak(`You cannot check. You need ${amountNeededToCall} more to call.`);
-    return false;
-  }
-
-  pendingFold = false;
-  pendingBet = 0;
-  updateBetControls();
-  return true;
-}
-
-function callCurrentPlayer() {
-  const player = playersByNumber[currentPlayerNumber];
-  pendingFold = false;
-  // pendingBet means the extra chips to add now, not this round's total bet.
-  pendingBet = Math.min(Math.max(0, highestRoundBet - player.roundBet), player.chips);
-  updateBetControls();
 }
 
 function betCurrentPlayer(amount) {
@@ -1858,14 +1070,8 @@ function betCurrentPlayer(amount) {
   return true;
 }
 
-function goAllIn() {
-  const player = playersByNumber[currentPlayerNumber];
-  return betCurrentPlayer(player.chips);
-}
-
 function confirm() {
   confirmTurn();
-  updateRealtimeGameState({ force: true });
 }
 
 function cardsAreDealt() {
@@ -1876,8 +1082,6 @@ function cardsAreDealt() {
     dealPrompt.hidden = true;
     turnIndicator.hidden = false;
     actionButtons.hidden = false;
-    openingTurnAnnouncementPending = true;
-    logGameEvent('Two cards were dealt face down to each player. Preflop betting started.');
     drawPlayerSeats();
     return true;
   }
@@ -1886,7 +1090,6 @@ function cardsAreDealt() {
     dealPromptKind = null;
     dealPrompt.hidden = true;
     roundNumber = 4;
-    logGameEvent('All remaining community cards were dealt. Go to showdown.');
     showWinnerPicker();
     return true;
   }
@@ -1900,14 +1103,6 @@ playerCount.addEventListener('change', () => {
   useBigBlindCheckbox.checked = Number(playerCount.value) >= 6;
 });
 debugPresetSelect.addEventListener('change', selectDebugPreset);
-voiceCustomizationButton.addEventListener('click', () => {
-  setupScreen.hidden = true;
-  voiceCustomizationScreen.hidden = false;
-});
-voiceCustomizationBack.addEventListener('click', () => {
-  voiceCustomizationScreen.hidden = true;
-  setupScreen.hidden = false;
-});
 chipDenominationsButton.addEventListener('click', () => {
   setupScreen.hidden = true;
   chipDenominationsScreen.hidden = false;
@@ -1924,7 +1119,6 @@ chipEnabledCheckboxes.forEach((checkbox) => {
   checkbox.addEventListener('change', () => updateChipDenominationAvailability(checkbox));
   updateChipDenominationAvailability(checkbox);
 });
-testVoiceButton.addEventListener('click', previewVoice);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && !gameScreen.hidden && !isGameWon) {
     keepScreenAwake();
@@ -1950,14 +1144,6 @@ foldButton.addEventListener('click', () => {
 confirmButton.addEventListener('click', confirm);
 undoButton.addEventListener('click', undoLastTurn);
 dealOkButton.addEventListener('click', cardsAreDealt);
-recordingButton.addEventListener('click', () => {
-  const isRecording = recordingButton.getAttribute('aria-pressed') === 'true';
-  if (isRecording) {
-    stopRecording();
-  } else {
-    startRecording();
-  }
-});
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   gameSettings = {
@@ -1969,18 +1155,13 @@ form.addEventListener('submit', (event) => {
     dealerNumber: Number(dealerSelect.value),
     firstDealerNumber: Number(dealerSelect.value),
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
-    startMicrophoneAutomatically: startMicrophoneAutomaticallyCheckbox.checked,
     chipDisplayMode,
     chipDenominations: selectedChipDenominations(),
-    voice: selectedVoiceSettings(),
   };
-  showVoiceTranscript = showVoiceTranscriptCheckbox.checked;
-  gameHistory = [];
   gameHandNumber = 0;
   saveLastGameSettings();
   makePlayers();
   setupScreen.hidden = true;
-  voiceCustomizationScreen.hidden = true;
   chipDenominationsScreen.hidden = true;
   gameScreen.hidden = false;
   gameWinnerScreen.hidden = true;
@@ -1989,22 +1170,7 @@ form.addEventListener('submit', (event) => {
   turnIndicator.hidden = false;
   actionButtons.hidden = false;
   keepScreenAwake();
-  const shouldRunDealer = startDebugPreset(debugPresetSelect.value);
-  if (shouldRunDealer) {
-    setVoiceStatus('Connecting AI…');
-    startRealtimeConversation().catch((error) => {
-      console.error('Realtime voice connection could not start:', error);
-      let reason = 'unknown connection problem';
-      try {
-        reason = JSON.parse(error.message).error?.message || reason;
-      } catch {
-        reason = error.message || reason;
-      }
-      stopRealtimeConversation();
-      setVoiceStatus(`AI could not connect: ${reason}`);
-    });
-    if (gameSettings.startMicrophoneAutomatically) startRecording();
-  }
+  startDebugPreset(debugPresetSelect.value);
 
 
   // Add the game-table interface inside gameScreen in the next step.
