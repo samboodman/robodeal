@@ -7,6 +7,7 @@ const form = document.querySelector('#setup-form');
 const message = document.querySelector('#message');
 const dealerSelect = document.querySelector('#dealer');
 const debugPresetSelect = document.querySelector('#debug-preset');
+const useBigBlindCheckbox = document.querySelector('#use-big-blind');
 const setupScreen = document.querySelector('#setup-screen');
 const voiceCustomizationScreen = document.querySelector('#voice-customization-screen');
 const chipDenominationsScreen = document.querySelector('#chip-denominations-screen');
@@ -171,6 +172,7 @@ function restoreLastGameSettings() {
   document.querySelector('#starting-money').value = settings.startingMoney;
   document.querySelector('#ante').value = settings.ante;
   document.querySelector('#ante-increase').value = settings.anteIncrease;
+  useBigBlindCheckbox.checked = settings.useBigBlind ?? settings.playerCount >= 6;
   drawPlayerNames();
 
   [...playerNames.querySelectorAll('input')].forEach((input, index) => {
@@ -1736,7 +1738,7 @@ function startHand() {
   });
 
   antePlayerNumber = playerToDealersLeft(gameSettings.dealerNumber);
-  if (gameSettings.playerCount >= 6) {
+  if (gameSettings.useBigBlind) {
     bigBlindPlayerNumber = playerToDealersLeft(antePlayerNumber);
   }
   gameSettings.antePlayerNumber = antePlayerNumber;
@@ -1893,7 +1895,10 @@ function cardsAreDealt() {
   return true;
 }
 
-playerCount.addEventListener('change', drawPlayerNames);
+playerCount.addEventListener('change', () => {
+  drawPlayerNames();
+  useBigBlindCheckbox.checked = Number(playerCount.value) >= 6;
+});
 debugPresetSelect.addEventListener('change', selectDebugPreset);
 voiceCustomizationButton.addEventListener('click', () => {
   setupScreen.hidden = true;
@@ -1960,6 +1965,7 @@ form.addEventListener('submit', (event) => {
     startingMoney: Number(document.querySelector('#starting-money').value),
     ante: Number(document.querySelector('#ante').value),
     anteIncrease: Number(document.querySelector('#ante-increase').value),
+    useBigBlind: useBigBlindCheckbox.checked,
     dealerNumber: Number(dealerSelect.value),
     firstDealerNumber: Number(dealerSelect.value),
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
