@@ -1,8 +1,9 @@
 export class VoiceAgent {
-  constructor({ getInstructions, tools = [], executeTool, onTranscript = () => {}, onStatus = () => {} }) {
+  constructor({ getInstructions, tools = [], executeTool, shouldRespond = () => true, onTranscript = () => {}, onStatus = () => {} }) {
     this.getInstructions = getInstructions;
     this.tools = tools;
     this.executeTool = executeTool;
+    this.shouldRespond = shouldRespond;
     this.onTranscript = onTranscript;
     this.onStatus = onStatus;
     this.connection = null;
@@ -31,7 +32,7 @@ export class VoiceAgent {
         input: {
           noise_reduction: { type: 'far_field' },
           transcription: { model: 'gpt-4o-mini-transcribe', language: 'en' },
-          turn_detection: { type: 'server_vad', create_response: true, interrupt_response: true },
+          turn_detection: { type: 'server_vad', create_response: false, interrupt_response: false },
         },
         output: { voice },
       },
@@ -144,6 +145,12 @@ export class VoiceAgent {
   async handleEvent(event) {
     if (event.type === 'conversation.item.input_audio_transcription.completed') {
       this.onTranscript(`Heard: “${event.transcript}”`);
+      if (this.shouldRespond(event.transcript)) {
+        this.updateContext();
+        this.send({ type: 'response.create' });
+      } else if (event.item_id) {
+        this.send({ type: 'conversation.item.delete', item_id: event.item_id });
+      }
       return;
     }
     if (event.type === 'response.output_audio_transcript.done') {
