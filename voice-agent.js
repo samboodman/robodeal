@@ -33,11 +33,8 @@ export function bytesToBase64(bytes) {
 }
 
 export class VoiceAgent {
-  constructor({ getInstructions, getRelevanceContext = () => '', tools = [], executeTool, handleTranscript = async () => ({ handled: false }), onTranscript = () => {}, onStatus = () => {} }) {
+  constructor({ getInstructions, handleTranscript = async () => ({ handled: false }), onTranscript = () => {}, onStatus = () => {} }) {
     this.getInstructions = getInstructions;
-    this.getRelevanceContext = getRelevanceContext;
-    this.tools = tools;
-    this.executeTool = executeTool;
     this.handleTranscript = handleTranscript;
     this.onTranscript = onTranscript;
     this.onStatus = onStatus;
@@ -46,9 +43,6 @@ export class VoiceAgent {
     this.sender = null;
     this.audio = null;
     this.microphoneStream = null;
-    this.pendingRelevanceChecks = new Map();
-    this.nextUtteranceNumber = 1;
-    this.recentConversation = [];
     this.audioTestContext = null;
     this.audioTestRunning = false;
   }
@@ -65,8 +59,7 @@ export class VoiceAgent {
     return {
       type: 'realtime',
       instructions: this.getInstructions(),
-      tools: this.tools,
-      tool_choice: this.tools.length > 0 ? 'auto' : 'none',
+      tool_choice: 'none',
       output_modalities: ['audio'],
       audio: {
         input: {
@@ -128,8 +121,7 @@ export class VoiceAgent {
       session: {
         type: 'realtime',
         instructions: this.getInstructions(),
-        tools: this.tools,
-        tool_choice: this.tools.length > 0 ? 'auto' : 'none',
+        tool_choice: 'none',
       },
     });
   }
@@ -219,9 +211,6 @@ export class VoiceAgent {
     this.connection = null;
     this.sender = null;
     this.audio = null;
-    this.pendingRelevanceChecks.forEach(({ cleanupTimer }) => clearTimeout(cleanupTimer));
-    this.pendingRelevanceChecks.clear();
-    this.recentConversation = [];
     this.audioTestContext?.close().catch(() => {});
     this.audioTestContext = null;
     this.audioTestRunning = false;
@@ -229,133 +218,6 @@ export class VoiceAgent {
 
   send(event) {
     if (this.connected) this.channel.send(JSON.stringify(event));
-  }
-
-  rememberSpeech(role, text) {
-    const speech = String(text || '').trim();
-    if (!speech) return;
-    this.recentConversation.push({ role, text: speech });
-    this.recentConversation = this.recentConversation.slice(-6);
-  }
-
-  relevanceConversationContext() {
-    if (this.recentConversation.length === 0) return 'No earlier speech.';
-    return this.recentConversation.map(({ role, text }) => `${role}: ${text}`).join('\n');
-  }
-
-  checkTranscriptRelevance(transcript, itemId) {
-    const utteranceId = `utterance-${this.nextUtteranceNumber++}`;
-    const cleanupTimer = setTimeout(() => {
-      this.pendingRelevanceChecks.delete(utteranceId);
-    }, 30_000);
-    this.pendingRelevanceChecks.set(utteranceId, { itemId, transcript, cleanupTimer });
-
-    this.send({
-      type: 'response.create',
-      response: {
-        conversation: 'none',
-        output_modalities: ['text'],
-        metadata: { kind: 'relevance-check', utteranceId },
-        max_output_tokens: 64,
-        instructions: [
-          'Use semantic understanding of the complete heard sentence and the supplied live game state.',
-          'Use the recent conversation to understand whether the sentence is a contextual reply to something the dealer just said or asked.',
-          'Call approve_game_utterance only when the sentence is meaningfully related to the current game.',
-          'Otherwise call reject_game_utterance.',
-          'Do not classify by matching individual words or phrases.',
-          'Do not answer the speaker.',
-        ].join(' '),
-        input: [{
-          type: 'message',
-          role: 'user',
-          content: [{
-            type: 'input_text',
-            text: `Current poker game state:\n${this.getRelevanceContext()}\n\nRecent conversation in order:\n${this.relevanceConversationContext()}\n\nNewest player sentence:\n${transcript}`,
-          }],
-        }],
-        tools: [
-          {
-            type: 'function',
-            name: 'approve_game_utterance',
-            description: 'Choose this when the complete semantic meaning is related to the current game.',
-            parameters: {
-              type: 'object',
-              properties: {
-                utteranceId: {
-                  type: 'string',
-                  enum: [utteranceId],
-                },
-              },
-              required: ['utteranceId'],
-              additionalProperties: false,
-            },
-          },
-          {
-            type: 'function',
-            name: 'reject_game_utterance',
-            description: 'Choose this when the complete semantic meaning is unrelated to the current game.',
-            parameters: {
-              type: 'object',
-              properties: {
-                utteranceId: {
-                  type: 'string',
-                  enum: [utteranceId],
-                },
-              },
-              required: ['utteranceId'],
-              additionalProperties: false,
-            },
-          },
-        ],
-        tool_choice: 'required',
-      },
-    });
-  }
-
-  approveGameUtterance(argumentsJson) {
-    let utteranceId;
-    try {
-      utteranceId = JSON.parse(argumentsJson || '{}').utteranceId;
-    } catch {
-      return;
-    }
-    const pending = this.pendingRelevanceChecks.get(utteranceId);
-    if (!pending) return;
-
-    clearTimeout(pending.cleanupTimer);
-    this.pendingRelevanceChecks.delete(utteranceId);
-    this.rememberSpeech('Player', pending.transcript);
-    this.updateContext();
-    this.send({ type: 'response.create', response: { tool_choice: 'none' } });
-  }
-
-  rejectGameUtterance(argumentsJson) {
-    let utteranceId;
-    try {
-      utteranceId = JSON.parse(argumentsJson || '{}').utteranceId;
-    } catch {
-      return;
-    }
-    const pending = this.pendingRelevanceChecks.get(utteranceId);
-    if (!pending) return;
-
-    clearTimeout(pending.cleanupTimer);
-    this.pendingRelevanceChecks.delete(utteranceId);
-    if (pending.itemId) {
-      this.send({ type: 'conversation.item.delete', item_id: pending.itemId });
-    }
-  }
-
-  rejectUnapprovedUtterance(response) {
-    const utteranceId = response.metadata?.utteranceId;
-    const pending = this.pendingRelevanceChecks.get(utteranceId);
-    if (!pending) return;
-
-    clearTimeout(pending.cleanupTimer);
-    this.pendingRelevanceChecks.delete(utteranceId);
-    if (pending.itemId) {
-      this.send({ type: 'conversation.item.delete', item_id: pending.itemId });
-    }
   }
 
   async handleEvent(event) {
@@ -368,53 +230,21 @@ export class VoiceAgent {
         handledResult = { handled: true, message: error.message };
       }
       if (handledResult?.handled) {
-        this.rememberSpeech('Player', event.transcript);
         this.updateContext();
         if (handledResult.message) this.speak(handledResult.message);
         return;
       }
-      this.checkTranscriptRelevance(event.transcript, event.item_id);
-      return;
-    }
-    if (event.type === 'response.done' && event.response?.metadata?.kind === 'relevance-check') {
-      this.rejectUnapprovedUtterance(event.response);
+      this.updateContext();
+      this.send({ type: 'response.create', response: { tool_choice: 'none' } });
       return;
     }
     if (event.type === 'response.output_audio_transcript.done') {
       this.onTranscript(`RoboDeal: “${event.transcript}”`);
-      this.rememberSpeech('RoboDeal', event.transcript);
       return;
     }
     if (event.type === 'error') {
       this.onStatus(`AI error: ${event.error?.message || 'unknown error'}`);
       return;
     }
-    if (event.type !== 'response.function_call_arguments.done') return;
-    if (event.name === 'approve_game_utterance') {
-      this.approveGameUtterance(event.arguments);
-      return;
-    }
-    if (event.name === 'reject_game_utterance') {
-      this.rejectGameUtterance(event.arguments);
-      return;
-    }
-
-    let result;
-    try {
-      result = await this.executeTool(event.name, JSON.parse(event.arguments || '{}'));
-    } catch (error) {
-      result = { ok: false, message: error.message };
-    }
-
-    this.send({
-      type: 'conversation.item.create',
-      item: {
-        type: 'function_call_output',
-        call_id: event.call_id,
-        output: JSON.stringify(result),
-      },
-    });
-    this.updateContext();
-    this.send({ type: 'response.create' });
   }
 }

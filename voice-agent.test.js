@@ -12,62 +12,7 @@ function testAgent(options = {}) {
   return { agent, sent };
 }
 
-test('the semantic gate receives the complete utterance and current game state', () => {
-  const { agent, sent } = testAgent({
-    getRelevanceContext: () => JSON.stringify({ currentPlayer: 'Sam', pot: 25 }),
-  });
-
-  agent.checkTranscriptRelevance('How much is in the pot?', 'audio-item-1');
-
-  const relevanceRequest = sent[0].response;
-  const classifierInput = relevanceRequest.input[0].content[0].text;
-  assert.match(classifierInput, /"currentPlayer":"Sam"/);
-  assert.match(classifierInput, /How much is in the pot\?/);
-  assert.match(relevanceRequest.instructions, /semantic understanding/);
-  assert.match(relevanceRequest.instructions, /Do not classify by matching/);
-  assert.equal(relevanceRequest.tool_choice, 'required');
-  assert.deepEqual(relevanceRequest.tools.map(({ name }) => name), [
-    'approve_game_utterance',
-    'reject_game_utterance',
-  ]);
-  agent.pendingRelevanceChecks.forEach(({ cleanupTimer }) => clearTimeout(cleanupTimer));
-});
-
-test('the semantic gate sees that a short player reply follows the dealer question', () => {
-  const { agent, sent } = testAgent();
-  agent.rememberSpeech('RoboDeal', 'How much would you like to raise?');
-
-  agent.checkTranscriptRelevance('10', 'audio-item-1');
-
-  const classifierInput = sent[0].response.input[0].content[0].text;
-  assert.match(classifierInput, /RoboDeal: How much would you like to raise\?/);
-  assert.match(classifierInput, /Newest player sentence:\n10/);
-  agent.pendingRelevanceChecks.forEach(({ cleanupTimer }) => clearTimeout(cleanupTimer));
-});
-
-test('an unapproved relevance response deletes speech without creating audio', () => {
-  const { agent, sent } = testAgent();
-  agent.pendingRelevanceChecks.set('utterance-1', { itemId: 'audio-item-1' });
-
-  agent.rejectUnapprovedUtterance({
-    metadata: { utteranceId: 'utterance-1' },
-  });
-
-  assert.deepEqual(sent, [{ type: 'conversation.item.delete', item_id: 'audio-item-1' }]);
-});
-
-test('semantic approval updates context and creates the normal audible response', () => {
-  const { agent, sent } = testAgent();
-  agent.pendingRelevanceChecks.set('utterance-1', { itemId: 'audio-item-1', transcript: '10' });
-
-  agent.approveGameUtterance(JSON.stringify({ utteranceId: 'utterance-1' }));
-
-  assert.equal(sent[0].type, 'session.update');
-  assert.deepEqual(sent[1], { type: 'response.create', response: { tool_choice: 'none' } });
-  assert.deepEqual(agent.recentConversation, [{ role: 'Player', text: '10' }]);
-});
-
-test('a deterministic command bypasses the semantic gate and speaks its validated result', async () => {
+test('a deterministic command speaks its validated result', async () => {
   const { agent, sent } = testAgent({
     handleTranscript: async () => ({ handled: true, message: 'Player 1 calls 5.' }),
   });
@@ -78,19 +23,23 @@ test('a deterministic command bypasses the semantic gate and speaks its validate
     item_id: 'audio-item-1',
   });
 
-  assert.equal(agent.pendingRelevanceChecks.size, 0);
   assert.equal(sent[0].type, 'session.update');
   assert.equal(sent[1].type, 'response.create');
   assert.match(sent[1].response.input[0].content[0].text, /Player 1 calls 5/);
 });
 
-test('semantic rejection deletes the unrelated audio item', () => {
+test('every unmatched utterance is sent directly to the AI', async () => {
   const { agent, sent } = testAgent();
-  agent.pendingRelevanceChecks.set('utterance-1', { itemId: 'audio-item-1' });
 
-  agent.rejectGameUtterance(JSON.stringify({ utteranceId: 'utterance-1' }));
+  await agent.handleEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    transcript: 'What should we order for dinner?',
+    item_id: 'audio-item-1',
+  });
 
-  assert.deepEqual(sent, [{ type: 'conversation.item.delete', item_id: 'audio-item-1' }]);
+  assert.equal(sent[0].type, 'session.update');
+  assert.deepEqual(sent[1], { type: 'response.create', response: { tool_choice: 'none' } });
+  assert.equal(sent.some(({ type }) => type === 'conversation.item.delete'), false);
 });
 
 test('converts decoded audio to 24 kHz mono PCM16', () => {

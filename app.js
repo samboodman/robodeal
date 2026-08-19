@@ -378,7 +378,7 @@ function getVoiceInstructions() {
   return `You are RoboDeal, a concise voice assistant for a casual real-card poker game.
 Current authoritative game state: ${JSON.stringify(getVoiceSnapshot())}
 
-Use a ${voice.personality} personality, a ${voice.accent} accent, and a ${voice.pace} speaking pace. Answer short poker questions using the current state. Game actions are handled and validated by the app, so never claim that you changed the game yourself. If the meaning is unrelated to this game, produce no speech or text. Keep every spoken response to one short sentence.`;
+Use a ${voice.personality} personality, a ${voice.accent} accent, and a ${voice.pace} speaking pace. Answer short poker questions using the current state. Game actions are handled and validated by the app, so never claim that you changed the game yourself. Respond to every heard utterance and never silently discard speech. Keep every spoken response to one short sentence.`;
 }
 
 function executeVoiceTool(name, args) {
@@ -470,9 +470,7 @@ async function connectVoiceAgent() {
   voiceAgent?.disconnect();
   voiceAgent = new VoiceAgent({
     getInstructions: getVoiceInstructions,
-    getRelevanceContext: () => JSON.stringify(getVoiceSnapshot()),
     handleTranscript: handleVoiceTranscript,
-    executeTool: executeVoiceTool,
     onTranscript: setVoiceTranscript,
     onStatus: setVoiceTranscript,
   });
