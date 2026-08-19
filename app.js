@@ -380,7 +380,7 @@ Current authoritative game state: ${JSON.stringify(getVoiceSnapshot())}
 
 Use a ${voice.personality} personality, a ${voice.accent} accent, and a ${voice.pace} speaking pace. Respond to every heard utterance and never silently discard speech. Keep every spoken response to one short sentence.
 
-For a clear game action, call exactly one matching tool and wait for its result before saying the action succeeded. The tools always act on the active player, so never choose a player yourself. Use bet for a requested total round bet and raise for an amount above the call. Fold and all-in always require confirmation: first call fold or allIn, then ask the player to confirm. Call confirmAction only after a clear affirmative reply to that pending action, and call cancelAction after a clear rejection. If the request is ambiguous, ask one short question without calling a tool.`;
+For a clear game action, call exactly one matching tool and wait for its result before saying the action succeeded. The tools always act on the active player, so never choose a player yourself. Use bet for a requested total round bet and raise for an amount above the call. Fold and all-in always require confirmation: first call fold or allIn, then ask the player to confirm. Calling fold sets pendingFold to true but does not fold the player yet. Call confirmAction only after a clear affirmative reply to that pending action. After a rejection such as "that's not what I meant," call cancelAction, which sets pendingFold back to false. If the request is ambiguous, ask one short question without calling a tool.`;
 }
 
 const voiceTools = [
@@ -388,10 +388,10 @@ const voiceTools = [
   { type: 'function', name: 'call', description: 'Call the current bet for the active player.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'bet', description: 'Set the active player’s total bet for this betting round.', parameters: { type: 'object', properties: { total: { type: 'number', description: 'The requested total number of chips bet by this player in the current round.' } }, required: ['total'], additionalProperties: false } },
   { type: 'function', name: 'raise', description: 'Call and then raise by the requested number of chips.', parameters: { type: 'object', properties: { amount: { type: 'number', description: 'Chips to raise above the amount needed to call.' } }, required: ['amount'], additionalProperties: false } },
-  { type: 'function', name: 'fold', description: 'Begin a required fold confirmation. This does not fold yet.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'fold', description: 'Set pendingFold to true and begin required confirmation. This does not fold the player yet.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'allIn', description: 'Begin a required all-in confirmation. This does not bet yet.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'confirmAction', description: 'Execute the pending fold or all-in after the player clearly confirms it.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'cancelAction', description: 'Cancel the pending fold or all-in after the player rejects it.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'confirmAction', description: 'Execute the pending fold or all-in after the player clearly confirms it. A pending fold is represented by pendingFold being true.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'cancelAction', description: 'Cancel the pending fold or all-in after the player rejects it. Cancelling a fold sets pendingFold to false.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'cardsDealt', description: 'Continue after the requested physical cards have been dealt.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
 ];
 
@@ -405,26 +405,30 @@ function executeVoiceTool(name, args) {
   if (!player) return { ok: false, message: 'There is no active player.' };
 
   if (name === 'cancelAction') {
-    if (!pendingVoiceAction) return { ok: false, message: 'There is no action waiting for confirmation.' };
+    if (!pendingFold && !pendingVoiceAction) return { ok: false, message: 'There is no action waiting for confirmation.' };
+    const cancelledFold = pendingFold;
+    pendingFold = false;
     pendingVoiceAction = null;
-    return { ok: true, message: 'The pending action was cancelled.' };
+    updateBetControls();
+    return { ok: true, message: cancelledFold ? 'The pending fold was cancelled.' : 'The pending action was cancelled.' };
   }
 
   if (name === 'confirmAction') {
-    if (!pendingVoiceAction) return { ok: false, message: 'There is no action waiting for confirmation.' };
+    if (!pendingFold && !pendingVoiceAction) return { ok: false, message: 'There is no action waiting for confirmation.' };
     if (gameScreen.hidden || !dealPrompt.hidden || !winnerPicker.hidden || !gameWinnerScreen.hidden) {
+      pendingFold = false;
       pendingVoiceAction = null;
       return { ok: false, message: 'That confirmation is no longer available.' };
     }
-    if (pendingVoiceAction.playerNumber !== currentPlayerNumber) {
+    if (pendingVoiceAction && pendingVoiceAction.playerNumber !== currentPlayerNumber) {
+      pendingFold = false;
       pendingVoiceAction = null;
       return { ok: false, message: 'That confirmation is no longer available.' };
     }
 
-    const action = pendingVoiceAction.type;
+    const action = pendingFold ? 'fold' : pendingVoiceAction.type;
     pendingVoiceAction = null;
     if (action === 'fold') {
-      foldCurrentPlayer();
       confirm();
       return { ok: true, message: `${player.name} folds.` };
     }
@@ -444,7 +448,8 @@ function executeVoiceTool(name, args) {
   const amountToCall = Math.min(Math.max(0, highestRoundBet - player.roundBet), player.chips);
   if (name !== 'fold' && name !== 'allIn') pendingVoiceAction = null;
   if (name === 'fold') {
-    pendingVoiceAction = { type: 'fold', playerNumber: currentPlayerNumber };
+    pendingVoiceAction = null;
+    foldCurrentPlayer();
     return { ok: true, confirmationRequired: true, message: `Ask ${player.name} to confirm the fold.` };
   }
   if (name === 'check') {
@@ -459,6 +464,8 @@ function executeVoiceTool(name, args) {
     return { ok: true, message: `${player.name} calls ${amountToCall}.` };
   }
   if (name === 'allIn') {
+    pendingFold = false;
+    updateBetControls();
     pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber };
     return { ok: true, confirmationRequired: true, message: `Ask ${player.name} to confirm going all in for ${player.chips}.` };
   }
