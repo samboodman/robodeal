@@ -2,6 +2,21 @@ function samePlayers(first, second) {
   return first.length === second.length && first.every((number, index) => number === second[index]);
 }
 
+export function maximumAdditionalBet(players, playerNumber) {
+  const player = players.find((candidate) => candidate.number === playerNumber);
+  if (!player || player.folded || player.eliminated) return 0;
+
+  const opposingTotals = players
+    .filter((candidate) => candidate.number !== playerNumber && !candidate.folded && !candidate.eliminated)
+    .map((candidate) => (Number(candidate.handContribution) || 0) + (Number(candidate.chips) || 0));
+  if (opposingTotals.length === 0) return 0;
+
+  const playerContribution = Number(player.handContribution) || 0;
+  const playerChips = Math.max(0, Number(player.chips) || 0);
+  const coverableAmount = Math.max(0, Math.max(...opposingTotals) - playerContribution);
+  return Math.min(playerChips, coverableAmount);
+}
+
 export function calculatePots(players) {
   const totalContributions = players.reduce(
     (total, player) => total + (Number(player.handContribution) || 0),

@@ -1,4 +1,4 @@
-import { calculatePots, hasBettingRoundFinished, splitPotAmount } from './pot-logic.js';
+import { calculatePots, hasBettingRoundFinished, maximumAdditionalBet, splitPotAmount } from './pot-logic.js';
 import { VoiceAgent } from './voice-agent.js';
 
 const playerCount = document.querySelector('#player-count');
@@ -347,6 +347,7 @@ function updateRecordingButton() {
 
 function getVoiceSnapshot() {
   const player = playersByNumber[currentPlayerNumber] || null;
+  const maximumBet = player ? maximumAdditionalBet(Object.values(playersByNumber), currentPlayerNumber) : 0;
   return {
     phase: gameScreen.hidden ? 'setup' : !dealPrompt.hidden ? 'waiting for cards' : !winnerPicker.hidden ? 'choosing winner' : 'betting',
     round: ['preflop', 'flop', 'turn', 'river'][roundNumber - 1] || 'between hands',
@@ -356,6 +357,8 @@ function getVoiceSnapshot() {
       chips: player.chips,
       roundBet: player.roundBet,
       amountToCall: Math.min(Math.max(0, highestRoundBet - player.roundBet), player.chips),
+      maximumAdditionalBet: maximumBet,
+      canGoAllIn: maximumBet === player.chips,
     } : null,
     highestRoundBet,
     pendingBet,
@@ -426,14 +429,15 @@ function executeVoiceTool(name, args) {
       return { ok: false, message: 'That confirmation is no longer available.' };
     }
 
-    const action = pendingFold ? 'fold' : pendingVoiceAction.type;
+    const pendingAction = pendingVoiceAction;
+    const action = pendingFold ? 'fold' : pendingAction.type;
     pendingVoiceAction = null;
     if (action === 'fold') {
       confirm();
       return { ok: true, message: `${player.name} folds.` };
     }
     if (action === 'all-in') {
-      const amount = player.chips;
+      const amount = pendingAction.amount ?? player.chips;
       betCurrentPlayer(amount);
       confirm();
       return { ok: true, message: `${player.name} is all in for ${amount}.` };
@@ -446,6 +450,7 @@ function executeVoiceTool(name, args) {
   }
 
   const amountToCall = Math.min(Math.max(0, highestRoundBet - player.roundBet), player.chips);
+  const maximumBet = maximumAdditionalBet(Object.values(playersByNumber), currentPlayerNumber);
   if (name !== 'fold' && name !== 'allIn') pendingVoiceAction = null;
   if (name === 'fold') {
     pendingVoiceAction = null;
@@ -464,19 +469,22 @@ function executeVoiceTool(name, args) {
     return { ok: true, message: `${player.name} calls ${amountToCall}.` };
   }
   if (name === 'allIn') {
+    if (maximumBet < player.chips) {
+      return { ok: false, message: `${player.name} cannot go all in because opponents can cover only ${maximumBet}; the maximum additional bet is ${maximumBet}.` };
+    }
     pendingFold = false;
     updateBetControls();
-    pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber };
+    pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber, amount: player.chips };
     return { ok: true, confirmationRequired: true, message: `Ask ${player.name} to confirm going all in for ${player.chips}.` };
   }
   if (name === 'bet') {
     const total = Number(args.total);
     const amount = total - player.roundBet;
-    if (!Number.isFinite(total) || amount < amountToCall || amount > player.chips) {
-      return { ok: false, message: `The total bet must be from ${player.roundBet + amountToCall} to ${player.roundBet + player.chips}.` };
+    if (!Number.isFinite(total) || amount < amountToCall || amount > maximumBet) {
+      return { ok: false, message: `The total bet must be from ${player.roundBet + amountToCall} to ${player.roundBet + maximumBet}.` };
     }
     if (amount === player.chips) {
-      pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber };
+      pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber, amount };
       return { ok: true, confirmationRequired: true, message: `That bet is all in. Ask ${player.name} to confirm going all in for ${player.chips}.` };
     }
     betCurrentPlayer(amount);
@@ -486,11 +494,11 @@ function executeVoiceTool(name, args) {
   if (name === 'raise') {
     const raiseAmount = Number(args.amount);
     const amount = amountToCall + raiseAmount;
-    if (!Number.isFinite(raiseAmount) || raiseAmount < 0 || amount > player.chips) {
-      return { ok: false, message: `The raise must be from 0 to ${Math.max(0, player.chips - amountToCall)}.` };
+    if (!Number.isFinite(raiseAmount) || raiseAmount < 0 || amount > maximumBet) {
+      return { ok: false, message: `The raise must be from 0 to ${Math.max(0, maximumBet - amountToCall)}.` };
     }
     if (amount === player.chips) {
-      pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber };
+      pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber, amount };
       return { ok: true, confirmationRequired: true, message: `That raise is all in. Ask ${player.name} to confirm going all in for ${player.chips}.` };
     }
     const total = player.roundBet + amount;
@@ -897,7 +905,7 @@ function nextPlayer() {
 function updateBetControls() {
   const player = playersByNumber[currentPlayerNumber];
   const minimumBet = Math.max(0, highestRoundBet - player.roundBet);
-  const maximumBet = player.chips;
+  const maximumBet = maximumAdditionalBet(Object.values(playersByNumber), currentPlayerNumber);
   // A player may go all-in even when they cannot completely match the bet.
   const minimumAllowedBet = Math.min(minimumBet, maximumBet);
 
@@ -1344,7 +1352,8 @@ function betCurrentPlayer(amount) {
   if (!Number.isFinite(requestedAmount) || requestedAmount < 0) return false;
 
   pendingFold = false;
-  pendingBet = Math.min(requestedAmount, player.chips);
+  const maximumBet = maximumAdditionalBet(Object.values(playersByNumber), currentPlayerNumber);
+  pendingBet = Math.min(requestedAmount, maximumBet);
   updateBetControls();
   return true;
 }

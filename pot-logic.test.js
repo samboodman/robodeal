@@ -1,10 +1,33 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { calculatePots, hasBettingRoundFinished, splitPotAmount } from './pot-logic.js';
+import { calculatePots, hasBettingRoundFinished, maximumAdditionalBet, splitPotAmount } from './pot-logic.js';
 
 function player(number, handContribution, { chips = 0, folded = false, eliminated = false } = {}) {
   return { number, handContribution, chips, folded, eliminated };
 }
+
+test('limits a wager to the amount a heads-up opponent can cover', () => {
+  assert.equal(maximumAdditionalBet([
+    player(1, 0, { chips: 170 }),
+    player(2, 0, { chips: 120 }),
+  ], 1), 120);
+});
+
+test('includes chips already contributed when calculating effective stacks', () => {
+  assert.equal(maximumAdditionalBet([
+    player(1, 5, { chips: 170 }),
+    player(2, 20, { chips: 120 }),
+  ], 1), 135);
+});
+
+test('uses the richest active opponent and ignores folded stacks', () => {
+  assert.equal(maximumAdditionalBet([
+    player(1, 10, { chips: 200 }),
+    player(2, 10, { chips: 40 }),
+    player(3, 25, { chips: 75 }),
+    player(4, 10, { chips: 500, folded: true }),
+  ], 1), 90);
+});
 
 test('keeps unequal active bets in one pot when nobody is all-in', () => {
   assert.deepEqual(calculatePots([
