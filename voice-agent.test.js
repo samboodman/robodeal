@@ -12,7 +12,7 @@ function testAgent(options = {}) {
   return { agent, sent };
 }
 
-test('the semantic gate receives the current game state and permits state questions', () => {
+test('the semantic gate receives the complete utterance and current game state', () => {
   const { agent, sent } = testAgent({
     getRelevanceContext: () => JSON.stringify({ currentPlayer: 'Sam', pot: 25 }),
   });
@@ -23,7 +23,8 @@ test('the semantic gate receives the current game state and permits state questi
   const classifierInput = relevanceRequest.input[0].content[0].text;
   assert.match(classifierInput, /"currentPlayer":"Sam"/);
   assert.match(classifierInput, /How much is in the pot\?/);
-  assert.match(relevanceRequest.instructions, /whose turn it is, the pot/);
+  assert.match(relevanceRequest.instructions, /semantic understanding/);
+  assert.match(relevanceRequest.instructions, /Do not classify by matching/);
   agent.pendingRelevanceChecks.forEach(({ cleanupTimer }) => clearTimeout(cleanupTimer));
 });
 

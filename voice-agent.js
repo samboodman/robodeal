@@ -161,10 +161,9 @@ export class VoiceAgent {
         metadata: { kind: 'relevance-check', utteranceId },
         max_output_tokens: 64,
         instructions: [
-          'Judge the meaning of the entire heard sentence, not isolated words.',
-          'Call approve_game_utterance whenever the speaker is genuinely making a poker-table command, asking any question about the current poker game or its state, or addressing the poker dealer assistant about the game.',
-          'Questions answerable from the supplied game state are always related, including questions about whose turn it is, the pot, bets, chip counts, players, the dealer, the round, cards to deal, or what happens next.',
-          'For example, “call”, “I call”, and “raise 10” must be approved, but “I’m going to call my dad” must not be approved.',
+          'Use semantic understanding of the complete heard sentence and the supplied live game state.',
+          'Call approve_game_utterance only when the sentence is meaningfully related to the current game.',
+          'Do not classify by matching individual words or phrases.',
           'For anything unrelated or uncertain, do not call the function and output only UNRELATED.',
           'Do not answer the speaker.',
         ].join(' '),
@@ -179,7 +178,7 @@ export class VoiceAgent {
         tools: [{
           type: 'function',
           name: 'approve_game_utterance',
-          description: 'Approve the complete utterance when its actual meaning concerns or controls the poker game, asks about any part of its current state, or addresses the dealer assistant about the game.',
+          description: 'Approve an utterance whose complete semantic meaning is related to the current game.',
           parameters: {
             type: 'object',
             properties: {
