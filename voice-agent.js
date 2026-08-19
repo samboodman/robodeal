@@ -1,6 +1,7 @@
 export class VoiceAgent {
-  constructor({ getInstructions, tools = [], executeTool, onTranscript = () => {}, onStatus = () => {} }) {
+  constructor({ getInstructions, getRelevanceContext = () => '', tools = [], executeTool, onTranscript = () => {}, onStatus = () => {} }) {
     this.getInstructions = getInstructions;
+    this.getRelevanceContext = getRelevanceContext;
     this.tools = tools;
     this.executeTool = executeTool;
     this.onTranscript = onTranscript;
@@ -161,7 +162,8 @@ export class VoiceAgent {
         max_output_tokens: 64,
         instructions: [
           'Judge the meaning of the entire heard sentence, not isolated words.',
-          'Call approve_game_utterance if the speaker is genuinely making a poker-table command, asking about the current poker game, or addressing the poker dealer assistant.',
+          'Call approve_game_utterance whenever the speaker is genuinely making a poker-table command, asking any question about the current poker game or its state, or addressing the poker dealer assistant about the game.',
+          'Questions answerable from the supplied game state are always related, including questions about whose turn it is, the pot, bets, chip counts, players, the dealer, the round, cards to deal, or what happens next.',
           'For example, “call”, “I call”, and “raise 10” must be approved, but “I’m going to call my dad” must not be approved.',
           'For anything unrelated or uncertain, do not call the function and output only UNRELATED.',
           'Do not answer the speaker.',
@@ -171,13 +173,13 @@ export class VoiceAgent {
           role: 'user',
           content: [{
             type: 'input_text',
-            text: `A poker game is currently in progress.\n\nHeard sentence:\n${transcript}`,
+            text: `Current poker game state:\n${this.getRelevanceContext()}\n\nHeard sentence:\n${transcript}`,
           }],
         }],
         tools: [{
           type: 'function',
           name: 'approve_game_utterance',
-          description: 'Approve the complete utterance only when its actual meaning concerns or controls the poker game or addresses the dealer assistant.',
+          description: 'Approve the complete utterance when its actual meaning concerns or controls the poker game, asks about any part of its current state, or addresses the dealer assistant about the game.',
           parameters: {
             type: 'object',
             properties: {

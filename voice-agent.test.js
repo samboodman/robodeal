@@ -2,15 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { VoiceAgent } from './voice-agent.js';
 
-function testAgent() {
+function testAgent(options = {}) {
   const sent = [];
-  const agent = new VoiceAgent({ getInstructions: () => 'Current game state' });
+  const agent = new VoiceAgent({ getInstructions: () => 'Current game state', ...options });
   agent.channel = {
     readyState: 'open',
     send: (event) => sent.push(JSON.parse(event)),
   };
   return { agent, sent };
 }
+
+test('the semantic gate receives the current game state and permits state questions', () => {
+  const { agent, sent } = testAgent({
+    getRelevanceContext: () => JSON.stringify({ currentPlayer: 'Sam', pot: 25 }),
+  });
+
+  agent.checkTranscriptRelevance('How much is in the pot?', 'audio-item-1');
+
+  const relevanceRequest = sent[0].response;
+  const classifierInput = relevanceRequest.input[0].content[0].text;
+  assert.match(classifierInput, /"currentPlayer":"Sam"/);
+  assert.match(classifierInput, /How much is in the pot\?/);
+  assert.match(relevanceRequest.instructions, /whose turn it is, the pot/);
+  agent.pendingRelevanceChecks.forEach(({ cleanupTimer }) => clearTimeout(cleanupTimer));
+});
 
 test('an unapproved relevance response deletes speech without creating audio', () => {
   const { agent, sent } = testAgent();

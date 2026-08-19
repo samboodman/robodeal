@@ -440,6 +440,7 @@ async function connectVoiceAgent() {
   voiceAgent?.disconnect();
   voiceAgent = new VoiceAgent({
     getInstructions: getVoiceInstructions,
+    getRelevanceContext: () => JSON.stringify(getVoiceSnapshot()),
     tools: voiceTools,
     executeTool: executeVoiceTool,
     onTranscript: setVoiceTranscript,
