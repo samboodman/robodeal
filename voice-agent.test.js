@@ -25,6 +25,11 @@ test('the semantic gate receives the complete utterance and current game state',
   assert.match(classifierInput, /How much is in the pot\?/);
   assert.match(relevanceRequest.instructions, /semantic understanding/);
   assert.match(relevanceRequest.instructions, /Do not classify by matching/);
+  assert.equal(relevanceRequest.tool_choice, 'required');
+  assert.deepEqual(relevanceRequest.tools.map(({ name }) => name), [
+    'approve_game_utterance',
+    'reject_game_utterance',
+  ]);
   agent.pendingRelevanceChecks.forEach(({ cleanupTimer }) => clearTimeout(cleanupTimer));
 });
 
@@ -47,4 +52,13 @@ test('semantic approval updates context and creates the normal audible response'
 
   assert.equal(sent[0].type, 'session.update');
   assert.deepEqual(sent[1], { type: 'response.create' });
+});
+
+test('semantic rejection deletes the unrelated audio item', () => {
+  const { agent, sent } = testAgent();
+  agent.pendingRelevanceChecks.set('utterance-1', { itemId: 'audio-item-1' });
+
+  agent.rejectGameUtterance(JSON.stringify({ utteranceId: 'utterance-1' }));
+
+  assert.deepEqual(sent, [{ type: 'conversation.item.delete', item_id: 'audio-item-1' }]);
 });

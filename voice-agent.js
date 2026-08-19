@@ -163,8 +163,8 @@ export class VoiceAgent {
         instructions: [
           'Use semantic understanding of the complete heard sentence and the supplied live game state.',
           'Call approve_game_utterance only when the sentence is meaningfully related to the current game.',
+          'Otherwise call reject_game_utterance.',
           'Do not classify by matching individual words or phrases.',
-          'For anything unrelated or uncertain, do not call the function and output only UNRELATED.',
           'Do not answer the speaker.',
         ].join(' '),
         input: [{
@@ -175,23 +175,41 @@ export class VoiceAgent {
             text: `Current poker game state:\n${this.getRelevanceContext()}\n\nHeard sentence:\n${transcript}`,
           }],
         }],
-        tools: [{
-          type: 'function',
-          name: 'approve_game_utterance',
-          description: 'Approve an utterance whose complete semantic meaning is related to the current game.',
-          parameters: {
-            type: 'object',
-            properties: {
-              utteranceId: {
-                type: 'string',
-                enum: [utteranceId],
+        tools: [
+          {
+            type: 'function',
+            name: 'approve_game_utterance',
+            description: 'Choose this when the complete semantic meaning is related to the current game.',
+            parameters: {
+              type: 'object',
+              properties: {
+                utteranceId: {
+                  type: 'string',
+                  enum: [utteranceId],
+                },
               },
+              required: ['utteranceId'],
+              additionalProperties: false,
             },
-            required: ['utteranceId'],
-            additionalProperties: false,
           },
-        }],
-        tool_choice: 'auto',
+          {
+            type: 'function',
+            name: 'reject_game_utterance',
+            description: 'Choose this when the complete semantic meaning is unrelated to the current game.',
+            parameters: {
+              type: 'object',
+              properties: {
+                utteranceId: {
+                  type: 'string',
+                  enum: [utteranceId],
+                },
+              },
+              required: ['utteranceId'],
+              additionalProperties: false,
+            },
+          },
+        ],
+        tool_choice: 'required',
       },
     });
   }
@@ -210,6 +228,23 @@ export class VoiceAgent {
     this.pendingRelevanceChecks.delete(utteranceId);
     this.updateContext();
     this.send({ type: 'response.create' });
+  }
+
+  rejectGameUtterance(argumentsJson) {
+    let utteranceId;
+    try {
+      utteranceId = JSON.parse(argumentsJson || '{}').utteranceId;
+    } catch {
+      return;
+    }
+    const pending = this.pendingRelevanceChecks.get(utteranceId);
+    if (!pending) return;
+
+    clearTimeout(pending.cleanupTimer);
+    this.pendingRelevanceChecks.delete(utteranceId);
+    if (pending.itemId) {
+      this.send({ type: 'conversation.item.delete', item_id: pending.itemId });
+    }
   }
 
   rejectUnapprovedUtterance(response) {
@@ -245,6 +280,10 @@ export class VoiceAgent {
     if (event.type !== 'response.function_call_arguments.done') return;
     if (event.name === 'approve_game_utterance') {
       this.approveGameUtterance(event.arguments);
+      return;
+    }
+    if (event.name === 'reject_game_utterance') {
+      this.rejectGameUtterance(event.arguments);
       return;
     }
 
