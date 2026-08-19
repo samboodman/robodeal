@@ -33,9 +33,10 @@ export function bytesToBase64(bytes) {
 }
 
 export class VoiceAgent {
-  constructor({ getInstructions, handleTranscript = async () => ({ handled: false }), onTranscript = () => {}, onStatus = () => {} }) {
+  constructor({ getInstructions, tools = [], executeTool, onTranscript = () => {}, onStatus = () => {} }) {
     this.getInstructions = getInstructions;
-    this.handleTranscript = handleTranscript;
+    this.tools = tools;
+    this.executeTool = executeTool;
     this.onTranscript = onTranscript;
     this.onStatus = onStatus;
     this.connection = null;
@@ -59,7 +60,8 @@ export class VoiceAgent {
     return {
       type: 'realtime',
       instructions: this.getInstructions(),
-      tool_choice: 'none',
+      tools: this.tools,
+      tool_choice: this.tools.length > 0 ? 'auto' : 'none',
       output_modalities: ['audio'],
       audio: {
         input: {
@@ -121,7 +123,8 @@ export class VoiceAgent {
       session: {
         type: 'realtime',
         instructions: this.getInstructions(),
-        tool_choice: 'none',
+        tools: this.tools,
+        tool_choice: this.tools.length > 0 ? 'auto' : 'none',
       },
     });
   }
@@ -223,19 +226,8 @@ export class VoiceAgent {
   async handleEvent(event) {
     if (event.type === 'conversation.item.input_audio_transcription.completed') {
       this.onTranscript(`Heard: “${event.transcript}”`);
-      let handledResult = { handled: false };
-      try {
-        handledResult = await this.handleTranscript(event.transcript);
-      } catch (error) {
-        handledResult = { handled: true, message: error.message };
-      }
-      if (handledResult?.handled) {
-        this.updateContext();
-        if (handledResult.message) this.speak(handledResult.message);
-        return;
-      }
       this.updateContext();
-      this.send({ type: 'response.create', response: { tool_choice: 'none' } });
+      this.send({ type: 'response.create' });
       return;
     }
     if (event.type === 'response.output_audio_transcript.done') {
@@ -246,5 +238,24 @@ export class VoiceAgent {
       this.onStatus(`AI error: ${event.error?.message || 'unknown error'}`);
       return;
     }
+    if (event.type !== 'response.function_call_arguments.done') return;
+
+    let result;
+    try {
+      result = await this.executeTool(event.name, JSON.parse(event.arguments || '{}'));
+    } catch (error) {
+      result = { ok: false, message: error.message };
+    }
+
+    this.send({
+      type: 'conversation.item.create',
+      item: {
+        type: 'function_call_output',
+        call_id: event.call_id,
+        output: JSON.stringify(result),
+      },
+    });
+    this.updateContext();
+    this.send({ type: 'response.create' });
   }
 }

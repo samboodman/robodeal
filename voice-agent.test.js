@@ -12,23 +12,7 @@ function testAgent(options = {}) {
   return { agent, sent };
 }
 
-test('a deterministic command speaks its validated result', async () => {
-  const { agent, sent } = testAgent({
-    handleTranscript: async () => ({ handled: true, message: 'Player 1 calls 5.' }),
-  });
-
-  await agent.handleEvent({
-    type: 'conversation.item.input_audio_transcription.completed',
-    transcript: 'Call',
-    item_id: 'audio-item-1',
-  });
-
-  assert.equal(sent[0].type, 'session.update');
-  assert.equal(sent[1].type, 'response.create');
-  assert.match(sent[1].response.input[0].content[0].text, /Player 1 calls 5/);
-});
-
-test('every unmatched utterance is sent directly to the AI', async () => {
+test('every utterance is sent directly to the AI', async () => {
   const { agent, sent } = testAgent();
 
   await agent.handleEvent({
@@ -38,8 +22,41 @@ test('every unmatched utterance is sent directly to the AI', async () => {
   });
 
   assert.equal(sent[0].type, 'session.update');
-  assert.deepEqual(sent[1], { type: 'response.create', response: { tool_choice: 'none' } });
+  assert.deepEqual(sent[1], { type: 'response.create' });
   assert.equal(sent.some(({ type }) => type === 'conversation.item.delete'), false);
+});
+
+test('the session exposes supplied tools with automatic tool choice', () => {
+  const tools = [{ type: 'function', name: 'call', parameters: { type: 'object', properties: {} } }];
+  const { agent } = testAgent({ tools });
+
+  const session = agent.sessionConfiguration('marin');
+
+  assert.equal(session.tool_choice, 'auto');
+  assert.deepEqual(session.tools, tools);
+});
+
+test('an AI tool call is executed and returned to the conversation', async () => {
+  const calls = [];
+  const { agent, sent } = testAgent({
+    executeTool: async (name, args) => {
+      calls.push({ name, args });
+      return { ok: true, message: 'Player 1 calls 5.' };
+    },
+  });
+
+  await agent.handleEvent({
+    type: 'response.function_call_arguments.done',
+    name: 'call',
+    arguments: '{}',
+    call_id: 'call-1',
+  });
+
+  assert.deepEqual(calls, [{ name: 'call', args: {} }]);
+  assert.equal(sent[0].type, 'conversation.item.create');
+  assert.match(sent[0].item.output, /Player 1 calls 5/);
+  assert.equal(sent[1].type, 'session.update');
+  assert.equal(sent[2].type, 'response.create');
 });
 
 test('converts decoded audio to 24 kHz mono PCM16', () => {

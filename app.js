@@ -1,6 +1,5 @@
 import { calculatePots, hasBettingRoundFinished, splitPotAmount } from './pot-logic.js';
 import { VoiceAgent } from './voice-agent.js';
-import { classifyVoiceCommand } from './voice-command.js';
 
 const playerCount = document.querySelector('#player-count');
 const playerNames = document.querySelector('#player-names');
@@ -81,7 +80,7 @@ let screenWakeLock = null;
 let voiceAgent = null;
 let voicePreviewAgent = null;
 let voiceConnectionPromise = null;
-let pendingVoiceFoldPlayerNumber = null;
+let pendingVoiceAction = null;
 const lastGameSettingsKey = 'robodeal-last-game-settings';
 
 function selectedVoiceSettings() {
@@ -361,6 +360,7 @@ function getVoiceSnapshot() {
     highestRoundBet,
     pendingBet,
     pendingFold,
+    pendingVoiceAction,
     pot: totalPotAmount(),
     dealInstruction: dealPrompt.hidden ? null : dealMessage.textContent,
     players: Object.values(playersByNumber).map((candidate) => ({
@@ -378,8 +378,22 @@ function getVoiceInstructions() {
   return `You are RoboDeal, a concise voice assistant for a casual real-card poker game.
 Current authoritative game state: ${JSON.stringify(getVoiceSnapshot())}
 
-Use a ${voice.personality} personality, a ${voice.accent} accent, and a ${voice.pace} speaking pace. Answer short poker questions using the current state. Game actions are handled and validated by the app, so never claim that you changed the game yourself. Respond to every heard utterance and never silently discard speech. Keep every spoken response to one short sentence.`;
+Use a ${voice.personality} personality, a ${voice.accent} accent, and a ${voice.pace} speaking pace. Respond to every heard utterance and never silently discard speech. Keep every spoken response to one short sentence.
+
+For a clear game action, call exactly one matching tool and wait for its result before saying the action succeeded. The tools always act on the active player, so never choose a player yourself. Use bet for a requested total round bet and raise for an amount above the call. Fold and all-in always require confirmation: first call fold or allIn, then ask the player to confirm. Call confirmAction only after a clear affirmative reply to that pending action, and call cancelAction after a clear rejection. If the request is ambiguous, ask one short question without calling a tool.`;
 }
+
+const voiceTools = [
+  { type: 'function', name: 'check', description: 'Check for the active player when nothing is owed.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'call', description: 'Call the current bet for the active player.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'bet', description: 'Set the active player’s total bet for this betting round.', parameters: { type: 'object', properties: { total: { type: 'number', description: 'The requested total number of chips bet by this player in the current round.' } }, required: ['total'], additionalProperties: false } },
+  { type: 'function', name: 'raise', description: 'Call and then raise by the requested number of chips.', parameters: { type: 'object', properties: { amount: { type: 'number', description: 'Chips to raise above the amount needed to call.' } }, required: ['amount'], additionalProperties: false } },
+  { type: 'function', name: 'fold', description: 'Begin a required fold confirmation. This does not fold yet.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'allIn', description: 'Begin a required all-in confirmation. This does not bet yet.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'confirmAction', description: 'Execute the pending fold or all-in after the player clearly confirms it.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'cancelAction', description: 'Cancel the pending fold or all-in after the player rejects it.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'cardsDealt', description: 'Continue after the requested physical cards have been dealt.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+];
 
 function executeVoiceTool(name, args) {
   if (name === 'cardsDealt') {
@@ -389,15 +403,49 @@ function executeVoiceTool(name, args) {
 
   const player = playersByNumber[currentPlayerNumber];
   if (!player) return { ok: false, message: 'There is no active player.' };
+
+  if (name === 'cancelAction') {
+    if (!pendingVoiceAction) return { ok: false, message: 'There is no action waiting for confirmation.' };
+    pendingVoiceAction = null;
+    return { ok: true, message: 'The pending action was cancelled.' };
+  }
+
+  if (name === 'confirmAction') {
+    if (!pendingVoiceAction) return { ok: false, message: 'There is no action waiting for confirmation.' };
+    if (gameScreen.hidden || !dealPrompt.hidden || !winnerPicker.hidden || !gameWinnerScreen.hidden) {
+      pendingVoiceAction = null;
+      return { ok: false, message: 'That confirmation is no longer available.' };
+    }
+    if (pendingVoiceAction.playerNumber !== currentPlayerNumber) {
+      pendingVoiceAction = null;
+      return { ok: false, message: 'That confirmation is no longer available.' };
+    }
+
+    const action = pendingVoiceAction.type;
+    pendingVoiceAction = null;
+    if (action === 'fold') {
+      foldCurrentPlayer();
+      confirm();
+      return { ok: true, message: `${player.name} folds.` };
+    }
+    if (action === 'all-in') {
+      const amount = player.chips;
+      betCurrentPlayer(amount);
+      confirm();
+      return { ok: true, message: `${player.name} is all in for ${amount}.` };
+    }
+    return { ok: false, message: 'Unknown pending action.' };
+  }
+
   if (gameScreen.hidden || !dealPrompt.hidden || !winnerPicker.hidden || !gameWinnerScreen.hidden) {
     return { ok: false, message: 'A betting action is not available right now.' };
   }
 
   const amountToCall = Math.min(Math.max(0, highestRoundBet - player.roundBet), player.chips);
+  if (name !== 'fold' && name !== 'allIn') pendingVoiceAction = null;
   if (name === 'fold') {
-    foldCurrentPlayer();
-    confirm();
-    return { ok: true, message: `${player.name} folds.` };
+    pendingVoiceAction = { type: 'fold', playerNumber: currentPlayerNumber };
+    return { ok: true, confirmationRequired: true, message: `Ask ${player.name} to confirm the fold.` };
   }
   if (name === 'check') {
     if (amountToCall > 0) return { ok: false, message: `${player.name} must call ${amountToCall} or fold.` };
@@ -411,56 +459,39 @@ function executeVoiceTool(name, args) {
     return { ok: true, message: `${player.name} calls ${amountToCall}.` };
   }
   if (name === 'allIn') {
-    const amount = player.chips;
-    betCurrentPlayer(amount);
-    confirm();
-    return { ok: true, message: `${player.name} is all in for ${amount}.` };
+    pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber };
+    return { ok: true, confirmationRequired: true, message: `Ask ${player.name} to confirm going all in for ${player.chips}.` };
   }
   if (name === 'bet') {
-    const amount = Number(args.amount);
-    if (!Number.isFinite(amount) || amount < amountToCall || amount > player.chips) {
-      return { ok: false, message: `The additional bet must be from ${amountToCall} to ${player.chips}.` };
+    const total = Number(args.total);
+    const amount = total - player.roundBet;
+    if (!Number.isFinite(total) || amount < amountToCall || amount > player.chips) {
+      return { ok: false, message: `The total bet must be from ${player.roundBet + amountToCall} to ${player.roundBet + player.chips}.` };
+    }
+    if (amount === player.chips) {
+      pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber };
+      return { ok: true, confirmationRequired: true, message: `That bet is all in. Ask ${player.name} to confirm going all in for ${player.chips}.` };
     }
     betCurrentPlayer(amount);
     confirm();
-    return { ok: true, message: `${player.name} bets ${amount}.` };
+    return { ok: true, message: `${player.name} bets to ${total}.` };
+  }
+  if (name === 'raise') {
+    const raiseAmount = Number(args.amount);
+    const amount = amountToCall + raiseAmount;
+    if (!Number.isFinite(raiseAmount) || raiseAmount < 0 || amount > player.chips) {
+      return { ok: false, message: `The raise must be from 0 to ${Math.max(0, player.chips - amountToCall)}.` };
+    }
+    if (amount === player.chips) {
+      pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber };
+      return { ok: true, confirmationRequired: true, message: `That raise is all in. Ask ${player.name} to confirm going all in for ${player.chips}.` };
+    }
+    const total = player.roundBet + amount;
+    betCurrentPlayer(amount);
+    confirm();
+    return { ok: true, message: `${player.name} raises ${raiseAmount} to ${total}.` };
   }
   return { ok: false, message: 'Unknown poker action.' };
-}
-
-function handleVoiceTranscript(transcript) {
-  const command = classifyVoiceCommand(transcript, getVoiceSnapshot(), pendingVoiceFoldPlayerNumber);
-  if (!command) {
-    pendingVoiceFoldPlayerNumber = null;
-    return { handled: false };
-  }
-
-  if (command.type === 'request-fold') {
-    if (gameScreen.hidden || !dealPrompt.hidden || !winnerPicker.hidden || !gameWinnerScreen.hidden) {
-      return { handled: true, message: 'A betting action is not available right now.' };
-    }
-    pendingVoiceFoldPlayerNumber = command.playerNumber;
-    return { handled: true, message: `Do you want to fold, ${playersByNumber[command.playerNumber].name}?` };
-  }
-  if (command.type === 'confirm-fold') {
-    if (command.playerNumber !== currentPlayerNumber) {
-      pendingVoiceFoldPlayerNumber = null;
-      return { handled: true, message: 'That fold is no longer available.' };
-    }
-    pendingVoiceFoldPlayerNumber = null;
-    return { handled: true, message: executeVoiceTool('fold', {}).message };
-  }
-  if (command.type === 'cancel-fold') {
-    pendingVoiceFoldPlayerNumber = null;
-    return { handled: true, message: 'Fold cancelled.' };
-  }
-  if (command.type === 'clarify-bet') {
-    return { handled: true, message: 'How many chips do you want to bet?' };
-  }
-
-  pendingVoiceFoldPlayerNumber = null;
-  const result = executeVoiceTool(command.name, command.args);
-  return { handled: true, message: result.message };
 }
 
 async function connectVoiceAgent() {
@@ -470,7 +501,8 @@ async function connectVoiceAgent() {
   voiceAgent?.disconnect();
   voiceAgent = new VoiceAgent({
     getInstructions: getVoiceInstructions,
-    handleTranscript: handleVoiceTranscript,
+    tools: voiceTools,
+    executeTool: executeVoiceTool,
     onTranscript: setVoiceTranscript,
     onStatus: setVoiceTranscript,
   });
@@ -828,8 +860,8 @@ function drawPlayerSeats() {
 }
 
 function setCurrentPlayer(number) {
-  if (pendingVoiceFoldPlayerNumber !== null && pendingVoiceFoldPlayerNumber !== number) {
-    pendingVoiceFoldPlayerNumber = null;
+  if (pendingVoiceAction && pendingVoiceAction.playerNumber !== number) {
+    pendingVoiceAction = null;
   }
   currentPlayerNumber = number;
   gameSettings.currentPlayerNumber = number;
@@ -1211,7 +1243,7 @@ function startHand() {
   pendingFold = false;
   lastTurnState = null;
   bigBlindPlayerNumber = null;
-  pendingVoiceFoldPlayerNumber = null;
+  pendingVoiceAction = null;
 
   Object.values(playersByNumber).forEach((player) => {
     player.folded = player.eliminated;
