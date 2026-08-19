@@ -32,6 +32,16 @@ export function bytesToBase64(bytes) {
   return btoa(binary);
 }
 
+export function microphoneAudioConstraints(supported = {}) {
+  return {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    channelCount: 1,
+    ...(supported.voiceIsolation ? { voiceIsolation: true } : {}),
+  };
+}
+
 export class VoiceAgent {
   constructor({ getInstructions, tools = [], executeTool, onTranscript = () => {}, onStatus = () => {} }) {
     this.getInstructions = getInstructions;
@@ -67,8 +77,19 @@ export class VoiceAgent {
         input: {
           format: { type: 'audio/pcm', rate: 24_000 },
           noise_reduction: { type: 'far_field' },
-          transcription: { model: 'gpt-4o-mini-transcribe', language: 'en' },
-          turn_detection: { type: 'server_vad', create_response: false, interrupt_response: false },
+          transcription: {
+            model: 'gpt-live-transcribe',
+            prompt: [
+              'This audio comes from a noisy restaurant poker table.',
+              'Transcribe the clearest foreground speaker completely, including poker actions and amounts,',
+              'even when unrelated conversations, dishes, music, or other voices overlap in the background.',
+              'Preserve spoken numbers and poker terminology exactly.',
+            ].join(' '),
+            keywords: ['RoboDeal', 'check', 'call', 'bet', 'raise', 'fold', 'all in', 'cards dealt'],
+            languages: ['en'],
+            delay: 'high',
+          },
+          turn_detection: { type: 'semantic_vad', create_response: false, interrupt_response: false },
         },
         output: { voice },
       },
@@ -148,8 +169,9 @@ export class VoiceAgent {
   async startMicrophone() {
     if (!this.connected) throw new Error('The AI is not connected yet.');
     if (this.microphoneStream) return;
+    const supported = navigator.mediaDevices.getSupportedConstraints?.() || {};
     this.microphoneStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true },
+      audio: microphoneAudioConstraints(supported),
     });
     await this.sender.replaceTrack(this.microphoneStream.getAudioTracks()[0]);
     this.onStatus('AI is listening.');

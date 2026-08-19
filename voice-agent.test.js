@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { audioBufferToPcm16, VoiceAgent } from './voice-agent.js';
+import { audioBufferToPcm16, microphoneAudioConstraints, VoiceAgent } from './voice-agent.js';
 
 function testAgent(options = {}) {
   const sent = [];
@@ -34,6 +34,32 @@ test('the session exposes supplied tools with automatic tool choice', () => {
 
   assert.equal(session.tool_choice, 'auto');
   assert.deepEqual(session.tools, tools);
+});
+
+test('the session is configured for noisy restaurant speech', () => {
+  const { agent } = testAgent();
+
+  const input = agent.sessionConfiguration('marin').audio.input;
+
+  assert.equal(input.noise_reduction.type, 'far_field');
+  assert.equal(input.transcription.model, 'gpt-live-transcribe');
+  assert.equal(input.transcription.delay, 'high');
+  assert.deepEqual(input.transcription.languages, ['en']);
+  assert.match(input.transcription.prompt, /noisy restaurant poker table/);
+  assert.ok(input.transcription.keywords.includes('all in'));
+  assert.equal(input.turn_detection.type, 'semantic_vad');
+  assert.equal(input.turn_detection.create_response, false);
+});
+
+test('microphone constraints enable supported browser voice isolation', () => {
+  assert.deepEqual(microphoneAudioConstraints({ voiceIsolation: true }), {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    channelCount: 1,
+    voiceIsolation: true,
+  });
+  assert.equal('voiceIsolation' in microphoneAudioConstraints(), false);
 });
 
 test('an AI tool call is executed and returned to the conversation', async () => {
