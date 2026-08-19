@@ -374,20 +374,15 @@ Current authoritative game state: ${JSON.stringify(getVoiceSnapshot())}
 
 Use a ${voice.personality} personality, a ${voice.accent} accent, and a ${voice.pace} speaking pace. Before responding, use the full meaning and context of the utterance to decide whether the speaker is actually discussing or controlling this poker game. An isolated word that could have a poker meaning is not enough. If the meaning is unrelated to this game, produce no speech, no text, and no tool call, even when someone addresses RoboDeal, robot, bot, or AI. Keep every spoken response to one short sentence.
 
-For a clear action, call exactly one matching tool. Never say an action succeeded before its tool result says it succeeded. Every betting tool must use the currentPlayerNumber from the state as playerNumber. "Bet 5" means make the player's total round bet 5, so the additional amount is 5 minus roundBet. "Raise 5" means call and add 5 more, so the additional amount is amountToCall plus 5. If the request is ambiguous, ask one short question and do not call a tool.`;
+For a clear action, call exactly one matching tool. Never say an action succeeded before its tool result says it succeeded. Betting tools always act on the active player from the authoritative game state; do not choose or supply a player. "Bet 5" means make the active player's total round bet 5, so the additional amount is 5 minus roundBet. "Raise 5" means call and add 5 more, so the additional amount is amountToCall plus 5. If the request is ambiguous, ask one short question and do not call a tool.`;
 }
 
-const voicePlayerNumber = {
-  type: 'number',
-  description: 'The currentPlayerNumber from the latest game state.',
-};
-
 const voiceTools = [
-  { type: 'function', name: 'fold', description: 'Fold and finish the current player turn.', parameters: { type: 'object', properties: { playerNumber: voicePlayerNumber }, required: ['playerNumber'], additionalProperties: false } },
-  { type: 'function', name: 'check', description: 'Check and finish the current player turn when nothing is owed.', parameters: { type: 'object', properties: { playerNumber: voicePlayerNumber }, required: ['playerNumber'], additionalProperties: false } },
-  { type: 'function', name: 'call', description: 'Call the current bet and finish the current player turn.', parameters: { type: 'object', properties: { playerNumber: voicePlayerNumber }, required: ['playerNumber'], additionalProperties: false } },
-  { type: 'function', name: 'bet', description: 'Bet an additional number of chips now and finish the current player turn.', parameters: { type: 'object', properties: { playerNumber: voicePlayerNumber, amount: { type: 'number', description: 'Additional chips to take from the current player now.' } }, required: ['playerNumber', 'amount'], additionalProperties: false } },
-  { type: 'function', name: 'allIn', description: 'Bet all remaining chips and finish the current player turn.', parameters: { type: 'object', properties: { playerNumber: voicePlayerNumber }, required: ['playerNumber'], additionalProperties: false } },
+  { type: 'function', name: 'fold', description: 'Fold the active player and finish their turn.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'check', description: 'Check for the active player and finish their turn when nothing is owed.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'call', description: 'Call the current bet for the active player and finish their turn.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'bet', description: 'Bet an additional number of chips for the active player and finish their turn.', parameters: { type: 'object', properties: { amount: { type: 'number', description: 'Additional chips to take from the active player now.' } }, required: ['amount'], additionalProperties: false } },
+  { type: 'function', name: 'allIn', description: 'Bet all of the active player’s remaining chips and finish their turn.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'cardsDealt', description: 'Continue after the requested physical cards have been dealt.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
 ];
 
@@ -398,9 +393,7 @@ function executeVoiceTool(name, args) {
   }
 
   const player = playersByNumber[currentPlayerNumber];
-  if (!player || Number(args.playerNumber) !== currentPlayerNumber) {
-    return { ok: false, message: 'The turn changed before the command arrived.' };
-  }
+  if (!player) return { ok: false, message: 'There is no active player.' };
   if (gameScreen.hidden || !dealPrompt.hidden || !winnerPicker.hidden || !gameWinnerScreen.hidden) {
     return { ok: false, message: 'A betting action is not available right now.' };
   }
