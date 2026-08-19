@@ -63,8 +63,25 @@ test('semantic approval updates context and creates the normal audible response'
   agent.approveGameUtterance(JSON.stringify({ utteranceId: 'utterance-1' }));
 
   assert.equal(sent[0].type, 'session.update');
-  assert.deepEqual(sent[1], { type: 'response.create' });
+  assert.deepEqual(sent[1], { type: 'response.create', response: { tool_choice: 'none' } });
   assert.deepEqual(agent.recentConversation, [{ role: 'Player', text: '10' }]);
+});
+
+test('a deterministic command bypasses the semantic gate and speaks its validated result', async () => {
+  const { agent, sent } = testAgent({
+    handleTranscript: async () => ({ handled: true, message: 'Player 1 calls 5.' }),
+  });
+
+  await agent.handleEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    transcript: 'Call',
+    item_id: 'audio-item-1',
+  });
+
+  assert.equal(agent.pendingRelevanceChecks.size, 0);
+  assert.equal(sent[0].type, 'session.update');
+  assert.equal(sent[1].type, 'response.create');
+  assert.match(sent[1].response.input[0].content[0].text, /Player 1 calls 5/);
 });
 
 test('semantic rejection deletes the unrelated audio item', () => {

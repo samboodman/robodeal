@@ -1,5 +1,6 @@
 import { calculatePots, hasBettingRoundFinished, splitPotAmount } from './pot-logic.js';
 import { VoiceAgent } from './voice-agent.js';
+import { classifyVoiceCommand } from './voice-command.js';
 
 const playerCount = document.querySelector('#player-count');
 const playerNames = document.querySelector('#player-names');
@@ -80,6 +81,7 @@ let screenWakeLock = null;
 let voiceAgent = null;
 let voicePreviewAgent = null;
 let voiceConnectionPromise = null;
+let pendingVoiceFoldPlayerNumber = null;
 const lastGameSettingsKey = 'robodeal-last-game-settings';
 
 function selectedVoiceSettings() {
@@ -373,22 +375,11 @@ function getVoiceSnapshot() {
 
 function getVoiceInstructions() {
   const voice = gameSettings?.voice || selectedVoiceSettings();
-  return `You are RoboDeal, a concise voice controller for a casual real-card poker game.
+  return `You are RoboDeal, a concise voice assistant for a casual real-card poker game.
 Current authoritative game state: ${JSON.stringify(getVoiceSnapshot())}
 
-Use a ${voice.personality} personality, a ${voice.accent} accent, and a ${voice.pace} speaking pace. Before responding, use the full meaning and context of the utterance to decide whether the speaker is actually discussing or controlling this poker game. An isolated word that could have a poker meaning is not enough. If the meaning is unrelated to this game, produce no speech, no text, and no tool call, even when someone addresses RoboDeal, robot, bot, or AI. Keep every spoken response to one short sentence.
-
-For a clear action, call exactly one matching tool. Never say an action succeeded before its tool result says it succeeded. Betting tools always act on the active player from the authoritative game state; do not choose or supply a player. "Bet 5" means make the active player's total round bet 5, so the additional amount is 5 minus roundBet. "Raise 5" means call and add 5 more, so the additional amount is amountToCall plus 5. If the request is ambiguous, ask one short question and do not call a tool.`;
+Use a ${voice.personality} personality, a ${voice.accent} accent, and a ${voice.pace} speaking pace. Answer short poker questions using the current state. Game actions are handled and validated by the app, so never claim that you changed the game yourself. If the meaning is unrelated to this game, produce no speech or text. Keep every spoken response to one short sentence.`;
 }
-
-const voiceTools = [
-  { type: 'function', name: 'fold', description: 'Fold the active player and finish their turn.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'check', description: 'Check for the active player and finish their turn when nothing is owed.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'call', description: 'Call the current bet for the active player and finish their turn.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'bet', description: 'Bet an additional number of chips for the active player and finish their turn.', parameters: { type: 'object', properties: { amount: { type: 'number', description: 'Additional chips to take from the active player now.' } }, required: ['amount'], additionalProperties: false } },
-  { type: 'function', name: 'allIn', description: 'Bet all of the active player’s remaining chips and finish their turn.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'cardsDealt', description: 'Continue after the requested physical cards have been dealt.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-];
 
 function executeVoiceTool(name, args) {
   if (name === 'cardsDealt') {
@@ -437,6 +428,41 @@ function executeVoiceTool(name, args) {
   return { ok: false, message: 'Unknown poker action.' };
 }
 
+function handleVoiceTranscript(transcript) {
+  const command = classifyVoiceCommand(transcript, getVoiceSnapshot(), pendingVoiceFoldPlayerNumber);
+  if (!command) {
+    pendingVoiceFoldPlayerNumber = null;
+    return { handled: false };
+  }
+
+  if (command.type === 'request-fold') {
+    if (gameScreen.hidden || !dealPrompt.hidden || !winnerPicker.hidden || !gameWinnerScreen.hidden) {
+      return { handled: true, message: 'A betting action is not available right now.' };
+    }
+    pendingVoiceFoldPlayerNumber = command.playerNumber;
+    return { handled: true, message: `Do you want to fold, ${playersByNumber[command.playerNumber].name}?` };
+  }
+  if (command.type === 'confirm-fold') {
+    if (command.playerNumber !== currentPlayerNumber) {
+      pendingVoiceFoldPlayerNumber = null;
+      return { handled: true, message: 'That fold is no longer available.' };
+    }
+    pendingVoiceFoldPlayerNumber = null;
+    return { handled: true, message: executeVoiceTool('fold', {}).message };
+  }
+  if (command.type === 'cancel-fold') {
+    pendingVoiceFoldPlayerNumber = null;
+    return { handled: true, message: 'Fold cancelled.' };
+  }
+  if (command.type === 'clarify-bet') {
+    return { handled: true, message: 'How many chips do you want to bet?' };
+  }
+
+  pendingVoiceFoldPlayerNumber = null;
+  const result = executeVoiceTool(command.name, command.args);
+  return { handled: true, message: result.message };
+}
+
 async function connectVoiceAgent() {
   if (voiceAgent?.connected) return voiceAgent;
   if (voiceConnectionPromise) return voiceConnectionPromise;
@@ -445,7 +471,7 @@ async function connectVoiceAgent() {
   voiceAgent = new VoiceAgent({
     getInstructions: getVoiceInstructions,
     getRelevanceContext: () => JSON.stringify(getVoiceSnapshot()),
-    tools: voiceTools,
+    handleTranscript: handleVoiceTranscript,
     executeTool: executeVoiceTool,
     onTranscript: setVoiceTranscript,
     onStatus: setVoiceTranscript,
@@ -804,6 +830,9 @@ function drawPlayerSeats() {
 }
 
 function setCurrentPlayer(number) {
+  if (pendingVoiceFoldPlayerNumber !== null && pendingVoiceFoldPlayerNumber !== number) {
+    pendingVoiceFoldPlayerNumber = null;
+  }
   currentPlayerNumber = number;
   gameSettings.currentPlayerNumber = number;
   pendingBet = Math.max(0, highestRoundBet - playersByNumber[number].roundBet);
@@ -1184,6 +1213,7 @@ function startHand() {
   pendingFold = false;
   lastTurnState = null;
   bigBlindPlayerNumber = null;
+  pendingVoiceFoldPlayerNumber = null;
 
   Object.values(playersByNumber).forEach((player) => {
     player.folded = player.eliminated;

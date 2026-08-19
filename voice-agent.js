@@ -33,11 +33,12 @@ export function bytesToBase64(bytes) {
 }
 
 export class VoiceAgent {
-  constructor({ getInstructions, getRelevanceContext = () => '', tools = [], executeTool, onTranscript = () => {}, onStatus = () => {} }) {
+  constructor({ getInstructions, getRelevanceContext = () => '', tools = [], executeTool, handleTranscript = async () => ({ handled: false }), onTranscript = () => {}, onStatus = () => {} }) {
     this.getInstructions = getInstructions;
     this.getRelevanceContext = getRelevanceContext;
     this.tools = tools;
     this.executeTool = executeTool;
+    this.handleTranscript = handleTranscript;
     this.onTranscript = onTranscript;
     this.onStatus = onStatus;
     this.connection = null;
@@ -325,7 +326,7 @@ export class VoiceAgent {
     this.pendingRelevanceChecks.delete(utteranceId);
     this.rememberSpeech('Player', pending.transcript);
     this.updateContext();
-    this.send({ type: 'response.create' });
+    this.send({ type: 'response.create', response: { tool_choice: 'none' } });
   }
 
   rejectGameUtterance(argumentsJson) {
@@ -360,6 +361,18 @@ export class VoiceAgent {
   async handleEvent(event) {
     if (event.type === 'conversation.item.input_audio_transcription.completed') {
       this.onTranscript(`Heard: “${event.transcript}”`);
+      let handledResult = { handled: false };
+      try {
+        handledResult = await this.handleTranscript(event.transcript);
+      } catch (error) {
+        handledResult = { handled: true, message: error.message };
+      }
+      if (handledResult?.handled) {
+        this.rememberSpeech('Player', event.transcript);
+        this.updateContext();
+        if (handledResult.message) this.speak(handledResult.message);
+        return;
+      }
       this.checkTranscriptRelevance(event.transcript, event.item_id);
       return;
     }
