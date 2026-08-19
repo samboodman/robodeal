@@ -13,6 +13,7 @@ export class VoiceAgent {
     this.microphoneStream = null;
     this.pendingRelevanceChecks = new Map();
     this.nextUtteranceNumber = 1;
+    this.recentConversation = [];
   }
 
   get connected() {
@@ -140,10 +141,23 @@ export class VoiceAgent {
     this.audio = null;
     this.pendingRelevanceChecks.forEach(({ cleanupTimer }) => clearTimeout(cleanupTimer));
     this.pendingRelevanceChecks.clear();
+    this.recentConversation = [];
   }
 
   send(event) {
     if (this.connected) this.channel.send(JSON.stringify(event));
+  }
+
+  rememberSpeech(role, text) {
+    const speech = String(text || '').trim();
+    if (!speech) return;
+    this.recentConversation.push({ role, text: speech });
+    this.recentConversation = this.recentConversation.slice(-6);
+  }
+
+  relevanceConversationContext() {
+    if (this.recentConversation.length === 0) return 'No earlier speech.';
+    return this.recentConversation.map(({ role, text }) => `${role}: ${text}`).join('\n');
   }
 
   checkTranscriptRelevance(transcript, itemId) {
@@ -151,7 +165,7 @@ export class VoiceAgent {
     const cleanupTimer = setTimeout(() => {
       this.pendingRelevanceChecks.delete(utteranceId);
     }, 30_000);
-    this.pendingRelevanceChecks.set(utteranceId, { itemId, cleanupTimer });
+    this.pendingRelevanceChecks.set(utteranceId, { itemId, transcript, cleanupTimer });
 
     this.send({
       type: 'response.create',
@@ -162,6 +176,7 @@ export class VoiceAgent {
         max_output_tokens: 64,
         instructions: [
           'Use semantic understanding of the complete heard sentence and the supplied live game state.',
+          'Use the recent conversation to understand whether the sentence is a contextual reply to something the dealer just said or asked.',
           'Call approve_game_utterance only when the sentence is meaningfully related to the current game.',
           'Otherwise call reject_game_utterance.',
           'Do not classify by matching individual words or phrases.',
@@ -172,7 +187,7 @@ export class VoiceAgent {
           role: 'user',
           content: [{
             type: 'input_text',
-            text: `Current poker game state:\n${this.getRelevanceContext()}\n\nHeard sentence:\n${transcript}`,
+            text: `Current poker game state:\n${this.getRelevanceContext()}\n\nRecent conversation in order:\n${this.relevanceConversationContext()}\n\nNewest player sentence:\n${transcript}`,
           }],
         }],
         tools: [
@@ -226,6 +241,7 @@ export class VoiceAgent {
 
     clearTimeout(pending.cleanupTimer);
     this.pendingRelevanceChecks.delete(utteranceId);
+    this.rememberSpeech('Player', pending.transcript);
     this.updateContext();
     this.send({ type: 'response.create' });
   }
@@ -271,6 +287,7 @@ export class VoiceAgent {
     }
     if (event.type === 'response.output_audio_transcript.done') {
       this.onTranscript(`RoboDeal: “${event.transcript}”`);
+      this.rememberSpeech('RoboDeal', event.transcript);
       return;
     }
     if (event.type === 'error') {

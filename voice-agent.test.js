@@ -33,6 +33,18 @@ test('the semantic gate receives the complete utterance and current game state',
   agent.pendingRelevanceChecks.forEach(({ cleanupTimer }) => clearTimeout(cleanupTimer));
 });
 
+test('the semantic gate sees that a short player reply follows the dealer question', () => {
+  const { agent, sent } = testAgent();
+  agent.rememberSpeech('RoboDeal', 'How much would you like to raise?');
+
+  agent.checkTranscriptRelevance('10', 'audio-item-1');
+
+  const classifierInput = sent[0].response.input[0].content[0].text;
+  assert.match(classifierInput, /RoboDeal: How much would you like to raise\?/);
+  assert.match(classifierInput, /Newest player sentence:\n10/);
+  agent.pendingRelevanceChecks.forEach(({ cleanupTimer }) => clearTimeout(cleanupTimer));
+});
+
 test('an unapproved relevance response deletes speech without creating audio', () => {
   const { agent, sent } = testAgent();
   agent.pendingRelevanceChecks.set('utterance-1', { itemId: 'audio-item-1' });
@@ -46,12 +58,13 @@ test('an unapproved relevance response deletes speech without creating audio', (
 
 test('semantic approval updates context and creates the normal audible response', () => {
   const { agent, sent } = testAgent();
-  agent.pendingRelevanceChecks.set('utterance-1', { itemId: 'audio-item-1' });
+  agent.pendingRelevanceChecks.set('utterance-1', { itemId: 'audio-item-1', transcript: '10' });
 
   agent.approveGameUtterance(JSON.stringify({ utteranceId: 'utterance-1' }));
 
   assert.equal(sent[0].type, 'session.update');
   assert.deepEqual(sent[1], { type: 'response.create' });
+  assert.deepEqual(agent.recentConversation, [{ role: 'Player', text: '10' }]);
 });
 
 test('semantic rejection deletes the unrelated audio item', () => {
