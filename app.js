@@ -45,6 +45,10 @@ const voiceAccent = document.querySelector('#voice-accent');
 const voicePersonality = document.querySelector('#voice-personality');
 const voicePace = document.querySelector('#voice-pace');
 const voicePreviewStatus = document.querySelector('#voice-preview-status');
+const voiceAudioTest = document.querySelector('#voice-audio-test');
+const voiceAudioFile = document.querySelector('#voice-audio-file');
+const voiceAudioTestButton = document.querySelector('#voice-audio-test-button');
+const voiceAudioTestStatus = document.querySelector('#voice-audio-test-status');
 const chipDenominationsButton = document.querySelector('#chip-denominations-button');
 const chipDenominationsBack = document.querySelector('#chip-denominations-back');
 const chipDisplayModeButton = document.querySelector('#chip-display-mode');
@@ -482,6 +486,22 @@ async function previewVoice() {
   } catch (error) {
     voicePreviewStatus.textContent = `Voice preview could not start: ${error.message}`;
     testVoiceButton.disabled = false;
+  }
+}
+
+async function testVoiceWithAudioFile() {
+  const file = voiceAudioFile.files[0];
+  if (!file) return;
+  voiceAudioTestButton.disabled = true;
+  voiceAudioTestStatus.textContent = 'Sending audio…';
+  try {
+    const agent = await connectVoiceAgent();
+    await agent.playAudioFile(file);
+    voiceAudioTestStatus.textContent = 'Audio sent through the Realtime input path.';
+  } catch (error) {
+    voiceAudioTestStatus.textContent = `Audio test failed: ${error.message}`;
+  } finally {
+    voiceAudioTestButton.disabled = !voiceAudioFile.files[0];
   }
 }
 
@@ -1320,6 +1340,11 @@ chipEnabledCheckboxes.forEach((checkbox) => {
   updateChipDenominationAvailability(checkbox);
 });
 testVoiceButton.addEventListener('click', previewVoice);
+voiceAudioFile.addEventListener('change', () => {
+  voiceAudioTestButton.disabled = !voiceAudioFile.files[0];
+  voiceAudioTestStatus.textContent = '';
+});
+voiceAudioTestButton.addEventListener('click', testVoiceWithAudioFile);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && !gameScreen.hidden && !isGameWon) {
     keepScreenAwake();
@@ -1391,3 +1416,4 @@ form.addEventListener('submit', (event) => {
 drawPlayerNames();
 updateChipDisplayModeButton();
 restoreLastGameSettings();
+voiceAudioTest.hidden = !['localhost', '127.0.0.1'].includes(window.location.hostname);

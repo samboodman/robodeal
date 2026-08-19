@@ -207,6 +207,12 @@
             </div>
           </div>
         </div>
+        <div id="voice-audio-test" class="voice-audio-test" hidden>
+          <label for="voice-audio-file">Debug voice with an audio file</label>
+          <input id="voice-audio-file" type="file" accept="audio/*" />
+          <button id="voice-audio-test-button" type="button" disabled>Send audio to RoboDeal</button>
+          <p id="voice-audio-test-status" role="status"></p>
+        </div>
         <section id="winner-picker" class="winner-picker" aria-live="polite" hidden>
           <p id="winner-question">Who had the best cards?</p>
           <div id="winner-options" class="winner-options"></div>

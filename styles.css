@@ -86,6 +86,34 @@ body {
   text-shadow: 0 1px 3px #04160f;
   transform: translateX(-50%);
 }
+.voice-audio-test {
+  position: fixed;
+  z-index: 3;
+  left: 12px;
+  bottom: 12px;
+  display: grid;
+  width: min(310px, calc(100vw - 24px));
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #fffdf6ee;
+  color: #173329;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.voice-audio-test input {
+  width: 100%;
+  font: inherit;
+}
+.voice-audio-test button {
+  min-height: 36px;
+  margin: 0;
+  font-size: 0.78rem;
+}
+.voice-audio-test p {
+  min-height: 1em;
+  margin: 0;
+}
 .game-winner-screen {
   position: relative;
   display: grid;

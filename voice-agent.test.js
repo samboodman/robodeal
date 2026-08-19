@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { VoiceAgent } from './voice-agent.js';
+import { audioBufferToPcm16, VoiceAgent } from './voice-agent.js';
 
 function testAgent(options = {}) {
   const sent = [];
@@ -74,4 +74,55 @@ test('semantic rejection deletes the unrelated audio item', () => {
   agent.rejectGameUtterance(JSON.stringify({ utteranceId: 'utterance-1' }));
 
   assert.deepEqual(sent, [{ type: 'conversation.item.delete', item_id: 'audio-item-1' }]);
+});
+
+test('converts decoded audio to 24 kHz mono PCM16', () => {
+  const pcm = audioBufferToPcm16({
+    sampleRate: 12_000,
+    length: 2,
+    numberOfChannels: 1,
+    getChannelData: () => new Float32Array([-1, 1]),
+  });
+
+  assert.equal(pcm.length, 8);
+  assert.equal(new DataView(pcm.buffer).getInt16(0, true), -32_768);
+});
+
+test('an audio file is appended and committed through the Realtime input buffer', async () => {
+  const { agent, sent } = testAgent();
+  const microphoneTrack = { kind: 'microphone' };
+  const replacedTracks = [];
+  agent.sender = {
+    track: microphoneTrack,
+    async replaceTrack(track) { replacedTracks.push(track); },
+  };
+
+  class FakeAudioContext {
+    async resume() {}
+    async decodeAudioData() {
+      return {
+        sampleRate: 24_000,
+        length: 2_400,
+        numberOfChannels: 1,
+        getChannelData: () => new Float32Array(2_400).fill(0.25),
+      };
+    }
+    async close() {}
+  }
+
+  const originalWindow = globalThis.window;
+  globalThis.window = { AudioContext: FakeAudioContext };
+  try {
+    await agent.playAudioFile({ name: 'call.wav', arrayBuffer: async () => new ArrayBuffer(1) });
+  } finally {
+    globalThis.window = originalWindow;
+  }
+
+  assert.deepEqual(replacedTracks, [null, microphoneTrack]);
+  assert.deepEqual(sent.map(({ type }) => type), [
+    'input_audio_buffer.clear',
+    'input_audio_buffer.append',
+    'input_audio_buffer.commit',
+  ]);
+  assert.equal(agent.audioTestRunning, false);
 });
