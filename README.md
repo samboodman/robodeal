@@ -34,6 +34,10 @@ npm run dev
 
 Open the local address Vite prints.
 
+## Voice stress-test calibration
+
+With foreground poker commands averaging `-16.8 dBFS`, the observed background-noise limit is the `+10.2 dB` stress setting relative to `restaurant-chatter-balanced.wav`. This was the first tested background level to miss an intended command.
+
 ## Development practice
 
 After every meaningful chunk of work, create a Git commit and push it to the `main` branch on GitHub. The user can also ask for an explicit save point at any time.
