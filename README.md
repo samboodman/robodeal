@@ -38,6 +38,22 @@ Open the local address Vite prints.
 
 With foreground poker commands averaging `-16.8 dBFS`, the observed background-noise limit is the `+10.2 dB` stress setting relative to `restaurant-chatter-balanced.wav`. This was the first tested background level to miss an intended command.
 
+For the few-speaker stress files, the foreground poker commands average `-16.8 dBFS`. The magnitude-00 background averages `-39.0 dBFS`, and each subsequent magnitude raises only the background by `2 dB` before the final limiter:
+
+| Magnitude | Background level |
+| --- | ---: |
+| 00 | `-39.0 dBFS` |
+| 01 | `-37.0 dBFS` |
+| 02 | `-35.0 dBFS` |
+| 03 | `-33.0 dBFS` |
+| 04 | `-31.0 dBFS` |
+| 05 | `-29.0 dBFS` |
+| 06 | `-27.0 dBFS` |
+| 07 | `-25.0 dBFS` |
+| 08 | `-23.0 dBFS` |
+| 09 | `-21.0 dBFS` |
+| 10 | `-19.0 dBFS` |
+
 ## Development practice
 
 After every meaningful chunk of work, create a Git commit and push it to the `main` branch on GitHub. The user can also ask for an explicit save point at any time.
