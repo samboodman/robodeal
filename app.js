@@ -1,4 +1,4 @@
-import { calculatePots, hasBettingRoundFinished, maximumAdditionalBet, splitPotAmount } from './pot-logic.js';
+import { maximumAdditionalBet } from './pot-logic.js';
 import { createGameState, executeTransition, GamePhase, getAvailableActions, Transition } from './game-state.js';
 import { addRequiredVoiceKeywords, fillPrompt, VoiceAgent } from './voice-agent.js';
 import promptsText from './Prompts?raw';
@@ -17,7 +17,6 @@ const playerNames = document.querySelector('#player-names');
 const form = document.querySelector('#setup-form');
 const message = document.querySelector('#message');
 const dealerSelect = document.querySelector('#dealer');
-const debugPresetSelect = document.querySelector('#debug-preset');
 const useBigBlindCheckbox = document.querySelector('#use-big-blind');
 const setupScreen = document.querySelector('#setup-screen');
 const voiceCustomizationScreen = document.querySelector('#voice-customization-screen');
@@ -85,26 +84,11 @@ const chipDenominationInputs = [...document.querySelectorAll('[data-chip-color]'
 const chipEnabledCheckboxes = [...document.querySelectorAll('[data-chip-enabled]')];
 let gameSettings = null;
 let gameState = null;
-// These fields are used only by debug presets, which deliberately construct
-// display-only snapshots outside the transition engine.
-let playersByNumber = {};
-let currentPlayerNumber = 1;
-let antePlayerNumber = null;
-let bigBlindPlayerNumber = null;
-let highestRoundBet = 0;
 let pendingBet = 0;
 let pendingFold = false;
-let isGameWon = false;
-let roundNumber = 1;
-let pots = [];
 let renderedPotLayerCount = 0;
 let potAnimationTimer = null;
-let potAwardIndex = 0;
-let lastPotWinnerNumber = null;
-let handWinnerNumbers = [];
 let lastTurnState = null;
-let gameHandNumber = 0;
-let dealPromptKind = null;
 let chipDisplayMode = 'value';
 let screenWakeLock = null;
 let voiceAgent = null;
@@ -122,39 +106,35 @@ function roundNumberFromGamePhase(phase) {
 }
 
 function viewPlayers() {
-  return gameState ? gameState.players : Object.values(playersByNumber);
+  return gameState?.players || [];
 }
 
 function viewPlayer(playerNumber) {
-  return gameState
-    ? gameState.players.find((player) => player.id === playerNumber)
-    : playersByNumber[playerNumber];
+  return gameState?.players.find((player) => player.id === playerNumber);
 }
 
 function viewPlayerNumber(player) {
-  return gameState ? player.id : player.number;
+  return player.id;
 }
 
 function viewActionPlayerNumber() {
-  return gameState ? gameState.actionPlayerId : currentPlayerNumber;
+  return gameState?.actionPlayerId ?? null;
 }
 
 function viewRoundNumber() {
-  return gameState ? gameState.round || roundNumberFromGamePhase(gameState.phase) : roundNumber;
+  return gameState ? gameState.round || roundNumberFromGamePhase(gameState.phase) : 1;
 }
 
 function viewHighestRoundBet() {
-  return gameState ? gameState.highestRoundBet : highestRoundBet;
+  return gameState?.highestRoundBet || 0;
 }
 
 function viewPots() {
-  return gameState ? gameState.pots : pots;
+  return gameState?.pots || [];
 }
 
 function viewIsGameWon() {
-  return gameState
-    ? [GamePhase.HAND_COMPLETE, GamePhase.GAME_COMPLETE].includes(gameState.phase)
-    : isGameWon;
+  return Boolean(gameState && [GamePhase.HAND_COMPLETE, GamePhase.GAME_COMPLETE].includes(gameState.phase));
 }
 
 function enginePlayersForPotLogic() {
@@ -305,17 +285,6 @@ function sidePots() {
 
 function totalPotAmount() {
   return viewPots().reduce((total, potLayer) => total + potLayer.amount, 0);
-}
-
-function syncPotsToGameSettings() {
-  if (!gameSettings) return;
-  gameSettings.pot = mainPotAmount();
-  gameSettings.pots = copyPots();
-}
-
-function recalculatePots() {
-  pots = calculatePots(Object.values(playersByNumber));
-  syncPotsToGameSettings();
 }
 
 function potLayerName(index) {
@@ -770,158 +739,6 @@ function makePlayers() {
   });
 }
 
-function initializeDebugPlayers() {
-  playersByNumber = Object.fromEntries(gameState.players.map((player) => [player.id, {
-    ...player,
-    number: player.id,
-    isDealer: player.id === gameState.dealerId,
-  }]));
-}
-
-const debugPresets = {
-  'two-pots': {
-    playerCount: 3,
-    contributions: [25, 50, 50],
-    chips: [0, 87, 88],
-    currentPlayerNumber: 2,
-    roundNumber: 4,
-  },
-  'three-pots': {
-    playerCount: 4,
-    contributions: [25, 50, 75, 75],
-    chips: [0, 0, 87, 88],
-    currentPlayerNumber: 3,
-    roundNumber: 4,
-  },
-  'all-in-runout': {
-    playerCount: 3,
-    contributions: [25, 50, 50],
-    chips: [0, 0, 175],
-    currentPlayerNumber: 3,
-    roundNumber: 1,
-    view: 'all-in-runout',
-  },
-  'deal-flop': {
-    playerCount: 3,
-    contributions: [10, 10, 10],
-    chips: [90, 90, 90],
-    currentPlayerNumber: 1,
-    roundNumber: 1,
-    view: 'deal-flop',
-  },
-  showdown: {
-    playerCount: 3,
-    contributions: [20, 20, 20],
-    chips: [80, 80, 80],
-    currentPlayerNumber: 1,
-    roundNumber: 4,
-    view: 'showdown',
-  },
-  'hand-won': {
-    playerCount: 3,
-    contributions: [0, 0, 0],
-    chips: [140, 80, 80],
-    currentPlayerNumber: 1,
-    roundNumber: 4,
-    view: 'hand-won',
-  },
-  'game-won': {
-    playerCount: 2,
-    contributions: [0, 0],
-    chips: [200, 0],
-    currentPlayerNumber: 1,
-    roundNumber: 4,
-    view: 'game-won',
-  },
-};
-
-function selectDebugPreset() {
-  const preset = debugPresets[debugPresetSelect.value];
-  if (!preset) return;
-
-  playerCount.value = preset.playerCount;
-  document.querySelector('#starting-money').value = 100;
-  drawPlayerNames();
-}
-
-function startDebugPreset(presetName) {
-  const preset = debugPresets[presetName];
-  if (!preset) {
-    startHand();
-    return true;
-  }
-
-  // Debug presets intentionally construct unusual display snapshots. They are
-  // kept outside the authoritative transition path until each preset becomes a
-  // named engine fixture.
-  initializeDebugPlayers();
-  gameState = null;
-
-  gameHandNumber = 1;
-  isGameWon = false;
-  roundNumber = preset.roundNumber;
-  potAwardIndex = 0;
-  lastPotWinnerNumber = null;
-  handWinnerNumbers = [];
-  lastTurnState = null;
-  pendingFold = false;
-  dealPromptKind = null;
-  antePlayerNumber = playerToDealersLeft(gameSettings.dealerNumber);
-  bigBlindPlayerNumber = null;
-
-  Object.values(playersByNumber).forEach((player, index) => {
-    player.chips = preset.chips[index];
-    player.roundBet = preset.contributions[index];
-    player.handContribution = preset.contributions[index];
-    player.hasActedThisRound = false;
-    player.folded = false;
-    player.eliminated = false;
-    player.isDealer = player.number === gameSettings.dealerNumber;
-  });
-
-  highestRoundBet = Math.max(...preset.contributions);
-  recalculatePots();
-  gameSettings.antePlayerNumber = antePlayerNumber;
-  gameSettings.bigBlindPlayerNumber = null;
-  gameSettings.bigBlind = null;
-  dealPrompt.hidden = true;
-  winnerPicker.hidden = true;
-  turnIndicator.hidden = false;
-  actionButtons.hidden = false;
-  setCurrentPlayer(preset.currentPlayerNumber);
-
-  if (preset.view === 'deal-flop') {
-    startNextRound();
-  } else if (preset.view === 'all-in-runout') {
-    startNextRound();
-  } else if (preset.view === 'showdown') {
-    showWinnerPicker();
-  } else if (preset.view === 'hand-won') {
-    finishHand(playersByNumber[preset.currentPlayerNumber]);
-  } else if (preset.view === 'game-won') {
-    Object.values(playersByNumber).forEach((player) => {
-      player.eliminated = player.chips === 0;
-    });
-    drawPlayerSeats();
-    showGameWinner(playersByNumber[preset.currentPlayerNumber]);
-    return false;
-  }
-
-  return true;
-}
-
-function playerToDealersLeft(dealerNumber) {
-  const playerNumbers = Object.keys(playersByNumber).map(Number);
-  const dealerIndex = playerNumbers.indexOf(dealerNumber);
-
-  for (let step = 1; step <= playerNumbers.length; step += 1) {
-    const nextNumber = playerNumbers[(dealerIndex + step) % playerNumbers.length];
-    if (!playersByNumber[nextNumber].eliminated) return nextNumber;
-  }
-
-  return dealerNumber;
-}
-
 function makePlayerChipPiles(amount) {
   const container = document.createElement('div');
   container.className = 'player-chip-piles';
@@ -973,7 +790,7 @@ function drawPlayerSeats() {
     const playerNumber = viewPlayerNumber(player);
     const isCurrentPlayer = playerNumber === currentPlayerNumber;
     if (isCurrentPlayer) seat.classList.add('current-player');
-    if (gameState ? player.id === gameState.dealerId : player.isDealer) seat.classList.add('dealer');
+    if (player.id === gameState.dealerId) seat.classList.add('dealer');
     if (player.folded) seat.classList.add('folded');
     if (player.eliminated) seat.classList.add('eliminated');
     seat.style.setProperty('--x', `${50 + Math.cos(angle) * 43}%`);
@@ -994,62 +811,23 @@ function drawPlayerSeats() {
         seat.append(chips);
       }
     }
-    const isDealer = gameState ? player.id === gameState.dealerId : player.isDealer;
+    const isDealer = player.id === gameState.dealerId;
     seat.setAttribute('aria-label', `${player.name}${player.eliminated ? ', out of the game' : `: ${player.chips} chips`}${isDealer ? ', dealer' : ''}${isCurrentPlayer ? ', current turn' : ''}${player.folded ? ', folded' : ''}`);
-    seat.setAttribute('role', gameState ? 'status' : 'button');
-    seat.tabIndex = gameState ? -1 : 0;
-    if (!gameState && !player.folded && !player.eliminated && player.chips > 0) {
-      seat.addEventListener('click', () => setCurrentPlayer(playerNumber));
-      seat.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          setCurrentPlayer(playerNumber);
-        }
-      });
-    } else if (!gameState) {
-      seat.tabIndex = -1;
-    }
+    seat.setAttribute('role', 'status');
+    seat.tabIndex = -1;
     playerSeats.append(seat);
   });
 
   const activeIndex = players.findIndex((player) => viewPlayerNumber(player) === currentPlayerNumber);
-  const activeAngle = (activeIndex / players.length) * Math.PI * 2 + Math.PI / 2;
-  turnControl.style.setProperty('--rotation', `${activeAngle - Math.PI / 2}rad`);
+  if (activeIndex >= 0) {
+    const activeAngle = (activeIndex / players.length) * Math.PI * 2 + Math.PI / 2;
+    turnControl.style.setProperty('--rotation', `${activeAngle - Math.PI / 2}rad`);
+  }
   updatePotDisplay();
   roundLabel.textContent = ['Preflop', 'Flop', 'Turn', 'River'][viewRoundNumber() - 1];
   turnIndicator.setAttribute('aria-label', `Your bet: ${pendingBet}. Total pot: ${totalPotAmount()}`);
   updateBetControls();
   voiceAgent?.updateContext();
-}
-
-function setCurrentPlayer(number) {
-  if (gameState) return;
-  if (pendingVoiceAction && pendingVoiceAction.playerNumber !== number) {
-    pendingVoiceAction = null;
-  }
-  raiseMode = false;
-  currentPlayerNumber = number;
-  gameSettings.currentPlayerNumber = number;
-  pendingBet = Math.max(0, highestRoundBet - playersByNumber[number].roundBet);
-  pendingFold = false;
-  drawPlayerSeats();
-}
-
-function nextActivePlayerFrom(number) {
-  const playerNumbers = Object.keys(playersByNumber).map(Number);
-  const startIndex = playerNumbers.indexOf(number);
-
-  for (let step = 1; step <= playerNumbers.length; step += 1) {
-    const nextNumber = playerNumbers[(startIndex + step) % playerNumbers.length];
-    if (!playersByNumber[nextNumber].folded && !playersByNumber[nextNumber].eliminated && playersByNumber[nextNumber].chips > 0) return nextNumber;
-  }
-
-  return null;
-}
-
-function nextPlayer() {
-  const nextNumber = nextActivePlayerFrom(currentPlayerNumber);
-  if (nextNumber !== null) setCurrentPlayer(nextNumber);
 }
 
 function updateBetControls() {
@@ -1139,68 +917,24 @@ function closeButtonHelp() {
 }
 
 function captureTurnState() {
-  if (gameState) return structuredClone(gameState);
-  return {
-    currentPlayerNumber,
-    roundNumber,
-    highestRoundBet,
-    players: Object.fromEntries(Object.values(playersByNumber).map((player) => [player.number, {
-      chips: player.chips,
-      roundBet: player.roundBet,
-      handContribution: player.handContribution,
-      hasActedThisRound: player.hasActedThisRound,
-      folded: player.folded,
-    }])),
-  };
+  return structuredClone(gameState);
 }
 
 function canUndoLastTurn(fromShowdown = false) {
-  if (gameState) return lastTurnState !== null && (fromShowdown || gameState.actionPlayerId !== lastTurnState.actionPlayerId);
-  return lastTurnState !== null && currentPlayerNumber !== lastTurnState.currentPlayerNumber;
+  return lastTurnState !== null && (fromShowdown || gameState.actionPlayerId !== lastTurnState.actionPlayerId);
 }
 
 function undoLastTurn(fromShowdown = false) {
   if (!canUndoLastTurn(fromShowdown)) return;
 
   raiseMode = false;
-  if (gameState) {
-    gameState = structuredClone(lastTurnState);
-    const player = viewPlayer(viewActionPlayerNumber());
-    pendingBet = player ? amountToCallForView(player) : 0;
-    pendingFold = false;
-    lastTurnState = null;
-    renderGameState();
-    return;
-  }
-  Object.entries(lastTurnState.players).forEach(([number, playerState]) => {
-    Object.assign(playersByNumber[number], playerState);
-  });
-  currentPlayerNumber = lastTurnState.currentPlayerNumber;
-  roundNumber = lastTurnState.roundNumber;
-  recalculatePots();
-  highestRoundBet = lastTurnState.highestRoundBet;
-  pendingBet = Math.max(0, highestRoundBet - playersByNumber[currentPlayerNumber].roundBet);
+  gameState = structuredClone(lastTurnState);
+  const player = viewPlayer(viewActionPlayerNumber());
+  pendingBet = player ? amountToCallForView(player) : 0;
   pendingFold = false;
   pendingVoiceAction = null;
-  gameSettings.currentPlayerNumber = currentPlayerNumber;
   lastTurnState = null;
-  if (fromShowdown) {
-    potAwardIndex = 0;
-    lastPotWinnerNumber = null;
-    handWinnerNumbers = [];
-    isGameWon = false;
-    winnerPicker.hidden = true;
-    showdownUndoButton.hidden = true;
-    dealPromptKind = null;
-    dealPrompt.hidden = true;
-    turnIndicator.hidden = false;
-    actionButtons.hidden = false;
-  }
-  drawPlayerSeats();
-}
-
-function allActivePlayersHaveMatchedBet() {
-  return hasBettingRoundFinished(Object.values(playersByNumber), highestRoundBet);
+  renderGameState();
 }
 
 function showHandCompleteFromGameState() {
@@ -1239,7 +973,6 @@ function renderGameState() {
   turnIndicator.hidden = true;
   actionButtons.hidden = true;
   if (phase === GamePhase.DEAL_HOLE_CARDS) {
-    dealPromptKind = 'hole-cards';
     const dealer = viewPlayer(gameState.dealerId);
     const introduction = gameState.handNumber === 1 ? `Game is Texas Hold'em. Ante is ${gameState.ante}.` : `New hand. Ante is ${gameState.ante}.`;
     dealMessage.textContent = `${introduction} ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK when done.`;
@@ -1249,7 +982,6 @@ function renderGameState() {
   }
 
   if ([GamePhase.DEAL_FLOP, GamePhase.DEAL_TURN, GamePhase.DEAL_RIVER].includes(phase)) {
-    dealPromptKind = 'community-cards';
     const card = {
       [GamePhase.DEAL_FLOP]: 'the flop',
       [GamePhase.DEAL_TURN]: 'the turn',
@@ -1262,7 +994,6 @@ function renderGameState() {
   }
 
   if (phase === GamePhase.ALL_IN_RUNOUT) {
-    dealPromptKind = 'all-in-runout';
     const cards = remainingCommunityCards();
     dealMessage.textContent = `Deal ${formatCardList(cards)}. Press OK for showdown.`;
     dealPrompt.hidden = false;
@@ -1296,71 +1027,8 @@ function formatNameList(names) {
   return `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}`;
 }
 
-function startNextRound() {
-  if (roundNumber >= 4) {
-    showWinnerPicker();
-    return;
-  }
-
-  const playersWhoCanStillBet = Object.values(playersByNumber)
-    .filter((player) => !player.folded && !player.eliminated && player.chips > 0);
-  if (playersWhoCanStillBet.length <= 1) {
-    const cards = remainingCommunityCards();
-    const cardsToDeal = formatCardList(cards);
-    turnIndicator.hidden = true;
-    actionButtons.hidden = true;
-    dealPromptKind = 'all-in-runout';
-    dealMessage.textContent = `Deal ${cardsToDeal}. Press OK for showdown.`;
-    dealPrompt.hidden = false;
-    return;
-  }
-  lastTurnState = null;
-
-  const nextCard = ['the flop', 'the turn', 'the river'][roundNumber - 1];
-  turnIndicator.hidden = true;
-  actionButtons.hidden = true;
-  dealPromptKind = 'community-cards';
-  dealMessage.textContent = `Deal ${nextCard}. Press OK to continue.`;
-  dealPrompt.hidden = false;
-}
-
-function beginNextRound() {
-  dealPromptKind = null;
-  dealPrompt.hidden = true;
-  turnIndicator.hidden = false;
-  actionButtons.hidden = false;
-  roundNumber += 1;
-  Object.values(playersByNumber).forEach((player) => {
-    player.roundBet = 0;
-    player.hasActedThisRound = false;
-  });
-  highestRoundBet = 0;
-  const firstPlayer = playersByNumber[antePlayerNumber].folded || playersByNumber[antePlayerNumber].chips === 0
-    ? nextActivePlayerFrom(antePlayerNumber)
-    : antePlayerNumber;
-  if (firstPlayer === null) {
-    startNextRound();
-  } else {
-    setCurrentPlayer(firstPlayer);
-  }
-}
-
 function showWinnerPicker() {
-  if (gameState) {
-    if (gameState.phase === GamePhase.SHOWDOWN) {
-      showGameStatePotWinnerPicker();
-      return;
-    }
-  }
-  const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded && !player.eliminated);
-  potAwardIndex = 0;
-  lastPotWinnerNumber = null;
-  handWinnerNumbers = [];
-  if (pots.length === 0) {
-    showPotWinnerPicker('Who had the best cards?', activePlayers, (winnerNumber) => finishHand(playersByNumber[winnerNumber]));
-    return;
-  }
-  awardNextPot();
+  if (gameState.phase === GamePhase.SHOWDOWN) showGameStatePotWinnerPicker();
 }
 
 function showGameStatePotWinnerPicker() {
@@ -1454,134 +1122,14 @@ function showPotWinnerPicker(question, players, awardFunction, splitFunction = n
   winnerPicker.hidden = false;
 }
 
-function eligiblePlayersForPot(potLayer) {
-  return potLayer.eligiblePlayerNumbers
-    .map((number) => playersByNumber[number])
-    .filter((player) => player && !player.folded && !player.eliminated);
-}
-
 function awardPot(potIndex, winnerNumber) {
-  if (gameState) {
-    invokeGame({ type: Transition.AWARD_POT, potIndex, winnerId: winnerNumber });
-    renderGameState();
-    return;
-  }
-  const potLayer = pots[potIndex];
-  const winner = playersByNumber[winnerNumber];
-  if (!potLayer || potLayer.amount <= 0 || !winner || !potLayer.eligiblePlayerNumbers.includes(winnerNumber)) return;
-
-  winner.chips += potLayer.amount;
-  potLayer.amount = 0;
-  lastPotWinnerNumber = winnerNumber;
-  if (!handWinnerNumbers.includes(winnerNumber)) handWinnerNumbers.push(winnerNumber);
-  potAwardIndex = potIndex + 1;
-  syncPotsToGameSettings();
-  drawPlayerSeats();
-  awardNextPot();
-}
-
-function playersInOddChipOrder(winnerNumbers) {
-  const playerNumbers = Object.keys(playersByNumber).map(Number);
-  const dealerIndex = playerNumbers.indexOf(gameSettings.dealerNumber);
-  return [...new Set(winnerNumbers)].sort((first, second) => {
-    const firstDistance = (playerNumbers.indexOf(first) - dealerIndex + playerNumbers.length) % playerNumbers.length || playerNumbers.length;
-    const secondDistance = (playerNumbers.indexOf(second) - dealerIndex + playerNumbers.length) % playerNumbers.length || playerNumbers.length;
-    return firstDistance - secondDistance;
-  });
+  invokeGame({ type: Transition.AWARD_POT, potIndex, winnerId: winnerNumber });
+  renderGameState();
 }
 
 function awardSplitPot(potIndex, winnerNumbers) {
-  if (gameState) {
-    invokeGame({ type: Transition.SPLIT_POT, potIndex, winnerIds: winnerNumbers });
-    renderGameState();
-    return;
-  }
-  const potLayer = pots[potIndex];
-  const validWinnerNumbers = playersInOddChipOrder(winnerNumbers)
-    .filter((number) => potLayer?.eligiblePlayerNumbers.includes(number));
-  if (!potLayer || potLayer.amount <= 0 || validWinnerNumbers.length < 2) return;
-
-  const originalAmount = potLayer.amount;
-  const awards = splitPotAmount(originalAmount, validWinnerNumbers);
-  awards.forEach((award) => {
-    playersByNumber[award.number].chips += award.amount;
-    if (!handWinnerNumbers.includes(award.number)) handWinnerNumbers.push(award.number);
-  });
-  potLayer.amount = 0;
-  lastPotWinnerNumber = awards[0].number;
-  potAwardIndex = potIndex + 1;
-  syncPotsToGameSettings();
-  drawPlayerSeats();
-  awardNextPot();
-}
-
-function awardNextPot() {
-  while (potAwardIndex < pots.length && pots[potAwardIndex].amount <= 0) potAwardIndex += 1;
-
-  if (potAwardIndex >= pots.length) {
-    const fallbackWinner = Object.values(playersByNumber).find((player) => !player.folded && !player.eliminated);
-    const winners = handWinnerNumbers.map((number) => playersByNumber[number]).filter(Boolean);
-    finishHand(winners.length > 0 ? winners : [playersByNumber[lastPotWinnerNumber] || fallbackWinner]);
-    return;
-  }
-
-  const potLayer = pots[potAwardIndex];
-  const eligiblePlayers = eligiblePlayersForPot(potLayer);
-  if (eligiblePlayers.length <= 1) {
-    const fallbackWinner = Object.values(playersByNumber).find((player) => !player.folded && !player.eliminated);
-    awardPot(potAwardIndex, eligiblePlayers[0]?.number || fallbackWinner?.number);
-    return;
-  }
-
-  const question = potAwardIndex === 0
-    ? 'Who had the best cards?'
-    : `Who wins side pot ${potAwardIndex}?`;
-  showPotWinnerPicker(
-    question,
-    eligiblePlayers,
-    (winnerNumber) => awardPot(potAwardIndex, winnerNumber),
-    (winnerNumbers) => awardSplitPot(potAwardIndex, winnerNumbers),
-  );
-}
-
-function awardAllPotsTo(winnerNumber) {
-  const winner = playersByNumber[winnerNumber];
-  winner.chips += totalPotAmount();
-  pots.forEach((potLayer) => {
-    potLayer.amount = 0;
-  });
-  lastPotWinnerNumber = winnerNumber;
-  handWinnerNumbers = [winnerNumber];
-  syncPotsToGameSettings();
-  finishHand(winner);
-}
-
-function finishHand(winnerOrWinners) {
-  const winners = (Array.isArray(winnerOrWinners) ? winnerOrWinners : [winnerOrWinners]).filter(Boolean);
-  Object.values(playersByNumber).forEach((player) => {
-    if (player.chips === 0) player.eliminated = true;
-  });
-  isGameWon = true;
-
-  const playersWithMoney = Object.values(playersByNumber).filter((player) => player.chips > 0);
-  if (playersWithMoney.length === 1) {
-    showGameWinner(playersWithMoney[0]);
-    return;
-  }
-
-  turnIndicator.hidden = true;
-  actionButtons.hidden = true;
-  winnerPicker.hidden = false;
-  showdownUndoButton.hidden = true;
-  const winnerNames = formatNameList(winners.map((winner) => winner.name));
-  winnerQuestion.textContent = `${winnerNames} ${winners.length === 1 ? 'wins' : 'win'} the hand!`;
-  winnerOptions.replaceChildren();
-  const closeButton = document.createElement('button');
-  closeButton.type = 'button';
-  closeButton.textContent = 'Close';
-  closeButton.addEventListener('click', startNewHand);
-  winnerOptions.append(closeButton);
-  drawPlayerSeats();
+  invokeGame({ type: Transition.SPLIT_POT, potIndex, winnerIds: winnerNumbers });
+  renderGameState();
 }
 
 function showGameWinner(winner) {
@@ -1591,151 +1139,46 @@ function showGameWinner(winner) {
   gameWinnerScreen.hidden = false;
 }
 
-function postBlind(playerNumber, requestedAmount) {
-  const player = playersByNumber[playerNumber];
-  const amount = Math.min(requestedAmount, player.chips);
-
-  player.chips -= amount;
-  player.roundBet += amount;
-  player.handContribution += amount;
-  player.hasActedThisRound = true;
-  highestRoundBet = Math.max(highestRoundBet, player.roundBet);
-  recalculatePots();
-}
-
 function startHand() {
-  if (gameState) {
-    lastTurnState = null;
-    pendingBet = 0;
-    pendingFold = false;
-    pendingVoiceAction = null;
-    invokeGame({ type: Transition.START_HAND });
-    renderGameState();
-    return;
-  }
-  gameHandNumber += 1;
-  isGameWon = false;
-  roundNumber = 1;
-  pots = [];
-  potAwardIndex = 0;
-  lastPotWinnerNumber = null;
-  handWinnerNumbers = [];
-  highestRoundBet = 0;
+  lastTurnState = null;
   pendingBet = 0;
   pendingFold = false;
-  lastTurnState = null;
-  bigBlindPlayerNumber = null;
   pendingVoiceAction = null;
-
-  Object.values(playersByNumber).forEach((player) => {
-    player.folded = player.eliminated;
-    player.roundBet = 0;
-    player.handContribution = 0;
-    player.hasActedThisRound = false;
-    player.isDealer = player.number === gameSettings.dealerNumber;
-  });
-
-  antePlayerNumber = playerToDealersLeft(gameSettings.dealerNumber);
-  if (gameSettings.useBigBlind) {
-    bigBlindPlayerNumber = playerToDealersLeft(antePlayerNumber);
-  }
-  gameSettings.antePlayerNumber = antePlayerNumber;
-  gameSettings.bigBlindPlayerNumber = bigBlindPlayerNumber;
-  gameSettings.bigBlind = bigBlindPlayerNumber === null ? null : gameSettings.ante * 2;
-
-  postBlind(antePlayerNumber, gameSettings.ante);
-  if (bigBlindPlayerNumber !== null) {
-    postBlind(bigBlindPlayerNumber, gameSettings.bigBlind);
-  }
-
-  turnIndicator.hidden = true;
-  actionButtons.hidden = true;
-  dealPromptKind = 'hole-cards';
-  const dealer = playersByNumber[gameSettings.dealerNumber];
-  const introduction = gameHandNumber === 1 ? `Game is Texas Hold'em. Ante is ${gameSettings.ante}.` : `New hand. Ante is ${gameSettings.ante}.`;
-  dealMessage.textContent = `${introduction} ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK when done.`;
-  dealPrompt.hidden = false;
-  setCurrentPlayer(bigBlindPlayerNumber ?? antePlayerNumber);
-  nextPlayer();
+  invokeGame({ type: Transition.START_HAND });
+  renderGameState();
 }
 
 function startNewHand() {
-  if (gameState) {
-    lastTurnState = null;
-    pendingBet = 0;
-    pendingFold = false;
-    pendingVoiceAction = null;
-    invokeGame({ type: Transition.START_NEXT_HAND });
-    renderGameState();
-    return;
-  }
-  const nextDealerNumber = playerToDealersLeft(gameSettings.dealerNumber);
-  if (nextDealerNumber === gameSettings.firstDealerNumber) {
-    gameSettings.ante += gameSettings.anteIncrease;
-  }
-  gameSettings.dealerNumber = nextDealerNumber;
-  winnerPicker.hidden = true;
-  dealPrompt.hidden = true;
-  turnIndicator.hidden = false;
-  actionButtons.hidden = false;
-  startHand();
-}
-
-function finishTurn() {
-  const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded);
-
-  if (activePlayers.length === 1) {
-    lastTurnState = null;
-    awardAllPotsTo(activePlayers[0].number);
-  } else if (allActivePlayersHaveMatchedBet()) {
-    startNextRound();
-  } else {
-    nextPlayer();
-  }
+  lastTurnState = null;
+  pendingBet = 0;
+  pendingFold = false;
+  pendingVoiceAction = null;
+  invokeGame({ type: Transition.START_NEXT_HAND });
+  renderGameState();
 }
 
 function confirmTurn() {
-  if (gameState) {
-    const currentPlayerNumber = gameState.actionPlayerId;
-    const player = viewPlayer(currentPlayerNumber);
-    lastTurnState = captureTurnState();
-    const amountToCall = amountToCallForView(player);
-    const legalActions = currentGameActions();
-    let action;
-    if (pendingFold) {
-      action = { type: Transition.FOLD, playerId: currentPlayerNumber };
-    } else if (pendingBet === 0) {
-      action = { type: Transition.CHECK, playerId: currentPlayerNumber };
-    } else if (pendingBet === amountToCall) {
-      action = { type: Transition.CALL, playerId: currentPlayerNumber };
-    } else if (legalActions.some(({ type }) => type === Transition.ALL_IN) && pendingBet === player.chips) {
-      action = { type: Transition.ALL_IN, playerId: currentPlayerNumber };
-    } else {
-      action = { type: Transition.BET, playerId: currentPlayerNumber, additionalChips: pendingBet };
-    }
-    invokeGame(action);
-    pendingFold = false;
-    pendingVoiceAction = null;
-    renderGameState();
-    return;
-  }
-  const player = playersByNumber[currentPlayerNumber];
+  const currentPlayerNumber = gameState.actionPlayerId;
+  const player = viewPlayer(currentPlayerNumber);
   lastTurnState = captureTurnState();
-
+  const amountToCall = amountToCallForView(player);
+  const legalActions = currentGameActions();
+  let action;
   if (pendingFold) {
-    player.folded = true;
-    recalculatePots();
+    action = { type: Transition.FOLD, playerId: currentPlayerNumber };
+  } else if (pendingBet === 0) {
+    action = { type: Transition.CHECK, playerId: currentPlayerNumber };
+  } else if (pendingBet === amountToCall) {
+    action = { type: Transition.CALL, playerId: currentPlayerNumber };
+  } else if (legalActions.some(({ type }) => type === Transition.ALL_IN) && pendingBet === player.chips) {
+    action = { type: Transition.ALL_IN, playerId: currentPlayerNumber };
   } else {
-    const additionalChips = pendingBet;
-    player.chips -= additionalChips;
-    player.roundBet += additionalChips;
-    player.handContribution += additionalChips;
-    player.hasActedThisRound = true;
-    highestRoundBet = Math.max(highestRoundBet, player.roundBet);
-    recalculatePots();
+    action = { type: Transition.BET, playerId: currentPlayerNumber, additionalChips: pendingBet };
   }
-
-  finishTurn();
+  invokeGame(action);
+  pendingFold = false;
+  pendingVoiceAction = null;
+  renderGameState();
 }
 
 function foldCurrentPlayer() {
@@ -1763,32 +1206,9 @@ function confirm() {
 }
 
 function cardsAreDealt() {
-  if (gameState) {
-    if (!currentGameActions().some(({ type }) => type === Transition.CARDS_DEALT)) return false;
-    invokeGame({ type: Transition.CARDS_DEALT });
-    renderGameState();
-    return true;
-  }
-  if (dealPrompt.hidden) return false;
-
-  if (dealPromptKind === 'hole-cards') {
-    dealPromptKind = null;
-    dealPrompt.hidden = true;
-    turnIndicator.hidden = false;
-    actionButtons.hidden = false;
-    drawPlayerSeats();
-    return true;
-  }
-
-  if (dealPromptKind === 'all-in-runout') {
-    dealPromptKind = null;
-    dealPrompt.hidden = true;
-    roundNumber = 4;
-    showWinnerPicker();
-    return true;
-  }
-
-  beginNextRound();
+  if (!currentGameActions().some(({ type }) => type === Transition.CARDS_DEALT)) return false;
+  invokeGame({ type: Transition.CARDS_DEALT });
+  renderGameState();
   return true;
 }
 
@@ -1796,7 +1216,6 @@ playerCount.addEventListener('change', () => {
   drawPlayerNames();
   useBigBlindCheckbox.checked = Number(playerCount.value) >= 6;
 });
-debugPresetSelect.addEventListener('change', selectDebugPreset);
 voiceCustomizationButton.addEventListener('click', () => {
   setupScreen.hidden = true;
   voiceCustomizationScreen.hidden = false;
@@ -1930,7 +1349,6 @@ form.addEventListener('submit', (event) => {
     chipDenominations: selectedChipDenominations(),
     voice: selectedVoiceSettings(),
   };
-  gameHandNumber = 0;
   saveLastGameSettings();
   makePlayers();
   setupScreen.hidden = true;
@@ -1943,7 +1361,7 @@ form.addEventListener('submit', (event) => {
   turnIndicator.hidden = false;
   actionButtons.hidden = false;
   keepScreenAwake();
-  startDebugPreset(debugPresetSelect.value);
+  startHand();
   connectVoiceAgent()
     .then(async (agent) => {
       if (gameSettings.startMicrophoneAutomatically) await agent.startMicrophone();
