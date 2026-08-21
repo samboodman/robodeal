@@ -50,6 +50,7 @@ test('the session is configured for noisy restaurant speech', () => {
   assert.deepEqual(input.transcription.languages, ['en']);
   assert.match(input.transcription.prompt, /noisy restaurant poker table/);
   assert.ok(input.transcription.keywords.includes('all in'));
+  assert.deepEqual(input.transcription.keywords.slice(-5), ['AI', 'Bot', 'Robot', 'Robodealer', 'dealer']);
   assert.equal(input.turn_detection.type, 'semantic_vad');
   assert.equal(input.turn_detection.create_response, false);
 });

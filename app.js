@@ -380,6 +380,7 @@ function getVoiceInstructions() {
     PERSONALITY: voice.personality,
     ACCENT: voice.accent,
     PACE: voice.pace,
+    ACTIVATION_KEYWORDS: prompts.transcription.keywords.join(', '),
   });
 }
 
