@@ -63,6 +63,7 @@ export class VoiceAgent {
     this.microphoneStream = null;
     this.audioTestContext = null;
     this.audioTestRunning = false;
+    this.pendingResponseCount = 0;
   }
 
   get connected() {
@@ -100,6 +101,7 @@ export class VoiceAgent {
 
   async connect(voice = 'marin') {
     this.disconnect();
+    this.onStatus('Connecting…');
     if (!window.RTCPeerConnection) throw new Error('This browser does not support WebRTC.');
 
     this.connection = new RTCPeerConnection();
@@ -172,18 +174,19 @@ export class VoiceAgent {
     if (!this.connected) throw new Error('The AI is not connected yet.');
     if (this.microphoneStream) return;
     const supported = navigator.mediaDevices.getSupportedConstraints?.() || {};
+    this.onStatus('Starting microphone…');
     this.microphoneStream = await navigator.mediaDevices.getUserMedia({
       audio: microphoneAudioConstraints(supported),
     });
     await this.sender.replaceTrack(this.microphoneStream.getAudioTracks()[0]);
-    this.onStatus('AI is listening.');
+    this.onStatus('Listening');
   }
 
   async stopMicrophone() {
     await this.sender?.replaceTrack(null);
     this.microphoneStream?.getTracks().forEach((track) => track.stop());
     this.microphoneStream = null;
-    this.onStatus('Microphone is off.');
+    this.onStatus('Microphone off');
   }
 
   async playAudioFile(file) {
@@ -241,29 +244,52 @@ export class VoiceAgent {
     this.audioTestContext?.close().catch(() => {});
     this.audioTestContext = null;
     this.audioTestRunning = false;
+    this.pendingResponseCount = 0;
   }
 
   send(event) {
     if (this.connected) this.channel.send(JSON.stringify(event));
   }
 
+  requestResponse() {
+    if (!this.connected) return;
+    this.pendingResponseCount += 1;
+    this.onStatus('Thinking…');
+    this.send({ type: 'response.create' });
+  }
+
+  idleStatus() {
+    return this.recording ? 'Listening' : 'Microphone off';
+  }
+
   async handleEvent(event) {
     if (event.type === 'conversation.item.input_audio_transcription.completed') {
       this.onTranscript(`Heard: “${event.transcript}”`);
       this.updateContext();
-      this.send({ type: 'response.create' });
+      this.requestResponse();
+      return;
+    }
+    if (event.type === 'response.output_audio.delta' || event.type === 'response.audio.delta') {
+      this.onStatus('Speaking…');
       return;
     }
     if (event.type === 'response.output_audio_transcript.done') {
       this.onTranscript(`RoboDeal: “${event.transcript}”`);
       return;
     }
+    if (event.type === 'response.done') {
+      this.pendingResponseCount = Math.max(0, this.pendingResponseCount - 1);
+      if (this.pendingResponseCount === 0) this.onStatus(this.idleStatus());
+      return;
+    }
     if (event.type === 'error') {
+      this.pendingResponseCount = 0;
       this.onStatus(`AI error: ${event.error?.message || 'unknown error'}`);
       return;
     }
     if (event.type !== 'response.function_call_arguments.done') return;
 
+    this.onStatus('Applying action…');
     let result;
     try {
       result = await this.executeTool(event.name, JSON.parse(event.arguments || '{}'));
@@ -279,8 +305,11 @@ export class VoiceAgent {
         output: JSON.stringify(result),
       },
     });
-    if (result.silent) return;
+    if (result.silent) {
+      this.onStatus(this.idleStatus());
+      return;
+    }
     this.updateContext();
-    this.send({ type: 'response.create' });
+    this.requestResponse();
   }
 }

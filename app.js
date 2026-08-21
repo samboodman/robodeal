@@ -38,6 +38,7 @@ const dealPrompt = document.querySelector('#deal-prompt');
 const dealMessage = document.querySelector('#deal-message');
 const dealOkButton = document.querySelector('#deal-ok-button');
 const recordingButton = document.querySelector('#recording-button');
+const voiceStatus = document.querySelector('#voice-status');
 const voiceTranscript = document.querySelector('#voice-transcript');
 const startMicrophoneAutomaticallyCheckbox = document.querySelector('#start-microphone-automatically');
 const showVoiceTranscriptCheckbox = document.querySelector('#show-voice-transcript');
@@ -337,6 +338,21 @@ function setVoiceTranscript(text) {
   voiceTranscript.hidden = !shouldShow || !text;
 }
 
+function setVoiceStatus(text) {
+  const normalizedText = String(text || '').toLowerCase();
+  let state = 'connected';
+  if (normalizedText.includes('thinking')) state = 'thinking';
+  else if (normalizedText.includes('applying') || normalizedText.includes('action')) state = 'acting';
+  else if (normalizedText.includes('speaking')) state = 'speaking';
+  else if (normalizedText.includes('listening')) state = 'listening';
+  else if (normalizedText.includes('error') || normalizedText.includes('could not') || normalizedText.includes('unavailable')) state = 'error';
+  else if (normalizedText.includes('disconnect') || normalizedText.includes('ended')) state = 'disconnected';
+  else if (normalizedText.includes('off')) state = 'off';
+
+  voiceStatus.textContent = text;
+  voiceStatus.dataset.state = state;
+}
+
 function updateRecordingButton() {
   const recording = Boolean(voiceAgent?.recording);
   recordingButton.setAttribute('aria-pressed', String(recording));
@@ -523,7 +539,7 @@ async function connectVoiceAgent() {
     tools: voiceTools,
     executeTool: executeVoiceTool,
     onTranscript: setVoiceTranscript,
-    onStatus: setVoiceTranscript,
+    onStatus: setVoiceStatus,
   });
   voiceConnectionPromise = voiceAgent.connect(gameSettings?.voice?.name || voiceChoice.value)
     .then(() => voiceAgent)
@@ -537,7 +553,9 @@ async function toggleRecording() {
     if (agent.recording) await agent.stopMicrophone();
     else await agent.startMicrophone();
   } catch (error) {
-    setVoiceTranscript(`AI could not connect: ${error.message}`);
+    const errorMessage = `Voice unavailable: ${error.message}`;
+    setVoiceStatus(errorMessage);
+    setVoiceTranscript(errorMessage);
   }
   updateRecordingButton();
 }
@@ -1499,7 +1517,11 @@ form.addEventListener('submit', (event) => {
       if (gameSettings.startMicrophoneAutomatically) await agent.startMicrophone();
       updateRecordingButton();
     })
-    .catch((error) => setVoiceTranscript(`AI could not connect: ${error.message}`));
+    .catch((error) => {
+      const errorMessage = `Voice unavailable: ${error.message}`;
+      setVoiceStatus(errorMessage);
+      setVoiceTranscript(errorMessage);
+    });
 });
 
 drawPlayerNames();

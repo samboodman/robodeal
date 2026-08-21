@@ -16,7 +16,8 @@ function testAgent(options = {}) {
 }
 
 test('every utterance is sent directly to the AI', async () => {
-  const { agent, sent } = testAgent();
+  const statuses = [];
+  const { agent, sent } = testAgent({ onStatus: (status) => statuses.push(status) });
 
   await agent.handleEvent({
     type: 'conversation.item.input_audio_transcription.completed',
@@ -27,6 +28,7 @@ test('every utterance is sent directly to the AI', async () => {
   assert.equal(sent[0].type, 'session.update');
   assert.deepEqual(sent[1], { type: 'response.create' });
   assert.equal(sent.some(({ type }) => type === 'conversation.item.delete'), false);
+  assert.equal(statuses.at(-1), 'Thinking…');
 });
 
 test('the session exposes supplied tools with automatic tool choice', () => {
@@ -90,8 +92,10 @@ test('an AI tool call is executed and returned to the conversation', async () =>
 });
 
 test('an AI-selected silent tool call produces no follow-up response', async () => {
+  const statuses = [];
   const { agent, sent } = testAgent({
     executeTool: async () => ({ ok: true, silent: true }),
+    onStatus: (status) => statuses.push(status),
   });
 
   await agent.handleEvent({
@@ -103,6 +107,22 @@ test('an AI-selected silent tool call produces no follow-up response', async () 
 
   assert.deepEqual(sent.map(({ type }) => type), ['conversation.item.create']);
   assert.match(sent[0].item.output, /\"silent\":true/);
+  assert.deepEqual(statuses, ['Applying action…', 'Microphone off']);
+});
+
+test('voice status follows thinking, speaking, and idle response states', async () => {
+  const statuses = [];
+  const { agent } = testAgent({ onStatus: (status) => statuses.push(status) });
+  agent.microphoneStream = { getTracks: () => [] };
+
+  await agent.handleEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    transcript: 'Dealer, call.',
+  });
+  await agent.handleEvent({ type: 'response.output_audio.delta', delta: 'audio' });
+  await agent.handleEvent({ type: 'response.done' });
+
+  assert.deepEqual(statuses, ['Thinking…', 'Speaking…', 'Listening']);
 });
 
 test('converts decoded audio to 24 kHz mono PCM16', () => {

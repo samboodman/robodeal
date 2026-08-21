@@ -63,6 +63,64 @@ body {
     0 0 0 4px #ffb5a5aa,
     0 3px 0 #66141a;
 }
+.voice-status {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 0;
+  display: flex;
+  width: max-content;
+  max-width: 190px;
+  min-height: 30px;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 5px 11px;
+  border: 1px solid #fffdf699;
+  border-radius: 999px;
+  background: #173329e8;
+  color: #fffdf6;
+  font-size: 0.74rem;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  box-shadow: 0 3px 10px #04160f66;
+  transform: translate(-50%, calc(-100% - 58px));
+}
+.voice-status::before {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: #a9b4ae;
+  content: "";
+}
+.voice-status[data-state="listening"]::before,
+.voice-status[data-state="connected"]::before {
+  background: #63d69a;
+}
+.voice-status[data-state="thinking"]::before,
+.voice-status[data-state="acting"]::before {
+  background: #f1c565;
+  animation: voice-status-pulse 900ms ease-in-out infinite alternate;
+}
+.voice-status[data-state="speaking"]::before {
+  background: #73b7ff;
+  animation: voice-status-pulse 520ms ease-in-out infinite alternate;
+}
+.voice-status[data-state="error"]::before {
+  background: #ff7866;
+}
+@keyframes voice-status-pulse {
+  from {
+    opacity: 0.45;
+    transform: scale(0.78);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
 .turn-control {
   position: absolute;
   left: 50%;
@@ -269,6 +327,9 @@ body {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .voice-status::before {
+    animation: none !important;
+  }
   .side-pot-value span {
     transition-duration: 1ms;
   }
