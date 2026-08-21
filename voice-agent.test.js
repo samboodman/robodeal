@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { audioBufferToPcm16, microphoneAudioConstraints, VoiceAgent } from './voice-agent.js';
+
+const prompts = JSON.parse(readFileSync(new URL('./Prompts', import.meta.url), 'utf8'));
 
 function testAgent(options = {}) {
   const sent = [];
-  const agent = new VoiceAgent({ getInstructions: () => 'Current game state', ...options });
+  const agent = new VoiceAgent({ getInstructions: () => 'Current game state', prompts, ...options });
   agent.channel = {
     readyState: 'open',
     send: (event) => sent.push(JSON.parse(event)),

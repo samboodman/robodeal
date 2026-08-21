@@ -1,5 +1,8 @@
 import { calculatePots, hasBettingRoundFinished, maximumAdditionalBet, splitPotAmount } from './pot-logic.js';
-import { VoiceAgent } from './voice-agent.js';
+import { fillPrompt, VoiceAgent } from './voice-agent.js';
+import promptsText from './Prompts?raw';
+
+const prompts = JSON.parse(promptsText);
 
 const playerCount = document.querySelector('#player-count');
 const playerNames = document.querySelector('#player-names');
@@ -372,24 +375,24 @@ function getVoiceSnapshot() {
 
 function getVoiceInstructions() {
   const voice = gameSettings?.voice || selectedVoiceSettings();
-  return `You are RoboDeal, a concise voice assistant for a casual real-card poker game.
-Current authoritative game state: ${JSON.stringify(getVoiceSnapshot())}
-
-Use a ${voice.personality} personality, a ${voice.accent} accent, and a ${voice.pace} speaking pace. Respond only when the clearest foreground utterance is a poker action, a reply to a pending poker-action confirmation, or a direct question about poker or the current game. For unrelated conversation, background speech, general questions, and fragments that are not clearly poker-related, stay completely silent: produce no audio, no text, no acknowledgement, and no tool call. If speech is unclear and not obviously a poker request, stay silent. Keep every spoken response to one short sentence.
-
-For a clear game action, call exactly one matching tool and wait for its result before saying the action succeeded. The tools always act on the active player, so never choose a player yourself. Use bet for a requested total round bet and raise for an amount above the call. Fold and all-in always require confirmation: first call fold or allIn, then ask the player to confirm. Calling fold sets pendingFold to true but does not fold the player yet. Call confirmAction only after a clear affirmative reply to that pending action. After a rejection such as "that's not what I meant," call cancelAction, which sets pendingFold back to false. If the request is ambiguous, ask one short question without calling a tool.`;
+  return fillPrompt(prompts.mainVoiceInstructions, {
+    GAME_STATE: JSON.stringify(getVoiceSnapshot()),
+    PERSONALITY: voice.personality,
+    ACCENT: voice.accent,
+    PACE: voice.pace,
+  });
 }
 
 const voiceTools = [
-  { type: 'function', name: 'check', description: 'Check for the active player when nothing is owed.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'call', description: 'Call the current bet for the active player.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'bet', description: 'Set the active player’s total bet for this betting round.', parameters: { type: 'object', properties: { total: { type: 'number', description: 'The requested total number of chips bet by this player in the current round.' } }, required: ['total'], additionalProperties: false } },
-  { type: 'function', name: 'raise', description: 'Call and then raise by the requested number of chips.', parameters: { type: 'object', properties: { amount: { type: 'number', description: 'Chips to raise above the amount needed to call.' } }, required: ['amount'], additionalProperties: false } },
-  { type: 'function', name: 'fold', description: 'Set pendingFold to true and begin required confirmation. This does not fold the player yet.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'allIn', description: 'Begin a required all-in confirmation. This does not bet yet.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'confirmAction', description: 'Execute the pending fold or all-in after the player clearly confirms it. A pending fold is represented by pendingFold being true.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'cancelAction', description: 'Cancel the pending fold or all-in after the player rejects it. Cancelling a fold sets pendingFold to false.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'cardsDealt', description: 'Continue after the requested physical cards have been dealt.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'check', description: prompts.toolDescriptions.check, parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'call', description: prompts.toolDescriptions.call, parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'bet', description: prompts.toolDescriptions.bet, parameters: { type: 'object', properties: { total: { type: 'number', description: prompts.toolDescriptions.betTotal } }, required: ['total'], additionalProperties: false } },
+  { type: 'function', name: 'raise', description: prompts.toolDescriptions.raise, parameters: { type: 'object', properties: { amount: { type: 'number', description: prompts.toolDescriptions.raiseAmount } }, required: ['amount'], additionalProperties: false } },
+  { type: 'function', name: 'fold', description: prompts.toolDescriptions.fold, parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'allIn', description: prompts.toolDescriptions.allIn, parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'confirmAction', description: prompts.toolDescriptions.confirmAction, parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'cancelAction', description: prompts.toolDescriptions.cancelAction, parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'cardsDealt', description: prompts.toolDescriptions.cardsDealt, parameters: { type: 'object', properties: {}, additionalProperties: false } },
 ];
 
 function executeVoiceTool(name, args) {
@@ -510,6 +513,7 @@ async function connectVoiceAgent() {
   voiceAgent?.disconnect();
   voiceAgent = new VoiceAgent({
     getInstructions: getVoiceInstructions,
+    prompts,
     tools: voiceTools,
     executeTool: executeVoiceTool,
     onTranscript: setVoiceTranscript,
@@ -537,12 +541,13 @@ async function previewVoice() {
   voicePreviewStatus.textContent = 'Loading voice…';
   voicePreviewAgent?.disconnect();
   voicePreviewAgent = new VoiceAgent({
-    getInstructions: () => 'Speak exactly as requested and say nothing else.',
+    getInstructions: () => prompts.voicePreviewInstructions,
+    prompts,
     onStatus: (status) => { voicePreviewStatus.textContent = status; },
   });
   try {
     await voicePreviewAgent.connect(voiceChoice.value);
-    voicePreviewAgent.speak('Welcome to RoboDeal. Place your bets.');
+    voicePreviewAgent.speak(prompts.voicePreviewText);
     window.setTimeout(() => {
       voicePreviewAgent?.disconnect();
       voicePreviewStatus.textContent = '';

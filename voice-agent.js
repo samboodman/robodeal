@@ -32,6 +32,12 @@ export function bytesToBase64(bytes) {
   return btoa(binary);
 }
 
+export function fillPrompt(template, values) {
+  return template.replace(/\{\{([A-Z_]+)\}\}/g, (placeholder, key) => (
+    Object.hasOwn(values, key) ? String(values[key]) : placeholder
+  ));
+}
+
 export function microphoneAudioConstraints(supported = {}) {
   return {
     echoCancellation: true,
@@ -43,8 +49,9 @@ export function microphoneAudioConstraints(supported = {}) {
 }
 
 export class VoiceAgent {
-  constructor({ getInstructions, tools = [], executeTool, onTranscript = () => {}, onStatus = () => {} }) {
+  constructor({ getInstructions, prompts, tools = [], executeTool, onTranscript = () => {}, onStatus = () => {} }) {
     this.getInstructions = getInstructions;
+    this.prompts = prompts;
     this.tools = tools;
     this.executeTool = executeTool;
     this.onTranscript = onTranscript;
@@ -79,14 +86,9 @@ export class VoiceAgent {
           noise_reduction: { type: 'far_field' },
           transcription: {
             model: 'gpt-live-transcribe',
-            prompt: [
-              'This audio comes from a noisy restaurant poker table.',
-              'Transcribe the clearest foreground speaker completely, including poker actions and amounts,',
-              'even when unrelated conversations, dishes, music, or other voices overlap in the background.',
-              'Preserve spoken numbers and poker terminology exactly.',
-            ].join(' '),
-            keywords: ['RoboDeal', 'check', 'call', 'bet', 'raise', 'fold', 'all in', 'cards dealt'],
-            languages: ['en'],
+            prompt: this.prompts.transcription.prompt,
+            keywords: this.prompts.transcription.keywords,
+            languages: this.prompts.transcription.languages,
             delay: 'medium',
           },
           turn_detection: { type: 'semantic_vad', create_response: false, interrupt_response: false },
@@ -159,7 +161,7 @@ export class VoiceAgent {
         input: [{
           type: 'message',
           role: 'user',
-          content: [{ type: 'input_text', text: `Say exactly this: ${text}` }],
+          content: [{ type: 'input_text', text: fillPrompt(this.prompts.sayExactly, { TEXT: text }) }],
         }],
         tool_choice: 'none',
       },
