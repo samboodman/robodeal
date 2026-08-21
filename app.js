@@ -454,7 +454,8 @@ function executeVoiceTool(name, args) {
   if (name === 'fold') {
     pendingVoiceAction = null;
     foldCurrentPlayer();
-    return { ok: true, confirmationRequired: true, message: `Ask ${player.name} to confirm the fold.` };
+    confirm();
+    return { ok: true, message: `${player.name} folds.` };
   }
   if (name === 'check') {
     if (amountToCall > 0) return { ok: false, message: `${player.name} must call ${amountToCall} or fold.` };
