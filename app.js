@@ -1,4 +1,5 @@
 import { calculatePots, hasBettingRoundFinished, maximumAdditionalBet, splitPotAmount } from './pot-logic.js';
+import { createGameState, executeTransition, GamePhase, getAvailableActions, Transition } from './game-state.js';
 import { addRequiredVoiceKeywords, fillPrompt, VoiceAgent } from './voice-agent.js';
 import promptsText from './Prompts?raw';
 
@@ -83,6 +84,7 @@ const chipDisplayModeButton = document.querySelector('#chip-display-mode');
 const chipDenominationInputs = [...document.querySelectorAll('[data-chip-color]')];
 const chipEnabledCheckboxes = [...document.querySelectorAll('[data-chip-enabled]')];
 let gameSettings = null;
+let gameState = null;
 let playersByNumber = {};
 let currentPlayerNumber = 1;
 let antePlayerNumber = null;
@@ -109,6 +111,51 @@ let voiceConnectionPromise = null;
 let pendingVoiceAction = null;
 let raiseMode = false;
 const lastGameSettingsKey = 'robodeal-last-game-settings';
+
+function roundNumberFromGamePhase(phase) {
+  if ([GamePhase.BETTING_PREFLOP, GamePhase.DEAL_FLOP].includes(phase)) return 1;
+  if ([GamePhase.BETTING_FLOP, GamePhase.DEAL_TURN].includes(phase)) return 2;
+  if ([GamePhase.BETTING_TURN, GamePhase.DEAL_RIVER].includes(phase)) return 3;
+  return 4;
+}
+
+function syncLegacyGameView() {
+  if (!gameState) return;
+  playersByNumber = Object.fromEntries(gameState.players.map((player) => [player.id, {
+    ...player,
+    number: player.id,
+    isDealer: player.id === gameState.dealerId,
+  }]));
+  currentPlayerNumber = gameState.actionPlayerId;
+  antePlayerNumber = gameState.smallBlindPlayerId;
+  bigBlindPlayerNumber = gameState.bigBlindPlayerId;
+  highestRoundBet = gameState.highestRoundBet;
+  pots = gameState.pots.map((pot) => ({ ...pot, eligiblePlayerNumbers: [...pot.eligiblePlayerNumbers] }));
+  potAwardIndex = gameState.potAwardIndex;
+  handWinnerNumbers = [...gameState.handWinnerIds];
+  gameHandNumber = gameState.handNumber;
+  roundNumber = gameState.round || roundNumberFromGamePhase(gameState.phase);
+  isGameWon = [GamePhase.HAND_COMPLETE, GamePhase.GAME_COMPLETE].includes(gameState.phase);
+  if (gameSettings) {
+    gameSettings.dealerNumber = gameState.dealerId;
+    gameSettings.ante = gameState.ante;
+    gameSettings.antePlayerNumber = gameState.smallBlindPlayerId;
+    gameSettings.bigBlindPlayerNumber = gameState.bigBlindPlayerId;
+    gameSettings.bigBlind = gameState.bigBlindPlayerId === null ? null : gameState.ante * 2;
+    syncPotsToGameSettings();
+  }
+}
+
+function invokeGame(action) {
+  if (!gameState) throw new Error('The game state has not been initialized.');
+  gameState = executeTransition(gameState, action);
+  syncLegacyGameView();
+  return gameState;
+}
+
+function currentGameActions() {
+  return gameState ? getAvailableActions(gameState) : [];
+}
 
 function selectedVoiceSettings() {
   return {
@@ -409,6 +456,7 @@ function getVoiceSnapshot() {
       && !isGameWon
       && canUndoLastTurn(undoFromShowdown),
     pot: totalPotAmount(),
+    availableActions: currentGameActions(),
     dealInstruction: dealPrompt.hidden ? null : dealMessage.textContent,
     players: Object.values(playersByNumber).map((candidate) => ({
       number: candidate.number,
@@ -703,6 +751,18 @@ function makePlayers() {
       eliminated: false,
     };
   });
+
+  gameState = createGameState({
+    players: Object.values(playersByNumber).map((player) => ({
+      id: player.number,
+      name: player.name,
+      chips: player.chips,
+    })),
+    ante: gameSettings.ante,
+    anteIncrease: gameSettings.anteIncrease,
+    dealerId: gameSettings.dealerNumber,
+    useBigBlind: gameSettings.useBigBlind,
+  });
 }
 
 const debugPresets = {
@@ -777,6 +837,11 @@ function startDebugPreset(presetName) {
     startHand();
     return true;
   }
+
+  // Debug presets intentionally construct unusual display snapshots. They are
+  // kept outside the authoritative transition path until each preset becomes a
+  // named engine fixture.
+  gameState = null;
 
   gameHandNumber = 1;
   isGameWon = false;
@@ -914,9 +979,9 @@ function drawPlayerSeats() {
       }
     }
     seat.setAttribute('aria-label', `${player.name}${player.eliminated ? ', out of the game' : `: ${player.chips} chips`}${player.isDealer ? ', dealer' : ''}${isCurrentPlayer ? ', current turn' : ''}${player.folded ? ', folded' : ''}`);
-    seat.setAttribute('role', 'button');
-    seat.tabIndex = 0;
-    if (!player.folded && !player.eliminated && player.chips > 0) {
+    seat.setAttribute('role', gameState ? 'status' : 'button');
+    seat.tabIndex = gameState ? -1 : 0;
+    if (!gameState && !player.folded && !player.eliminated && player.chips > 0) {
       seat.addEventListener('click', () => setCurrentPlayer(player.number));
       seat.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -924,7 +989,7 @@ function drawPlayerSeats() {
           setCurrentPlayer(player.number);
         }
       });
-    } else {
+    } else if (!gameState) {
       seat.tabIndex = -1;
     }
     playerSeats.append(seat);
@@ -1051,6 +1116,7 @@ function closeButtonHelp() {
 }
 
 function captureTurnState() {
+  if (gameState) return structuredClone(gameState);
   return {
     currentPlayerNumber,
     roundNumber,
@@ -1066,13 +1132,23 @@ function captureTurnState() {
 }
 
 function canUndoLastTurn(fromShowdown = false) {
-  return lastTurnState !== null && (fromShowdown || currentPlayerNumber !== lastTurnState.currentPlayerNumber);
+  if (gameState) return lastTurnState !== null && (fromShowdown || currentPlayerNumber !== lastTurnState.actionPlayerId);
+  return lastTurnState !== null && currentPlayerNumber !== lastTurnState.currentPlayerNumber;
 }
 
 function undoLastTurn(fromShowdown = false) {
   if (!canUndoLastTurn(fromShowdown)) return;
 
   raiseMode = false;
+  if (gameState) {
+    gameState = structuredClone(lastTurnState);
+    syncLegacyGameView();
+    pendingBet = Math.max(0, highestRoundBet - playersByNumber[currentPlayerNumber].roundBet);
+    pendingFold = false;
+    lastTurnState = null;
+    renderGameState();
+    return;
+  }
   Object.entries(lastTurnState.players).forEach(([number, playerState]) => {
     Object.assign(playersByNumber[number], playerState);
   });
@@ -1102,6 +1178,79 @@ function undoLastTurn(fromShowdown = false) {
 
 function allActivePlayersHaveMatchedBet() {
   return hasBettingRoundFinished(Object.values(playersByNumber), highestRoundBet);
+}
+
+function showHandCompleteFromGameState() {
+  turnIndicator.hidden = true;
+  actionButtons.hidden = true;
+  winnerPicker.hidden = false;
+  const winners = gameState.handWinnerIds.map((id) => playersByNumber[id]).filter(Boolean);
+  const winnerNames = formatNameList(winners.map((winner) => winner.name));
+  winnerQuestion.textContent = `${winnerNames} ${winners.length === 1 ? 'wins' : 'win'} the hand!`;
+  winnerOptions.replaceChildren();
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.textContent = 'Close';
+  closeButton.addEventListener('click', startNewHand);
+  winnerOptions.append(closeButton);
+  drawPlayerSeats();
+}
+
+function renderGameState() {
+  if (!gameState) return;
+  const phase = gameState.phase;
+  const betting = [GamePhase.BETTING_PREFLOP, GamePhase.BETTING_FLOP, GamePhase.BETTING_TURN, GamePhase.BETTING_RIVER].includes(phase);
+
+  if (betting) {
+    dealPrompt.hidden = true;
+    winnerPicker.hidden = true;
+    turnIndicator.hidden = false;
+    actionButtons.hidden = false;
+    pendingBet = Math.max(0, highestRoundBet - playersByNumber[currentPlayerNumber].roundBet);
+    pendingFold = false;
+    drawPlayerSeats();
+    return;
+  }
+
+  turnIndicator.hidden = true;
+  actionButtons.hidden = true;
+  if (phase === GamePhase.DEAL_HOLE_CARDS) {
+    dealPromptKind = 'hole-cards';
+    const dealer = playersByNumber[gameState.dealerId];
+    const introduction = gameState.handNumber === 1 ? `Game is Texas Hold'em. Ante is ${gameState.ante}.` : `New hand. Ante is ${gameState.ante}.`;
+    dealMessage.textContent = `${introduction} ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK when done.`;
+    dealPrompt.hidden = false;
+    return;
+  }
+
+  if ([GamePhase.DEAL_FLOP, GamePhase.DEAL_TURN, GamePhase.DEAL_RIVER].includes(phase)) {
+    dealPromptKind = 'community-cards';
+    const card = {
+      [GamePhase.DEAL_FLOP]: 'the flop',
+      [GamePhase.DEAL_TURN]: 'the turn',
+      [GamePhase.DEAL_RIVER]: 'the river',
+    }[phase];
+    dealMessage.textContent = `Deal ${card}. Press OK to continue.`;
+    dealPrompt.hidden = false;
+    return;
+  }
+
+  if (phase === GamePhase.ALL_IN_RUNOUT) {
+    dealPromptKind = 'all-in-runout';
+    const cards = remainingCommunityCards();
+    dealMessage.textContent = `Deal ${formatCardList(cards)}. Press OK for showdown.`;
+    dealPrompt.hidden = false;
+    return;
+  }
+
+  dealPrompt.hidden = true;
+  if (phase === GamePhase.SHOWDOWN) {
+    showWinnerPicker();
+  } else if (phase === GamePhase.HAND_COMPLETE) {
+    showHandCompleteFromGameState();
+  } else if (phase === GamePhase.GAME_COMPLETE) {
+    showGameWinner(playersByNumber[gameState.handWinnerIds[0]] || Object.values(playersByNumber).find((player) => player.chips > 0));
+  }
 }
 
 function remainingCommunityCards() {
@@ -1170,6 +1319,13 @@ function beginNextRound() {
 }
 
 function showWinnerPicker() {
+  if (gameState) {
+    potAwardIndex = gameState.potAwardIndex;
+    if (gameState.phase === GamePhase.SHOWDOWN) {
+      awardNextPot();
+      return;
+    }
+  }
   const activePlayers = Object.values(playersByNumber).filter((player) => !player.folded && !player.eliminated);
   potAwardIndex = 0;
   lastPotWinnerNumber = null;
@@ -1258,6 +1414,11 @@ function eligiblePlayersForPot(potLayer) {
 }
 
 function awardPot(potIndex, winnerNumber) {
+  if (gameState) {
+    invokeGame({ type: Transition.AWARD_POT, potIndex, winnerId: winnerNumber });
+    renderGameState();
+    return;
+  }
   const potLayer = pots[potIndex];
   const winner = playersByNumber[winnerNumber];
   if (!potLayer || potLayer.amount <= 0 || !winner || !potLayer.eligiblePlayerNumbers.includes(winnerNumber)) return;
@@ -1283,6 +1444,11 @@ function playersInOddChipOrder(winnerNumbers) {
 }
 
 function awardSplitPot(potIndex, winnerNumbers) {
+  if (gameState) {
+    invokeGame({ type: Transition.SPLIT_POT, potIndex, winnerIds: winnerNumbers });
+    renderGameState();
+    return;
+  }
   const potLayer = pots[potIndex];
   const validWinnerNumbers = playersInOddChipOrder(winnerNumbers)
     .filter((number) => potLayer?.eligiblePlayerNumbers.includes(number));
@@ -1391,6 +1557,15 @@ function postBlind(playerNumber, requestedAmount) {
 }
 
 function startHand() {
+  if (gameState) {
+    lastTurnState = null;
+    pendingBet = 0;
+    pendingFold = false;
+    pendingVoiceAction = null;
+    invokeGame({ type: Transition.START_HAND });
+    renderGameState();
+    return;
+  }
   gameHandNumber += 1;
   isGameWon = false;
   roundNumber = 1;
@@ -1438,6 +1613,15 @@ function startHand() {
 }
 
 function startNewHand() {
+  if (gameState) {
+    lastTurnState = null;
+    pendingBet = 0;
+    pendingFold = false;
+    pendingVoiceAction = null;
+    invokeGame({ type: Transition.START_NEXT_HAND });
+    renderGameState();
+    return;
+  }
   const nextDealerNumber = playerToDealersLeft(gameSettings.dealerNumber);
   if (nextDealerNumber === gameSettings.firstDealerNumber) {
     gameSettings.ante += gameSettings.anteIncrease;
@@ -1464,6 +1648,29 @@ function finishTurn() {
 }
 
 function confirmTurn() {
+  if (gameState) {
+    const player = playersByNumber[currentPlayerNumber];
+    lastTurnState = captureTurnState();
+    const amountToCall = Math.max(0, highestRoundBet - player.roundBet);
+    const legalActions = currentGameActions();
+    let action;
+    if (pendingFold) {
+      action = { type: Transition.FOLD, playerId: currentPlayerNumber };
+    } else if (pendingBet === 0) {
+      action = { type: Transition.CHECK, playerId: currentPlayerNumber };
+    } else if (pendingBet === amountToCall) {
+      action = { type: Transition.CALL, playerId: currentPlayerNumber };
+    } else if (legalActions.some(({ type }) => type === Transition.ALL_IN) && pendingBet === player.chips) {
+      action = { type: Transition.ALL_IN, playerId: currentPlayerNumber };
+    } else {
+      action = { type: Transition.BET, playerId: currentPlayerNumber, additionalChips: pendingBet };
+    }
+    invokeGame(action);
+    pendingFold = false;
+    pendingVoiceAction = null;
+    renderGameState();
+    return;
+  }
   const player = playersByNumber[currentPlayerNumber];
   lastTurnState = captureTurnState();
 
@@ -1507,6 +1714,12 @@ function confirm() {
 }
 
 function cardsAreDealt() {
+  if (gameState) {
+    if (!currentGameActions().some(({ type }) => type === Transition.CARDS_DEALT)) return false;
+    invokeGame({ type: Transition.CARDS_DEALT });
+    renderGameState();
+    return true;
+  }
   if (dealPrompt.hidden) return false;
 
   if (dealPromptKind === 'hole-cards') {

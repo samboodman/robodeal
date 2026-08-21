@@ -19,10 +19,17 @@ The project is a learning project for Sam. The game is intentionally one small s
 ## How it is built
 
 - `index.html`, `styles.css`, and `app.js` contain the game interface and main game flow.
+- `game-state.js` is the authoritative poker transition engine. It exports `GamePhase`, `Transition`, `createGameState`, `getAvailableActions(state)`, and `executeTransition(state, action)`. The interface and voice agent consume its state and legal-action list rather than deciding poker rules independently.
 - `pot-logic.js` calculates contribution-based main and side pots and decides when betting rounds are complete. `pot-logic.test.js` tests that logic.
 - Vite runs the local development server and builds the site for deployment.
 - `voice-agent.js` owns the WebRTC voice connection, while `api/realtime-call.js` keeps the OpenAI API key on the server.
 - The app does not use React or a large UI framework.
+
+## Poker transition engine
+
+`GameState` is plain serializable data: players, chips, blinds, dealer, active player, betting totals, pots, hand number, and one named phase. `getAvailableActions(state)` is the only source for the actions currently permitted. `executeTransition(state, action)` validates a named transition, returns a new state, and resolves deterministic outcomes such as advancing the turn, dealing the next street, running out all-in hands, or finishing a hand.
+
+Run `npm test` to execute the transition tests, including illegal-action guards, blinds, all-ins, all-in runouts, folds, pot awards, side-pot splits, and big-blind mode.
 
 ## Run locally
 
