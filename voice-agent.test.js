@@ -43,7 +43,7 @@ test('the session is configured for noisy restaurant speech', () => {
 
   assert.equal(input.noise_reduction.type, 'far_field');
   assert.equal(input.transcription.model, 'gpt-live-transcribe');
-  assert.equal(input.transcription.delay, 'high');
+  assert.equal(input.transcription.delay, 'medium');
   assert.deepEqual(input.transcription.languages, ['en']);
   assert.match(input.transcription.prompt, /noisy restaurant poker table/);
   assert.ok(input.transcription.keywords.includes('all in'));

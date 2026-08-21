@@ -87,7 +87,7 @@ export class VoiceAgent {
             ].join(' '),
             keywords: ['RoboDeal', 'check', 'call', 'bet', 'raise', 'fold', 'all in', 'cards dealt'],
             languages: ['en'],
-            delay: 'high',
+            delay: 'medium',
           },
           turn_detection: { type: 'semantic_vad', create_response: false, interrupt_response: false },
         },
