@@ -334,6 +334,7 @@ body {
   gap: 10px;
 }
 .winner-options button,
+#showdown-undo-button,
 #deal-ok-button {
   min-height: 48px;
   width: 100%;
@@ -345,6 +346,10 @@ body {
   font: inherit;
   font-weight: 800;
   cursor: pointer;
+}
+#showdown-undo-button {
+  margin-top: 10px;
+  background: #557066;
 }
 .winner-options button.selected {
   background: #d6a900;

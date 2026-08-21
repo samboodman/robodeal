@@ -33,6 +33,7 @@ const actionButtons = document.querySelector('.action-buttons');
 const winnerPicker = document.querySelector('#winner-picker');
 const winnerQuestion = document.querySelector('#winner-question');
 const winnerOptions = document.querySelector('#winner-options');
+const showdownUndoButton = document.querySelector('#showdown-undo-button');
 const dealPrompt = document.querySelector('#deal-prompt');
 const dealMessage = document.querySelector('#deal-message');
 const dealOkButton = document.querySelector('#deal-ok-button');
@@ -920,6 +921,7 @@ function updateBetControls() {
 function captureTurnState() {
   return {
     currentPlayerNumber,
+    roundNumber,
     highestRoundBet,
     players: Object.fromEntries(Object.values(playersByNumber).map((player) => [player.number, {
       chips: player.chips,
@@ -931,23 +933,37 @@ function captureTurnState() {
   };
 }
 
-function canUndoLastTurn() {
-  return lastTurnState !== null && currentPlayerNumber !== lastTurnState.currentPlayerNumber;
+function canUndoLastTurn(fromShowdown = false) {
+  return lastTurnState !== null && (fromShowdown || currentPlayerNumber !== lastTurnState.currentPlayerNumber);
 }
 
-function undoLastTurn() {
-  if (!canUndoLastTurn()) return;
+function undoLastTurn(fromShowdown = false) {
+  if (!canUndoLastTurn(fromShowdown)) return;
 
   Object.entries(lastTurnState.players).forEach(([number, playerState]) => {
     Object.assign(playersByNumber[number], playerState);
   });
   currentPlayerNumber = lastTurnState.currentPlayerNumber;
+  roundNumber = lastTurnState.roundNumber;
   recalculatePots();
   highestRoundBet = lastTurnState.highestRoundBet;
   pendingBet = Math.max(0, highestRoundBet - playersByNumber[currentPlayerNumber].roundBet);
   pendingFold = false;
+  pendingVoiceAction = null;
   gameSettings.currentPlayerNumber = currentPlayerNumber;
   lastTurnState = null;
+  if (fromShowdown) {
+    potAwardIndex = 0;
+    lastPotWinnerNumber = null;
+    handWinnerNumbers = [];
+    isGameWon = false;
+    winnerPicker.hidden = true;
+    showdownUndoButton.hidden = true;
+    dealPromptKind = null;
+    dealPrompt.hidden = true;
+    turnIndicator.hidden = false;
+    actionButtons.hidden = false;
+  }
   drawPlayerSeats();
 }
 
@@ -972,7 +988,6 @@ function formatNameList(names) {
 }
 
 function startNextRound() {
-  lastTurnState = null;
   if (roundNumber >= 4) {
     showWinnerPicker();
     return;
@@ -990,6 +1005,7 @@ function startNextRound() {
     dealPrompt.hidden = false;
     return;
   }
+  lastTurnState = null;
 
   const nextCard = ['the flop', 'the turn', 'the river'][roundNumber - 1];
   turnIndicator.hidden = true;
@@ -1097,6 +1113,7 @@ function showPotWinnerPicker(question, players, awardFunction, splitFunction = n
   }
 
   winnerPicker.hidden = false;
+  showdownUndoButton.hidden = !canUndoLastTurn(true);
 }
 
 function eligiblePlayersForPot(potLayer) {
@@ -1207,6 +1224,7 @@ function finishHand(winnerOrWinners) {
   turnIndicator.hidden = true;
   actionButtons.hidden = true;
   winnerPicker.hidden = false;
+  showdownUndoButton.hidden = true;
   const winnerNames = formatNameList(winners.map((winner) => winner.name));
   winnerQuestion.textContent = `${winnerNames} ${winners.length === 1 ? 'wins' : 'win'} the hand!`;
   winnerOptions.replaceChildren();
@@ -1304,7 +1322,6 @@ function finishTurn() {
     lastTurnState = null;
     awardAllPotsTo(activePlayers[0].number);
   } else if (allActivePlayersHaveMatchedBet()) {
-    lastTurnState = null;
     startNextRound();
   } else {
     nextPlayer();
@@ -1436,7 +1453,8 @@ foldButton.addEventListener('click', () => {
   }
 });
 confirmButton.addEventListener('click', confirm);
-undoButton.addEventListener('click', undoLastTurn);
+undoButton.addEventListener('click', () => undoLastTurn());
+showdownUndoButton.addEventListener('click', () => undoLastTurn(true));
 dealOkButton.addEventListener('click', cardsAreDealt);
 recordingButton.addEventListener('click', toggleRecording);
 form.addEventListener('submit', (event) => {
