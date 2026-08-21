@@ -386,6 +386,7 @@ function getVoiceInstructions() {
 }
 
 const voiceTools = [
+  { type: 'function', name: 'ignoreSpeech', description: prompts.toolDescriptions.ignoreSpeech, parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'check', description: prompts.toolDescriptions.check, parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'call', description: prompts.toolDescriptions.call, parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'bet', description: prompts.toolDescriptions.bet, parameters: { type: 'object', properties: { total: { type: 'number', description: prompts.toolDescriptions.betTotal } }, required: ['total'], additionalProperties: false } },
@@ -398,6 +399,8 @@ const voiceTools = [
 ];
 
 function executeVoiceTool(name, args) {
+  if (name === 'ignoreSpeech') return { ok: true, silent: true };
+
   if (name === 'cardsDealt') {
     if (!cardsAreDealt()) return { ok: false, message: 'The game is not waiting for cards.' };
     return { ok: true, message: 'Cards confirmed.' };

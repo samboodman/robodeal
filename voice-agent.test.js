@@ -89,6 +89,22 @@ test('an AI tool call is executed and returned to the conversation', async () =>
   assert.equal(sent[2].type, 'response.create');
 });
 
+test('an AI-selected silent tool call produces no follow-up response', async () => {
+  const { agent, sent } = testAgent({
+    executeTool: async () => ({ ok: true, silent: true }),
+  });
+
+  await agent.handleEvent({
+    type: 'response.function_call_arguments.done',
+    name: 'ignoreSpeech',
+    arguments: '{}',
+    call_id: 'ignore-1',
+  });
+
+  assert.deepEqual(sent.map(({ type }) => type), ['conversation.item.create']);
+  assert.match(sent[0].item.output, /\"silent\":true/);
+});
+
 test('converts decoded audio to 24 kHz mono PCM16', () => {
   const pcm = audioBufferToPcm16({
     sampleRate: 12_000,

@@ -279,6 +279,7 @@ export class VoiceAgent {
         output: JSON.stringify(result),
       },
     });
+    if (result.silent) return;
     this.updateContext();
     this.send({ type: 'response.create' });
   }
