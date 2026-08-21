@@ -85,6 +85,8 @@ const chipDenominationInputs = [...document.querySelectorAll('[data-chip-color]'
 const chipEnabledCheckboxes = [...document.querySelectorAll('[data-chip-enabled]')];
 let gameSettings = null;
 let gameState = null;
+// These fields are used only by debug presets, which deliberately construct
+// display-only snapshots outside the transition engine.
 let playersByNumber = {};
 let currentPlayerNumber = 1;
 let antePlayerNumber = null;
@@ -119,37 +121,53 @@ function roundNumberFromGamePhase(phase) {
   return 4;
 }
 
-function syncLegacyGameView() {
-  if (!gameState) return;
-  playersByNumber = Object.fromEntries(gameState.players.map((player) => [player.id, {
-    ...player,
-    number: player.id,
-    isDealer: player.id === gameState.dealerId,
-  }]));
-  currentPlayerNumber = gameState.actionPlayerId;
-  antePlayerNumber = gameState.smallBlindPlayerId;
-  bigBlindPlayerNumber = gameState.bigBlindPlayerId;
-  highestRoundBet = gameState.highestRoundBet;
-  pots = gameState.pots.map((pot) => ({ ...pot, eligiblePlayerNumbers: [...pot.eligiblePlayerNumbers] }));
-  potAwardIndex = gameState.potAwardIndex;
-  handWinnerNumbers = [...gameState.handWinnerIds];
-  gameHandNumber = gameState.handNumber;
-  roundNumber = gameState.round || roundNumberFromGamePhase(gameState.phase);
-  isGameWon = [GamePhase.HAND_COMPLETE, GamePhase.GAME_COMPLETE].includes(gameState.phase);
-  if (gameSettings) {
-    gameSettings.dealerNumber = gameState.dealerId;
-    gameSettings.ante = gameState.ante;
-    gameSettings.antePlayerNumber = gameState.smallBlindPlayerId;
-    gameSettings.bigBlindPlayerNumber = gameState.bigBlindPlayerId;
-    gameSettings.bigBlind = gameState.bigBlindPlayerId === null ? null : gameState.ante * 2;
-    syncPotsToGameSettings();
-  }
+function viewPlayers() {
+  return gameState ? gameState.players : Object.values(playersByNumber);
+}
+
+function viewPlayer(playerNumber) {
+  return gameState
+    ? gameState.players.find((player) => player.id === playerNumber)
+    : playersByNumber[playerNumber];
+}
+
+function viewPlayerNumber(player) {
+  return gameState ? player.id : player.number;
+}
+
+function viewActionPlayerNumber() {
+  return gameState ? gameState.actionPlayerId : currentPlayerNumber;
+}
+
+function viewRoundNumber() {
+  return gameState ? gameState.round || roundNumberFromGamePhase(gameState.phase) : roundNumber;
+}
+
+function viewHighestRoundBet() {
+  return gameState ? gameState.highestRoundBet : highestRoundBet;
+}
+
+function viewPots() {
+  return gameState ? gameState.pots : pots;
+}
+
+function viewIsGameWon() {
+  return gameState
+    ? [GamePhase.HAND_COMPLETE, GamePhase.GAME_COMPLETE].includes(gameState.phase)
+    : isGameWon;
+}
+
+function enginePlayersForPotLogic() {
+  return viewPlayers().map((player) => ({ ...player, number: viewPlayerNumber(player) }));
+}
+
+function amountToCallForView(player) {
+  return Math.min(Math.max(0, viewHighestRoundBet() - player.roundBet), player.chips);
 }
 
 function invokeGame(action) {
   if (!gameState) throw new Error('The game state has not been initialized.');
   gameState = executeTransition(gameState, action);
-  syncLegacyGameView();
   return gameState;
 }
 
@@ -271,22 +289,22 @@ async function allowScreenToSleep() {
 }
 
 function copyPots() {
-  return pots.map((potLayer) => ({
+  return viewPots().map((potLayer) => ({
     ...potLayer,
     eligiblePlayerNumbers: [...potLayer.eligiblePlayerNumbers],
   }));
 }
 
 function mainPotAmount() {
-  return pots[0]?.amount || 0;
+  return viewPots()[0]?.amount || 0;
 }
 
 function sidePots() {
-  return pots.slice(1);
+  return viewPots().slice(1);
 }
 
 function totalPotAmount() {
-  return pots.reduce((total, potLayer) => total + potLayer.amount, 0);
+  return viewPots().reduce((total, potLayer) => total + potLayer.amount, 0);
 }
 
 function syncPotsToGameSettings() {
@@ -305,7 +323,7 @@ function potLayerName(index) {
 }
 
 function drawPotLayers(layerCount, animateNewLayer = false) {
-  const visibleLayers = pots.slice(0, layerCount);
+  const visibleLayers = viewPots().slice(0, layerCount);
   const activeLayerIndex = visibleLayers.length - 1;
   const archivedLayerIndexes = visibleLayers
     .slice(0, -1)
@@ -366,7 +384,7 @@ function drawPotLayers(layerCount, animateNewLayer = false) {
 
 function continuePotLayerAnimation() {
   potAnimationTimer = null;
-  if (pots.length <= renderedPotLayerCount) {
+  if (viewPots().length <= renderedPotLayerCount) {
     drawPotLayers(renderedPotLayerCount);
     return;
   }
@@ -381,7 +399,7 @@ function continuePotLayerAnimation() {
 }
 
 function updatePotDisplay() {
-  const targetLayerCount = pots.length;
+  const targetLayerCount = viewPots().length;
 
   if (targetLayerCount < renderedPotLayerCount || targetLayerCount === 0) {
     clearTimeout(potAnimationTimer);
@@ -431,22 +449,23 @@ function updateRecordingButton() {
 }
 
 function getVoiceSnapshot() {
-  const player = playersByNumber[currentPlayerNumber] || null;
-  const maximumBet = player ? maximumAdditionalBet(Object.values(playersByNumber), currentPlayerNumber) : 0;
+  const currentPlayerNumber = viewActionPlayerNumber();
+  const player = viewPlayer(currentPlayerNumber) || null;
+  const maximumBet = player ? maximumAdditionalBet(enginePlayersForPotLogic(), currentPlayerNumber) : 0;
   const undoFromShowdown = !winnerPicker.hidden;
   return {
-    phase: gameScreen.hidden ? 'setup' : !dealPrompt.hidden ? 'waiting for cards' : !winnerPicker.hidden ? 'choosing winner' : 'betting',
-    round: ['preflop', 'flop', 'turn', 'river'][roundNumber - 1] || 'between hands',
+    phase: gameState?.phase || (gameScreen.hidden ? 'setup' : !dealPrompt.hidden ? 'waiting for cards' : !winnerPicker.hidden ? 'choosing winner' : 'betting'),
+    round: ['preflop', 'flop', 'turn', 'river'][viewRoundNumber() - 1] || 'between hands',
     currentPlayerNumber,
     currentPlayer: player ? {
       name: player.name,
       chips: player.chips,
       roundBet: player.roundBet,
-      amountToCall: Math.min(Math.max(0, highestRoundBet - player.roundBet), player.chips),
+      amountToCall: amountToCallForView(player),
       maximumAdditionalBet: maximumBet,
       canGoAllIn: maximumBet === player.chips,
     } : null,
-    highestRoundBet,
+    highestRoundBet: viewHighestRoundBet(),
     pendingBet,
     pendingFold,
     pendingVoiceAction,
@@ -458,8 +477,8 @@ function getVoiceSnapshot() {
     pot: totalPotAmount(),
     availableActions: currentGameActions(),
     dealInstruction: dealPrompt.hidden ? null : dealMessage.textContent,
-    players: Object.values(playersByNumber).map((candidate) => ({
-      number: candidate.number,
+    players: viewPlayers().map((candidate) => ({
+      number: viewPlayerNumber(candidate),
       name: candidate.name,
       chips: candidate.chips,
       folded: candidate.folded,
@@ -517,7 +536,8 @@ function executeVoiceTool(name, args) {
     return { ok: true, message: 'Cards confirmed.' };
   }
 
-  const player = playersByNumber[currentPlayerNumber];
+  const currentPlayerNumber = viewActionPlayerNumber();
+  const player = viewPlayer(currentPlayerNumber);
   if (!player) return { ok: false, message: 'There is no active player.' };
 
   if (name === 'cancelAction') {
@@ -562,8 +582,8 @@ function executeVoiceTool(name, args) {
     return { ok: false, message: 'A betting action is not available right now.' };
   }
 
-  const amountToCall = Math.min(Math.max(0, highestRoundBet - player.roundBet), player.chips);
-  const maximumBet = maximumAdditionalBet(Object.values(playersByNumber), currentPlayerNumber);
+  const amountToCall = amountToCallForView(player);
+  const maximumBet = maximumAdditionalBet(enginePlayersForPotLogic(), currentPlayerNumber);
   if (name !== 'fold' && name !== 'allIn') pendingVoiceAction = null;
   if (name === 'fold') {
     pendingVoiceAction = null;
@@ -734,35 +754,28 @@ function drawDealerOptions(selectedDealer = dealerSelect.value || '1') {
 }
 
 function makePlayers() {
-  playersByNumber = {};
   const names = [...playerNames.querySelectorAll('input')];
-
-  names.forEach((input, index) => {
-    const number = index + 1;
-    playersByNumber[number] = {
-      number,
-      name: input.value || `Player ${number}`,
-      chips: Number(document.querySelector('#starting-money').value),
-      isDealer: number === Number(dealerSelect.value),
-      roundBet: 0,
-      handContribution: 0,
-      hasActedThisRound: false,
-      folded: false,
-      eliminated: false,
-    };
-  });
+  const players = names.map((input, index) => ({
+    id: index + 1,
+    name: input.value || `Player ${index + 1}`,
+    chips: Number(document.querySelector('#starting-money').value),
+  }));
 
   gameState = createGameState({
-    players: Object.values(playersByNumber).map((player) => ({
-      id: player.number,
-      name: player.name,
-      chips: player.chips,
-    })),
+    players,
     ante: gameSettings.ante,
     anteIncrease: gameSettings.anteIncrease,
     dealerId: gameSettings.dealerNumber,
     useBigBlind: gameSettings.useBigBlind,
   });
+}
+
+function initializeDebugPlayers() {
+  playersByNumber = Object.fromEntries(gameState.players.map((player) => [player.id, {
+    ...player,
+    number: player.id,
+    isDealer: player.id === gameState.dealerId,
+  }]));
 }
 
 const debugPresets = {
@@ -841,6 +854,7 @@ function startDebugPreset(presetName) {
   // Debug presets intentionally construct unusual display snapshots. They are
   // kept outside the authoritative transition path until each preset becomes a
   // named engine fixture.
+  initializeDebugPlayers();
   gameState = null;
 
   gameHandNumber = 1;
@@ -949,15 +963,17 @@ function makePlayerChipPiles(amount) {
 
 function drawPlayerSeats() {
   playerSeats.replaceChildren();
-  const players = Object.values(playersByNumber);
+  const players = viewPlayers();
+  const currentPlayerNumber = viewActionPlayerNumber();
 
   players.forEach((player, index) => {
     const angle = (index / players.length) * Math.PI * 2 + Math.PI / 2;
     const seat = document.createElement('div');
     seat.className = 'player-seat';
-    const isCurrentPlayer = player.number === currentPlayerNumber;
+    const playerNumber = viewPlayerNumber(player);
+    const isCurrentPlayer = playerNumber === currentPlayerNumber;
     if (isCurrentPlayer) seat.classList.add('current-player');
-    if (player.isDealer) seat.classList.add('dealer');
+    if (gameState ? player.id === gameState.dealerId : player.isDealer) seat.classList.add('dealer');
     if (player.folded) seat.classList.add('folded');
     if (player.eliminated) seat.classList.add('eliminated');
     seat.style.setProperty('--x', `${50 + Math.cos(angle) * 43}%`);
@@ -978,15 +994,16 @@ function drawPlayerSeats() {
         seat.append(chips);
       }
     }
-    seat.setAttribute('aria-label', `${player.name}${player.eliminated ? ', out of the game' : `: ${player.chips} chips`}${player.isDealer ? ', dealer' : ''}${isCurrentPlayer ? ', current turn' : ''}${player.folded ? ', folded' : ''}`);
+    const isDealer = gameState ? player.id === gameState.dealerId : player.isDealer;
+    seat.setAttribute('aria-label', `${player.name}${player.eliminated ? ', out of the game' : `: ${player.chips} chips`}${isDealer ? ', dealer' : ''}${isCurrentPlayer ? ', current turn' : ''}${player.folded ? ', folded' : ''}`);
     seat.setAttribute('role', gameState ? 'status' : 'button');
     seat.tabIndex = gameState ? -1 : 0;
     if (!gameState && !player.folded && !player.eliminated && player.chips > 0) {
-      seat.addEventListener('click', () => setCurrentPlayer(player.number));
+      seat.addEventListener('click', () => setCurrentPlayer(playerNumber));
       seat.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          setCurrentPlayer(player.number);
+          setCurrentPlayer(playerNumber);
         }
       });
     } else if (!gameState) {
@@ -995,17 +1012,18 @@ function drawPlayerSeats() {
     playerSeats.append(seat);
   });
 
-  const activeIndex = players.findIndex((player) => player.number === currentPlayerNumber);
+  const activeIndex = players.findIndex((player) => viewPlayerNumber(player) === currentPlayerNumber);
   const activeAngle = (activeIndex / players.length) * Math.PI * 2 + Math.PI / 2;
   turnControl.style.setProperty('--rotation', `${activeAngle - Math.PI / 2}rad`);
   updatePotDisplay();
-  roundLabel.textContent = ['Preflop', 'Flop', 'Turn', 'River'][roundNumber - 1];
+  roundLabel.textContent = ['Preflop', 'Flop', 'Turn', 'River'][viewRoundNumber() - 1];
   turnIndicator.setAttribute('aria-label', `Your bet: ${pendingBet}. Total pot: ${totalPotAmount()}`);
   updateBetControls();
   voiceAgent?.updateContext();
 }
 
 function setCurrentPlayer(number) {
+  if (gameState) return;
   if (pendingVoiceAction && pendingVoiceAction.playerNumber !== number) {
     pendingVoiceAction = null;
   }
@@ -1035,9 +1053,14 @@ function nextPlayer() {
 }
 
 function updateBetControls() {
-  const player = playersByNumber[currentPlayerNumber];
-  const minimumBet = Math.max(0, highestRoundBet - player.roundBet);
-  const maximumBet = maximumAdditionalBet(Object.values(playersByNumber), currentPlayerNumber);
+  const currentPlayerNumber = viewActionPlayerNumber();
+  const player = viewPlayer(currentPlayerNumber);
+  if (!player) {
+    actionButtons.hidden = true;
+    return;
+  }
+  const minimumBet = amountToCallForView(player);
+  const maximumBet = maximumAdditionalBet(enginePlayersForPotLogic(), currentPlayerNumber);
   const minimumAllowedBet = Math.min(minimumBet, maximumBet);
   const minimumRaiseBet = Math.max(minimumAllowedBet, highestRoundBet - player.roundBet + 1, 1);
   const canRaise = minimumRaiseBet <= maximumBet;
@@ -1132,7 +1155,7 @@ function captureTurnState() {
 }
 
 function canUndoLastTurn(fromShowdown = false) {
-  if (gameState) return lastTurnState !== null && (fromShowdown || currentPlayerNumber !== lastTurnState.actionPlayerId);
+  if (gameState) return lastTurnState !== null && (fromShowdown || gameState.actionPlayerId !== lastTurnState.actionPlayerId);
   return lastTurnState !== null && currentPlayerNumber !== lastTurnState.currentPlayerNumber;
 }
 
@@ -1142,8 +1165,8 @@ function undoLastTurn(fromShowdown = false) {
   raiseMode = false;
   if (gameState) {
     gameState = structuredClone(lastTurnState);
-    syncLegacyGameView();
-    pendingBet = Math.max(0, highestRoundBet - playersByNumber[currentPlayerNumber].roundBet);
+    const player = viewPlayer(viewActionPlayerNumber());
+    pendingBet = player ? amountToCallForView(player) : 0;
     pendingFold = false;
     lastTurnState = null;
     renderGameState();
@@ -1184,7 +1207,7 @@ function showHandCompleteFromGameState() {
   turnIndicator.hidden = true;
   actionButtons.hidden = true;
   winnerPicker.hidden = false;
-  const winners = gameState.handWinnerIds.map((id) => playersByNumber[id]).filter(Boolean);
+  const winners = gameState.handWinnerIds.map((id) => viewPlayer(id)).filter(Boolean);
   const winnerNames = formatNameList(winners.map((winner) => winner.name));
   winnerQuestion.textContent = `${winnerNames} ${winners.length === 1 ? 'wins' : 'win'} the hand!`;
   winnerOptions.replaceChildren();
@@ -1206,7 +1229,8 @@ function renderGameState() {
     winnerPicker.hidden = true;
     turnIndicator.hidden = false;
     actionButtons.hidden = false;
-    pendingBet = Math.max(0, highestRoundBet - playersByNumber[currentPlayerNumber].roundBet);
+    const player = viewPlayer(gameState.actionPlayerId);
+    pendingBet = player ? amountToCallForView(player) : 0;
     pendingFold = false;
     drawPlayerSeats();
     return;
@@ -1216,10 +1240,11 @@ function renderGameState() {
   actionButtons.hidden = true;
   if (phase === GamePhase.DEAL_HOLE_CARDS) {
     dealPromptKind = 'hole-cards';
-    const dealer = playersByNumber[gameState.dealerId];
+    const dealer = viewPlayer(gameState.dealerId);
     const introduction = gameState.handNumber === 1 ? `Game is Texas Hold'em. Ante is ${gameState.ante}.` : `New hand. Ante is ${gameState.ante}.`;
     dealMessage.textContent = `${introduction} ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK when done.`;
     dealPrompt.hidden = false;
+    drawPlayerSeats();
     return;
   }
 
@@ -1232,6 +1257,7 @@ function renderGameState() {
     }[phase];
     dealMessage.textContent = `Deal ${card}. Press OK to continue.`;
     dealPrompt.hidden = false;
+    drawPlayerSeats();
     return;
   }
 
@@ -1240,6 +1266,7 @@ function renderGameState() {
     const cards = remainingCommunityCards();
     dealMessage.textContent = `Deal ${formatCardList(cards)}. Press OK for showdown.`;
     dealPrompt.hidden = false;
+    drawPlayerSeats();
     return;
   }
 
@@ -1249,12 +1276,12 @@ function renderGameState() {
   } else if (phase === GamePhase.HAND_COMPLETE) {
     showHandCompleteFromGameState();
   } else if (phase === GamePhase.GAME_COMPLETE) {
-    showGameWinner(playersByNumber[gameState.handWinnerIds[0]] || Object.values(playersByNumber).find((player) => player.chips > 0));
+    showGameWinner(viewPlayer(gameState.handWinnerIds[0]) || gameState.players.find((player) => player.chips > 0));
   }
 }
 
 function remainingCommunityCards() {
-  return ['the flop', 'the turn', 'the river'].slice(roundNumber - 1);
+  return ['the flop', 'the turn', 'the river'].slice(viewRoundNumber() - 1);
 }
 
 function formatCardList(cards) {
@@ -1320,9 +1347,8 @@ function beginNextRound() {
 
 function showWinnerPicker() {
   if (gameState) {
-    potAwardIndex = gameState.potAwardIndex;
     if (gameState.phase === GamePhase.SHOWDOWN) {
-      awardNextPot();
+      showGameStatePotWinnerPicker();
       return;
     }
   }
@@ -1335,6 +1361,27 @@ function showWinnerPicker() {
     return;
   }
   awardNextPot();
+}
+
+function showGameStatePotWinnerPicker() {
+  const potIndex = gameState.potAwardIndex;
+  const pot = gameState.pots[potIndex];
+  if (!pot || pot.amount <= 0) return;
+  const eligiblePlayers = pot.eligiblePlayerNumbers
+    .map((playerId) => viewPlayer(playerId))
+    .filter((player) => player && !player.folded && !player.eliminated);
+
+  if (eligiblePlayers.length === 1) {
+    awardPot(potIndex, eligiblePlayers[0].id);
+    return;
+  }
+
+  showPotWinnerPicker(
+    potIndex === 0 ? 'Who had the best cards?' : `Who wins side pot ${potIndex}?`,
+    eligiblePlayers.map((player) => ({ ...player, number: player.id })),
+    (winnerNumber) => awardPot(potIndex, winnerNumber),
+    (winnerNumbers) => awardSplitPot(potIndex, winnerNumbers),
+  );
 }
 
 function showPotWinnerPicker(question, players, awardFunction, splitFunction = null) {
@@ -1649,9 +1696,10 @@ function finishTurn() {
 
 function confirmTurn() {
   if (gameState) {
-    const player = playersByNumber[currentPlayerNumber];
+    const currentPlayerNumber = gameState.actionPlayerId;
+    const player = viewPlayer(currentPlayerNumber);
     lastTurnState = captureTurnState();
-    const amountToCall = Math.max(0, highestRoundBet - player.roundBet);
+    const amountToCall = amountToCallForView(player);
     const legalActions = currentGameActions();
     let action;
     if (pendingFold) {
@@ -1697,13 +1745,14 @@ function foldCurrentPlayer() {
 }
 
 function betCurrentPlayer(amount) {
-  const player = playersByNumber[currentPlayerNumber];
+  const currentPlayerNumber = viewActionPlayerNumber();
+  const player = viewPlayer(currentPlayerNumber);
   const requestedAmount = Number(amount);
 
   if (!Number.isFinite(requestedAmount) || requestedAmount < 0) return false;
 
   pendingFold = false;
-  const maximumBet = maximumAdditionalBet(Object.values(playersByNumber), currentPlayerNumber);
+  const maximumBet = maximumAdditionalBet(enginePlayersForPotLogic(), currentPlayerNumber);
   pendingBet = Math.min(requestedAmount, maximumBet);
   updateBetControls();
   return true;
@@ -1779,7 +1828,7 @@ voiceAudioFile.addEventListener('change', () => {
 });
 voiceAudioTestButton.addEventListener('click', testVoiceWithAudioFile);
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && !gameScreen.hidden && !isGameWon) {
+  if (document.visibilityState === 'visible' && !gameScreen.hidden && !viewIsGameWon()) {
     keepScreenAwake();
   }
 });
