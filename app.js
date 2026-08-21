@@ -362,6 +362,7 @@ function updateRecordingButton() {
 function getVoiceSnapshot() {
   const player = playersByNumber[currentPlayerNumber] || null;
   const maximumBet = player ? maximumAdditionalBet(Object.values(playersByNumber), currentPlayerNumber) : 0;
+  const undoFromShowdown = !winnerPicker.hidden;
   return {
     phase: gameScreen.hidden ? 'setup' : !dealPrompt.hidden ? 'waiting for cards' : !winnerPicker.hidden ? 'choosing winner' : 'betting',
     round: ['preflop', 'flop', 'turn', 'river'][roundNumber - 1] || 'between hands',
@@ -378,6 +379,11 @@ function getVoiceSnapshot() {
     pendingBet,
     pendingFold,
     pendingVoiceAction,
+    canUndo: !gameScreen.hidden
+      && dealPrompt.hidden
+      && gameWinnerScreen.hidden
+      && !isGameWon
+      && canUndoLastTurn(undoFromShowdown),
     pot: totalPotAmount(),
     dealInstruction: dealPrompt.hidden ? null : dealMessage.textContent,
     players: Object.values(playersByNumber).map((candidate) => ({
@@ -412,10 +418,26 @@ const voiceTools = [
   { type: 'function', name: 'confirmAction', description: prompts.toolDescriptions.confirmAction, parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'cancelAction', description: prompts.toolDescriptions.cancelAction, parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'cardsDealt', description: prompts.toolDescriptions.cardsDealt, parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'undo', description: 'Undo the most recently confirmed poker turn when undo is available.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
 ];
 
 function executeVoiceTool(name, args) {
   if (name === 'ignoreSpeech') return { ok: true, silent: true };
+
+  if (name === 'undo') {
+    const fromShowdown = !winnerPicker.hidden;
+    if (gameScreen.hidden || !dealPrompt.hidden || !gameWinnerScreen.hidden || isGameWon || !canUndoLastTurn(fromShowdown)) {
+      return { ok: false, message: 'There is no turn available to undo.' };
+    }
+    const restoredPlayerName = playersByNumber[lastTurnState.currentPlayerNumber]?.name;
+    undoLastTurn(fromShowdown);
+    return {
+      ok: true,
+      message: restoredPlayerName
+        ? `The last turn was undone. It is ${restoredPlayerName}'s turn again.`
+        : 'The last turn was undone.',
+    };
+  }
 
   if (name === 'cardsDealt') {
     if (!cardsAreDealt()) return { ok: false, message: 'The game is not waiting for cards.' };
