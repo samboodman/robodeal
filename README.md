@@ -14,6 +14,7 @@ The project is a learning project for Sam. The game is intentionally one small s
 - Keep the phone screen awake during an active game when the browser supports it.
 - Remember the latest setup in that browser, including players and chip settings.
 - Connect a small OpenAI Realtime voice agent when a game starts. It can answer short poker questions and call six guarded game actions: fold, check, call, bet, all-in, and cards-dealt. The recording button controls only the microphone, and the voice customization page selects the output voice and speaking style.
+- Input audio files for debugging.
 
 ## How it is built
 

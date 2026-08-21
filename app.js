@@ -54,8 +54,6 @@ const chipDenominationsBack = document.querySelector('#chip-denominations-back')
 const chipDisplayModeButton = document.querySelector('#chip-display-mode');
 const chipDenominationInputs = [...document.querySelectorAll('[data-chip-color]')];
 const chipEnabledCheckboxes = [...document.querySelectorAll('[data-chip-enabled]')];
-
-// This is where the game screen can read the settings when we add its controls.
 let gameSettings = null;
 let playersByNumber = {};
 let currentPlayerNumber = 1;
@@ -175,9 +173,7 @@ function restoreLastGameSettings() {
 function saveLastGameSettings() {
   try {
     localStorage.setItem(lastGameSettingsKey, JSON.stringify({ settings: gameSettings }));
-  } catch {
-    // The game still works if this browser has disabled saved site data.
-  }
+  } catch {}
 }
 
 async function keepScreenAwake() {
@@ -189,8 +185,6 @@ async function keepScreenAwake() {
       screenWakeLock = null;
     }, { once: true });
   } catch (error) {
-    // Low-battery and power-saving modes may decline this request. The game
-    // still works normally when the phone decides not to keep the screen on.
     console.info('Screen wake lock was not available:', error.message);
   }
 }
@@ -788,10 +782,6 @@ function makePlayerChipPiles(amount) {
     const chipCount = Math.floor(remaining / value);
     remaining %= value;
     if (chipCount === 0) return;
-
-    // Ten chips per column keeps the stacks readable at every seat. Extremely
-    // large stacks are intentionally capped visually, like an estimate across
-    // a real table; the exact amount remains available to screen readers.
     const visibleChipCount = Math.min(chipCount, 100);
     for (let firstChip = 0; firstChip < visibleChipCount; firstChip += 10) {
       const stack = document.createElement('span');
@@ -906,9 +896,7 @@ function updateBetControls() {
   const player = playersByNumber[currentPlayerNumber];
   const minimumBet = Math.max(0, highestRoundBet - player.roundBet);
   const maximumBet = maximumAdditionalBet(Object.values(playersByNumber), currentPlayerNumber);
-  // A player may go all-in even when they cannot completely match the bet.
   const minimumAllowedBet = Math.min(minimumBet, maximumBet);
-
   pendingBet = Math.max(minimumAllowedBet, Math.min(pendingBet, maximumBet));
   betInput.value = pendingBet;
   betInput.min = minimumAllowedBet;
@@ -938,8 +926,6 @@ function captureTurnState() {
 }
 
 function canUndoLastTurn() {
-  // An automatic blind counts as a bet, but not as the player's real turn.
-  // Undo stays available until the next player confirms an action.
   return lastTurnState !== null && currentPlayerNumber !== lastTurnState.currentPlayerNumber;
 }
 
@@ -1484,9 +1470,6 @@ form.addEventListener('submit', (event) => {
       updateRecordingButton();
     })
     .catch((error) => setVoiceTranscript(`AI could not connect: ${error.message}`));
-
-
-  // Add the game-table interface inside gameScreen in the next step.
 });
 
 drawPlayerNames();
