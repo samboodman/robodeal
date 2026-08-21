@@ -1112,8 +1112,10 @@ function showPotWinnerPicker(question, players, awardFunction, splitFunction = n
     winnerOptions.append(splitButton, confirmSplitButton);
   }
 
+  showdownUndoButton.hidden = false;
+  showdownUndoButton.disabled = !canUndoLastTurn(true);
+  winnerOptions.append(showdownUndoButton);
   winnerPicker.hidden = false;
-  showdownUndoButton.hidden = !canUndoLastTurn(true);
 }
 
 function eligiblePlayersForPot(potLayer) {

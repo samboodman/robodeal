@@ -348,8 +348,11 @@ body {
   cursor: pointer;
 }
 #showdown-undo-button {
-  margin-top: 10px;
   background: #557066;
+}
+#showdown-undo-button:disabled {
+  background: #a9b4ae;
+  cursor: default;
 }
 .winner-options button.selected {
   background: #d6a900;
