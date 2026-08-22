@@ -205,8 +205,14 @@
                 <p>Raise total</p>
                 <div class="raise-counter">
                   <button id="raise-decrease-button" type="button" aria-label="Decrease raise">−</button>
-                  <output id="raise-total-value" aria-live="polite">0</output>
+                  <input id="raise-total-value" type="number" inputmode="numeric" min="0" step="1" value="0" aria-label="Raise total">
                   <button id="raise-increase-button" type="button" aria-label="Increase raise">+</button>
+                </div>
+                <div class="raise-shortcuts" aria-label="Quick raise adjustments">
+                  <button type="button" data-raise-adjustment="-25">−25</button>
+                  <button type="button" data-raise-adjustment="-10">−10</button>
+                  <button type="button" data-raise-adjustment="10">+10</button>
+                  <button type="button" data-raise-adjustment="25">+25</button>
                 </div>
                 <button id="confirm-raise-button" class="confirm-raise-button" type="button">Confirm raise</button>
                 <button id="cancel-raise-button" class="cancel-raise-button" type="button">Cancel raise</button>

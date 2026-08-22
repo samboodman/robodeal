@@ -280,7 +280,7 @@ body {
   display: grid;
   height: 100%;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: auto 1fr 36px;
+  grid-template-rows: auto 1fr 30px 36px;
   gap: 6px;
 }
 .raise-panel > p {
@@ -300,20 +300,32 @@ body {
   gap: 6px;
   align-items: stretch;
 }
-.raise-counter output {
-  display: grid;
+.raise-counter input {
   min-width: 0;
-  place-items: center;
+  width: 100%;
+  padding: 0 4px;
   border: 2px solid #d4dfd8;
   border-radius: 10px;
+  background: #fffdf6;
   color: #173329;
+  font: inherit;
   font-size: clamp(2rem, 9vw, 4rem);
   font-weight: 900;
   line-height: 1;
+  text-align: center;
 }
 .raise-counter button {
   background: #557066;
   font-size: 1.8rem;
+}
+.raise-shortcuts {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.raise-shortcuts button {
+  background: #557066;
 }
 .raise-panel .cancel-raise-button {
   background: #6b4f3b;

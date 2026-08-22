@@ -43,6 +43,7 @@ const raisePanel = document.querySelector('#raise-panel');
 const raiseDecreaseButton = document.querySelector('#raise-decrease-button');
 const raiseIncreaseButton = document.querySelector('#raise-increase-button');
 const raiseTotalValue = document.querySelector('#raise-total-value');
+const raiseShortcutButtons = [...document.querySelectorAll('[data-raise-adjustment]')];
 const confirmRaiseButton = document.querySelector('#confirm-raise-button');
 const cancelRaiseButton = document.querySelector('#cancel-raise-button');
 const helpButton = document.querySelector('#help-button');
@@ -990,8 +991,14 @@ function updateBetControls() {
   allInActionButton.disabled = player.chips <= 0 || maximumBet !== player.chips;
   raiseActionButton.disabled = !canRaise;
   raiseTotalValue.value = String(player.roundBet + pendingBet);
+  raiseTotalValue.min = String(player.roundBet + minimumRaiseBet);
+  raiseTotalValue.max = String(player.roundBet + maximumBet);
   raiseDecreaseButton.disabled = pendingBet <= minimumRaiseBet;
   raiseIncreaseButton.disabled = pendingBet >= maximumBet;
+  raiseShortcutButtons.forEach((button) => {
+    const adjustment = Number(button.dataset.raiseAdjustment);
+    button.disabled = adjustment < 0 ? pendingBet <= minimumRaiseBet : pendingBet >= maximumBet;
+  });
   confirmRaiseButton.disabled = !canRaise || pendingBet < minimumRaiseBet;
   actionMenu.hidden = raiseMode;
   raisePanel.hidden = !raiseMode;
@@ -1016,6 +1023,27 @@ function cancelRaiseMode() {
   raiseMode = false;
   pendingBet = Math.min(Math.max(0, highestRoundBet - player.roundBet), player.chips);
   updateBetControls();
+}
+
+function setRaiseTotal(total) {
+  const player = playersByNumber[currentPlayerNumber];
+  const maximumBet = maximumAdditionalBet(Object.values(playersByNumber), currentPlayerNumber);
+  const minimumBet = Math.max(0, highestRoundBet - player.roundBet);
+  const minimumRaiseBet = Math.max(Math.min(minimumBet, maximumBet), highestRoundBet - player.roundBet + 1, 1);
+  const requestedTotal = Number(total);
+
+  if (!Number.isFinite(requestedTotal)) {
+    updateBetControls();
+    return;
+  }
+
+  pendingBet = Math.max(minimumRaiseBet, Math.min(requestedTotal - player.roundBet, maximumBet));
+  updateBetControls();
+}
+
+function adjustRaiseBy(amount) {
+  const player = playersByNumber[currentPlayerNumber];
+  setRaiseTotal(player.roundBet + pendingBet + amount);
 }
 
 function closeButtonHelp() {
@@ -1570,10 +1598,22 @@ allInActionButton.addEventListener('click', () => {
 });
 raiseActionButton.addEventListener('click', enterRaiseMode);
 raiseDecreaseButton.addEventListener('click', () => {
-  if (!raiseDecreaseButton.disabled) betCurrentPlayer(pendingBet - 1);
+  if (!raiseDecreaseButton.disabled) adjustRaiseBy(-1);
 });
 raiseIncreaseButton.addEventListener('click', () => {
-  if (!raiseIncreaseButton.disabled) betCurrentPlayer(pendingBet + 1);
+  if (!raiseIncreaseButton.disabled) adjustRaiseBy(1);
+});
+raiseShortcutButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    if (!button.disabled) adjustRaiseBy(Number(button.dataset.raiseAdjustment));
+  });
+});
+raiseTotalValue.addEventListener('change', () => setRaiseTotal(raiseTotalValue.value));
+raiseTotalValue.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  setRaiseTotal(raiseTotalValue.value);
+  raiseTotalValue.blur();
 });
 confirmRaiseButton.addEventListener('click', () => {
   if (confirmRaiseButton.disabled) return;
