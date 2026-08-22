@@ -996,7 +996,7 @@ function updateBetControls() {
   actionMenu.hidden = raiseMode;
   raisePanel.hidden = !raiseMode;
   const undoIsAvailable = canUndoLastTurn();
-  undoButton.hidden = !undoIsAvailable;
+  undoButton.disabled = !undoIsAvailable;
   actionButtons.classList.toggle('has-undo', undoIsAvailable);
 }
 

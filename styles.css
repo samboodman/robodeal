@@ -254,8 +254,8 @@ body {
 }
 .action-menu button:disabled,
 .raise-panel button:disabled {
-  background: #c8cbc9;
-  color: #6f7773;
+  background: #c8cbc9 !important;
+  color: #6f7773 !important;
   cursor: default;
 }
 #fold-action-button {
