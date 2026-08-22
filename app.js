@@ -17,6 +17,8 @@ const playerNames = document.querySelector('#player-names');
 const form = document.querySelector('#setup-form');
 const message = document.querySelector('#message');
 const dealerSelect = document.querySelector('#dealer');
+const debugFeaturesSetting = document.querySelector('#debug-features-setting');
+const debugFeaturesCheckbox = document.querySelector('#debug-features');
 const useBigBlindCheckbox = document.querySelector('#use-big-blind');
 const setupScreen = document.querySelector('#setup-screen');
 const voiceCustomizationScreen = document.querySelector('#voice-customization-screen');
@@ -97,6 +99,19 @@ let voiceConnectionPromise = null;
 let pendingVoiceAction = null;
 let raiseMode = false;
 const lastGameSettingsKey = 'robodeal-last-game-settings';
+const isLocalDebugEnvironment = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
+function updateDebugFeatures() {
+  const debugFeaturesEnabled = isLocalDebugEnvironment && debugFeaturesCheckbox.checked;
+  debugFeaturesSetting.hidden = !isLocalDebugEnvironment;
+  voiceAudioTest.hidden = !debugFeaturesEnabled;
+
+  if (!debugFeaturesEnabled) {
+    voiceAudioFile.value = '';
+    voiceAudioTestButton.disabled = true;
+    voiceAudioTestStatus.textContent = '';
+  }
+}
 
 function roundNumberFromGamePhase(phase) {
   if ([GamePhase.BETTING_PREFLOP, GamePhase.DEAL_FLOP].includes(phase)) return 1;
@@ -841,8 +856,8 @@ function updateBetControls() {
   const minimumBet = amountToCallForView(player);
   const maximumBet = maximumAdditionalBet(enginePlayersForPotLogic(), currentPlayerNumber);
   const minimumAllowedBet = Math.min(minimumBet, maximumBet);
-  const minimumRaiseBet = Math.max(minimumAllowedBet, viewHighestRoundBet() - player.roundBet + 1, 1);
-  const canRaise = minimumRaiseBet <= maximumBet;
+  const minimumRaiseBet = minimumAllowedBet;
+  const canRaise = maximumBet > 0 && minimumRaiseBet <= maximumBet;
   pendingBet = Math.max(minimumAllowedBet, Math.min(pendingBet, maximumBet));
   betInput.value = pendingBet;
   betInput.min = minimumAllowedBet;
@@ -880,7 +895,7 @@ function enterRaiseMode() {
   if (!player) return;
   const maximumBet = maximumAdditionalBet(enginePlayersForPotLogic(), currentPlayerNumber);
   const minimumBet = amountToCallForView(player);
-  const minimumRaiseBet = Math.max(Math.min(minimumBet, maximumBet), viewHighestRoundBet() - player.roundBet + 1, 1);
+  const minimumRaiseBet = Math.min(minimumBet, maximumBet);
   if (minimumRaiseBet > maximumBet) return;
   raiseMode = true;
   pendingBet = minimumRaiseBet;
@@ -896,10 +911,12 @@ function cancelRaiseMode() {
 }
 
 function setRaiseTotal(total) {
-  const player = playersByNumber[currentPlayerNumber];
-  const maximumBet = maximumAdditionalBet(Object.values(playersByNumber), currentPlayerNumber);
-  const minimumBet = Math.max(0, highestRoundBet - player.roundBet);
-  const minimumRaiseBet = Math.max(Math.min(minimumBet, maximumBet), highestRoundBet - player.roundBet + 1, 1);
+  const currentPlayerNumber = viewActionPlayerNumber();
+  const player = viewPlayer(currentPlayerNumber);
+  if (!player) return;
+  const maximumBet = maximumAdditionalBet(enginePlayersForPotLogic(), currentPlayerNumber);
+  const minimumBet = amountToCallForView(player);
+  const minimumRaiseBet = Math.min(minimumBet, maximumBet);
   const requestedTotal = Number(total);
 
   if (!Number.isFinite(requestedTotal)) {
@@ -912,7 +929,8 @@ function setRaiseTotal(total) {
 }
 
 function adjustRaiseBy(amount) {
-  const player = playersByNumber[currentPlayerNumber];
+  const player = viewPlayer(viewActionPlayerNumber());
+  if (!player) return;
   setRaiseTotal(player.roundBet + pendingBet + amount);
 }
 
@@ -1220,6 +1238,7 @@ playerCount.addEventListener('change', () => {
   drawPlayerNames();
   useBigBlindCheckbox.checked = Number(playerCount.value) >= 6;
 });
+debugFeaturesCheckbox.addEventListener('change', updateDebugFeatures);
 voiceCustomizationButton.addEventListener('click', () => {
   setupScreen.hidden = true;
   voiceCustomizationScreen.hidden = false;
@@ -1383,4 +1402,4 @@ form.addEventListener('submit', (event) => {
 drawPlayerNames();
 updateChipDisplayModeButton();
 restoreLastGameSettings();
-voiceAudioTest.hidden = !['localhost', '127.0.0.1'].includes(window.location.hostname);
+updateDebugFeatures();
