@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createGameState, executeTransition, GamePhase, getAvailableActions, Transition } from './game-state.js';
+import { createDebugGameState, createGameState, executeTransition, GamePhase, getAvailableActions, Transition } from './game-state.js';
 
 function game({ chips = [250, 250, 250], useBigBlind = false } = {}) {
   return createGameState({
@@ -44,6 +44,27 @@ test('GameState creation validates the immutable table configuration', () => {
   assert.throws(() => createGameState({ players: [], ante: 5, dealerId: 1 }), /At least two/);
   assert.throws(() => createGameState({ players: [{ id: 1, chips: 1 }, { id: 2, chips: 1 }], ante: -1, dealerId: 1 }), /Ante/);
   assert.throws(() => createGameState({ players: [{ id: 1, chips: 1 }, { id: 2, chips: 1 }], ante: 1, dealerId: 3 }), /dealer/);
+});
+
+test('debug presets create authoritative states with working pots and transitions', () => {
+  const twoPots = createDebugGameState(game({ chips: [100, 100, 100] }), 'two-pots');
+  assert.equal(twoPots.phase, GamePhase.BETTING_RIVER);
+  assert.equal(twoPots.actionPlayerId, 2);
+  assert.deepEqual(twoPots.pots.map((pot) => pot.amount), [75, 50]);
+  assert.ok(getAvailableActions(twoPots).some(({ type }) => type === Transition.CHECK));
+
+  const showdown = createDebugGameState(game({ chips: [100, 100, 100] }), 'showdown');
+  assert.equal(showdown.phase, GamePhase.SHOWDOWN);
+  assert.deepEqual(getAvailableActions(showdown)[0], {
+    type: Transition.AWARD_POT,
+    potIndex: 0,
+    eligiblePlayerIds: [1, 2, 3],
+  });
+});
+
+test('debug presets enforce their player count and normal uses the regular start transition', () => {
+  assert.throws(() => createDebugGameState(game(), 'game-won'), /requires 2 players/);
+  assert.equal(createDebugGameState(game(), 'normal').phase, GamePhase.DEAL_HOLE_CARDS);
 });
 
 test('transitions return a new state without mutating the input state', () => {

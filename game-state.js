@@ -231,6 +231,45 @@ export function createGameState({ players, ante, anteIncrease = 0, dealerId, use
   };
 }
 
+const debugPresets = Object.freeze({
+  'two-pots': { phase: GamePhase.BETTING_RIVER, contributions: [25, 50, 50], chips: [0, 87, 88], actionPlayerId: 2, round: 4 },
+  'three-pots': { phase: GamePhase.BETTING_RIVER, contributions: [25, 50, 75, 75], chips: [0, 0, 87, 88], actionPlayerId: 3, round: 4 },
+  'all-in-runout': { phase: GamePhase.ALL_IN_RUNOUT, contributions: [25, 50, 50], chips: [0, 0, 175], actionPlayerId: null, round: 1 },
+  'deal-flop': { phase: GamePhase.DEAL_FLOP, contributions: [10, 10, 10], chips: [90, 90, 90], actionPlayerId: null, round: 1 },
+  showdown: { phase: GamePhase.SHOWDOWN, contributions: [20, 20, 20], chips: [80, 80, 80], actionPlayerId: null, round: 4 },
+  'hand-won': { phase: GamePhase.HAND_COMPLETE, contributions: [0, 0, 0], chips: [140, 80, 80], actionPlayerId: null, round: 4, winnerIds: [1] },
+  'game-won': { phase: GamePhase.GAME_COMPLETE, contributions: [0, 0], chips: [200, 0], actionPlayerId: null, round: 4, winnerIds: [1] },
+});
+
+/** Creates a named, internally consistent state for localhost debug starts. */
+export function createDebugGameState(gameState, presetName) {
+  const preset = debugPresets[presetName];
+  if (!preset) return executeTransition(gameState, { type: Transition.START_HAND });
+  if (gameState.phase !== GamePhase.SETUP) throw new Error('A debug starting point can only be created from setup.');
+  if (gameState.players.length !== preset.chips.length) throw new Error(`${presetName} requires ${preset.chips.length} players.`);
+
+  const state = clone(gameState);
+  state.phase = preset.phase;
+  state.handNumber = 1;
+  state.round = preset.round;
+  state.actionPlayerId = preset.actionPlayerId;
+  state.smallBlindPlayerId = playerToDealersLeft(state, state.dealerId);
+  state.bigBlindPlayerId = null;
+  state.highestRoundBet = Math.max(0, ...preset.contributions);
+  state.potAwardIndex = 0;
+  state.handWinnerIds = [...(preset.winnerIds || [])];
+  state.players.forEach((player, index) => {
+    player.chips = preset.chips[index];
+    player.roundBet = preset.contributions[index];
+    player.handContribution = preset.contributions[index];
+    player.hasActedThisRound = false;
+    player.folded = false;
+    player.eliminated = preset.phase === GamePhase.GAME_COMPLETE && player.chips === 0;
+  });
+  refreshPots(state);
+  return state;
+}
+
 /** Returns only the transitions that are legal for this exact state. */
 export function getAvailableActions(state) {
   if (state.phase === GamePhase.SETUP || state.phase === GamePhase.HAND_COMPLETE) {

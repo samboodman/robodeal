@@ -871,6 +871,9 @@ button:active {
   min-height: 20px;
   accent-color: #2875c7;
 }
+.debug-options {
+  margin-left: 1.75rem;
+}
 .message {
   min-height: 1.2em;
   margin: 14px 0 0;

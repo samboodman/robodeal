@@ -1,5 +1,5 @@
 import { maximumAdditionalBet, potsForBettingDisplay } from './pot-logic.js';
-import { createGameState, executeTransition, GamePhase, getAvailableActions, Transition } from './game-state.js';
+import { createDebugGameState, createGameState, executeTransition, GamePhase, getAvailableActions, Transition } from './game-state.js';
 import { addRequiredVoiceKeywords, fillPrompt, VoiceAgent } from './voice-agent.js';
 import promptsText from './Prompts.json?raw';
 
@@ -19,6 +19,9 @@ const message = document.querySelector('#message');
 const dealerSelect = document.querySelector('#dealer');
 const debugFeaturesSetting = document.querySelector('#debug-features-setting');
 const debugFeaturesCheckbox = document.querySelector('#debug-features');
+const debugOptions = document.querySelector('#debug-options');
+const debugPresetSelect = document.querySelector('#debug-preset');
+const enableAudioFileInputCheckbox = document.querySelector('#enable-audio-file-input');
 const useBigBlindCheckbox = document.querySelector('#use-big-blind');
 const setupScreen = document.querySelector('#setup-screen');
 const voiceCustomizationScreen = document.querySelector('#voice-customization-screen');
@@ -97,13 +100,34 @@ const isLocalDebugEnvironment = ['localhost', '127.0.0.1'].includes(window.locat
 function updateDebugFeatures() {
   const debugFeaturesEnabled = isLocalDebugEnvironment && debugFeaturesCheckbox.checked;
   debugFeaturesSetting.hidden = !isLocalDebugEnvironment;
-  voiceAudioTest.hidden = !debugFeaturesEnabled;
+  debugOptions.hidden = !debugFeaturesEnabled;
+  voiceAudioTest.hidden = !(debugFeaturesEnabled && enableAudioFileInputCheckbox.checked);
 
   if (!debugFeaturesEnabled) {
+    debugPresetSelect.value = 'normal';
+    enableAudioFileInputCheckbox.checked = false;
     voiceAudioFile.value = '';
     voiceAudioTestButton.disabled = true;
     voiceAudioTestStatus.textContent = '';
   }
+}
+
+const debugPresetPlayerCounts = Object.freeze({
+  'two-pots': 3,
+  'three-pots': 4,
+  'all-in-runout': 3,
+  'deal-flop': 3,
+  showdown: 3,
+  'hand-won': 3,
+  'game-won': 2,
+});
+
+function selectDebugPreset() {
+  const requiredPlayerCount = debugPresetPlayerCounts[debugPresetSelect.value];
+  if (!requiredPlayerCount) return;
+  playerCount.value = String(requiredPlayerCount);
+  drawPlayerNames();
+  useBigBlindCheckbox.checked = requiredPlayerCount >= 6;
 }
 
 function roundNumberFromGamePhase(phase) {
@@ -1207,6 +1231,8 @@ playerCount.addEventListener('change', () => {
   useBigBlindCheckbox.checked = Number(playerCount.value) >= 6;
 });
 debugFeaturesCheckbox.addEventListener('change', updateDebugFeatures);
+debugPresetSelect.addEventListener('change', selectDebugPreset);
+enableAudioFileInputCheckbox.addEventListener('change', updateDebugFeatures);
 voiceCustomizationButton.addEventListener('click', () => {
   setupScreen.hidden = true;
   voiceCustomizationScreen.hidden = false;
@@ -1322,6 +1348,8 @@ form.addEventListener('submit', (event) => {
     chipDisplayMode,
     chipDenominations: selectedChipDenominations(),
     voice: selectedVoiceSettings(),
+    debugPreset: debugFeaturesCheckbox.checked ? debugPresetSelect.value : 'normal',
+    enableAudioFileInput: debugFeaturesCheckbox.checked && enableAudioFileInputCheckbox.checked,
   };
   saveLastGameSettings();
   makePlayers();
@@ -1334,7 +1362,12 @@ form.addEventListener('submit', (event) => {
   dealPrompt.hidden = true;
   turnIndicator.hidden = false;
   keepScreenAwake();
-  startHand();
+  if (gameSettings.debugPreset === 'normal') {
+    startHand();
+  } else {
+    gameState = createDebugGameState(gameState, gameSettings.debugPreset);
+    renderGameState();
+  }
   connectVoiceAgent()
     .then(async (agent) => {
       if (gameSettings.startMicrophoneAutomatically) await agent.startMicrophone();
