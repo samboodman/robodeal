@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { calculatePots, hasBettingRoundFinished, maximumAdditionalBet, splitPotAmount } from './pot-logic.js';
+import {
+  calculatePots,
+  hasBettingRoundFinished,
+  maximumAdditionalBet,
+  potsForBettingDisplay,
+  splitPotAmount,
+} from './pot-logic.js';
 
 function player(number, handContribution, { chips = 0, folded = false, eliminated = false } = {}) {
   return { number, handContribution, chips, folded, eliminated };
@@ -61,6 +67,24 @@ test('creates an arbitrary number of side-pot layers', () => {
     { amount: 10, contributionCap: 15, eligiblePlayerNumbers: [3, 4] },
     { amount: 5, contributionCap: 20, eligiblePlayerNumbers: [4] },
   ]);
+});
+
+test('does not display a one-player uncalled layer as a side pot during betting', () => {
+  assert.deepEqual(potsForBettingDisplay([
+    { amount: 10, contributionCap: 5, eligiblePlayerNumbers: [1, 2] },
+    { amount: 245, contributionCap: 250, eligiblePlayerNumbers: [1] },
+  ]), [
+    { amount: 255, contributionCap: 250, eligiblePlayerNumbers: [1, 2] },
+  ]);
+});
+
+test('continues to display a real side pot with multiple eligible players', () => {
+  const pots = [
+    { amount: 45, contributionCap: 15, eligiblePlayerNumbers: [1, 2, 3] },
+    { amount: 10, contributionCap: 20, eligiblePlayerNumbers: [2, 3] },
+  ];
+
+  assert.deepEqual(potsForBettingDisplay(pots), pots);
 });
 
 test('counts folded chips but removes the folded player from eligibility', () => {

@@ -1,4 +1,4 @@
-import { maximumAdditionalBet } from './pot-logic.js';
+import { maximumAdditionalBet, potsForBettingDisplay } from './pot-logic.js';
 import { createGameState, executeTransition, GamePhase, getAvailableActions, Transition } from './game-state.js';
 import { addRequiredVoiceKeywords, fillPrompt, VoiceAgent } from './voice-agent.js';
 import promptsText from './Prompts.json?raw';
@@ -138,7 +138,14 @@ function viewHighestRoundBet() {
 }
 
 function viewPots() {
-  return gameState?.pots || [];
+  const pots = gameState?.pots || [];
+  const betting = gameState && [
+    GamePhase.BETTING_PREFLOP,
+    GamePhase.BETTING_FLOP,
+    GamePhase.BETTING_TURN,
+    GamePhase.BETTING_RIVER,
+  ].includes(gameState.phase);
+  return betting ? potsForBettingDisplay(pots) : pots;
 }
 
 function viewIsGameWon() {

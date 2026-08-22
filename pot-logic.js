@@ -74,6 +74,25 @@ export function calculatePots(players) {
   return pots;
 }
 
+export function potsForBettingDisplay(pots) {
+  const displayedPots = pots.map((pot) => ({
+    ...pot,
+    eligiblePlayerNumbers: [...pot.eligiblePlayerNumbers],
+  }));
+
+  // A final layer with only one eligible player is not a contested side pot.
+  // It is an unresolved/uncalled part of the current wager. Keep it in the
+  // visible preceding pot until another player acts and makes a real side pot.
+  while (displayedPots.length > 1 && displayedPots.at(-1).eligiblePlayerNumbers.length <= 1) {
+    const uncalledLayer = displayedPots.pop();
+    const precedingPot = displayedPots.at(-1);
+    precedingPot.amount += uncalledLayer.amount;
+    precedingPot.contributionCap = Math.max(precedingPot.contributionCap, uncalledLayer.contributionCap);
+  }
+
+  return displayedPots;
+}
+
 export function hasBettingRoundFinished(players, highestRoundBet) {
   const playersWhoCanAct = players.filter((player) => !player.folded && !player.eliminated && player.chips > 0);
 
