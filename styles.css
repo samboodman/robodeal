@@ -221,6 +221,8 @@ body {
   background: #fffdf6;
   color: #173329;
   box-shadow: 0 9px 26px #04160f66;
+  transform: scale(0.75);
+  transform-origin: center;
 }
 .action-panel {
   min-width: 0;
