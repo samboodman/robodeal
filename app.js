@@ -441,7 +441,7 @@ function getVoiceSnapshot() {
     canUndo: !gameScreen.hidden
       && dealPrompt.hidden
       && gameWinnerScreen.hidden
-      && !isGameWon
+      && !viewIsGameWon()
       && canUndoLastTurn(undoFromShowdown),
     pot: totalPotAmount(),
     availableActions: currentGameActions(),
@@ -487,10 +487,11 @@ function executeVoiceTool(name, args) {
 
   if (name === 'undo') {
     const fromShowdown = !winnerPicker.hidden;
-    if (gameScreen.hidden || !dealPrompt.hidden || !gameWinnerScreen.hidden || isGameWon || !canUndoLastTurn(fromShowdown)) {
+    if (gameScreen.hidden || !dealPrompt.hidden || !gameWinnerScreen.hidden || viewIsGameWon() || !canUndoLastTurn(fromShowdown)) {
       return { ok: false, message: 'There is no turn available to undo.' };
     }
-    const restoredPlayerName = playersByNumber[lastTurnState.currentPlayerNumber]?.name;
+    const restoredPlayerName = lastTurnState.players
+      .find((player) => player.id === lastTurnState.actionPlayerId)?.name;
     undoLastTurn(fromShowdown);
     return {
       ok: true,
