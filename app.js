@@ -1,7 +1,7 @@
 import { maximumAdditionalBet } from './pot-logic.js';
 import { createGameState, executeTransition, GamePhase, getAvailableActions, Transition } from './game-state.js';
 import { addRequiredVoiceKeywords, fillPrompt, VoiceAgent } from './voice-agent.js';
-import promptsText from './Prompts?raw';
+import promptsText from './Prompts.json?raw';
 
 const prompts = JSON.parse(promptsText);
 const gameVoicePrompts = {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { addRequiredVoiceKeywords, audioBufferToPcm16, containsActivationKeyword, microphoneAudioConstraints, VoiceAgent } from './voice-agent.js';
 
-const prompts = JSON.parse(readFileSync(new URL('./Prompts', import.meta.url), 'utf8'));
+const prompts = JSON.parse(readFileSync(new URL('./Prompts.json', import.meta.url), 'utf8'));
 
 function testAgent(options = {}) {
   const sent = [];
