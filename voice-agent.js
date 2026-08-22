@@ -42,6 +42,25 @@ export function addRequiredVoiceKeywords(keywords = [], requiredKeywords = []) {
   return [...new Set([...keywords, ...requiredKeywords])];
 }
 
+function normalizeKeywordText(value) {
+  return String(value || '')
+    .toLocaleLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[^\p{L}\p{N}']+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function containsActivationKeyword(transcript, keywords = []) {
+  const normalizedTranscript = normalizeKeywordText(transcript);
+  if (!normalizedTranscript) return false;
+  const searchableTranscript = ` ${normalizedTranscript} `;
+  return keywords.some((keyword) => {
+    const normalizedKeyword = normalizeKeywordText(keyword);
+    return normalizedKeyword && searchableTranscript.includes(` ${normalizedKeyword} `);
+  });
+}
+
 export function microphoneAudioConstraints(supported = {}) {
   return {
     echoCancellation: true,
@@ -269,6 +288,13 @@ export class VoiceAgent {
   async handleEvent(event) {
     if (event.type === 'conversation.item.input_audio_transcription.completed') {
       this.onTranscript(`Heard: “${event.transcript}”`);
+      if (!containsActivationKeyword(event.transcript, this.prompts.transcription.keywords)) {
+        if (event.item_id) {
+          this.send({ type: 'conversation.item.delete', item_id: event.item_id });
+        }
+        this.onStatus(this.idleStatus());
+        return;
+      }
       this.updateContext();
       this.requestResponse();
       return;
