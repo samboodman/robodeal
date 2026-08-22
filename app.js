@@ -1,8 +1,15 @@
 import { calculatePots, hasBettingRoundFinished, maximumAdditionalBet, splitPotAmount } from './pot-logic.js';
-import { fillPrompt, VoiceAgent } from './voice-agent.js';
+import { addRequiredVoiceKeywords, fillPrompt, VoiceAgent } from './voice-agent.js';
 import promptsText from './Prompts?raw';
 
 const prompts = JSON.parse(promptsText);
+const gameVoicePrompts = {
+  ...prompts,
+  transcription: {
+    ...prompts.transcription,
+    keywords: addRequiredVoiceKeywords(prompts.transcription.keywords, ['undo']),
+  },
+};
 
 const playerCount = document.querySelector('#player-count');
 const playerNames = document.querySelector('#player-names');
@@ -398,13 +405,14 @@ function getVoiceSnapshot() {
 
 function getVoiceInstructions() {
   const voice = gameSettings?.voice || selectedVoiceSettings();
-  return fillPrompt(prompts.mainVoiceInstructions, {
+  const instructions = fillPrompt(gameVoicePrompts.mainVoiceInstructions, {
     GAME_STATE: JSON.stringify(getVoiceSnapshot()),
     PERSONALITY: voice.personality,
     ACCENT: voice.accent,
     PACE: voice.pace,
-    ACTIVATION_KEYWORDS: prompts.transcription.keywords.join(', '),
+    ACTIVATION_KEYWORDS: gameVoicePrompts.transcription.keywords.join(', '),
   });
+  return `${instructions}\n\n"Undo" is an activation keyword and an undo request is always related to this poker game. When the foreground speaker says "undo," "undo that," or "undo the last turn," call the undo tool. Never classify a clear undo request as unrelated speech.`;
 }
 
 const voiceTools = [
@@ -418,7 +426,7 @@ const voiceTools = [
   { type: 'function', name: 'confirmAction', description: prompts.toolDescriptions.confirmAction, parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'cancelAction', description: prompts.toolDescriptions.cancelAction, parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'cardsDealt', description: prompts.toolDescriptions.cardsDealt, parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'undo', description: 'Undo the most recently confirmed poker turn when undo is available.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'undo', description: 'Poker action for a clear request containing "undo," including "undo," "undo that," and "undo the last turn." Call this tool instead of ignoreSpeech. It restores the most recently confirmed poker turn when available.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
 ];
 
 function executeVoiceTool(name, args) {
@@ -557,7 +565,7 @@ async function connectVoiceAgent() {
   voiceAgent?.disconnect();
   voiceAgent = new VoiceAgent({
     getInstructions: getVoiceInstructions,
-    prompts,
+    prompts: gameVoicePrompts,
     tools: voiceTools,
     executeTool: executeVoiceTool,
     onTranscript: setVoiceTranscript,

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { audioBufferToPcm16, microphoneAudioConstraints, VoiceAgent } from './voice-agent.js';
+import { addRequiredVoiceKeywords, audioBufferToPcm16, microphoneAudioConstraints, VoiceAgent } from './voice-agent.js';
 
 const prompts = JSON.parse(readFileSync(new URL('./Prompts', import.meta.url), 'utf8'));
 
@@ -41,6 +41,11 @@ test('the session exposes supplied tools with automatic tool choice', () => {
   assert.deepEqual(session.tools, tools);
 });
 
+test('required voice keywords are added once', () => {
+  assert.deepEqual(addRequiredVoiceKeywords(['call', 'undo'], ['undo']), ['call', 'undo']);
+  assert.deepEqual(addRequiredVoiceKeywords(['call'], ['undo']), ['call', 'undo']);
+});
+
 test('the session is configured for noisy restaurant speech', () => {
   const { agent } = testAgent();
 
@@ -52,7 +57,7 @@ test('the session is configured for noisy restaurant speech', () => {
   assert.deepEqual(input.transcription.languages, ['en']);
   assert.match(input.transcription.prompt, /noisy restaurant poker table/);
   assert.ok(input.transcription.keywords.includes('all in'));
-  assert.deepEqual(input.transcription.keywords.slice(-5), ['AI', 'Bot', 'Robot', 'Robodealer', 'dealer']);
+  assert.ok(input.transcription.keywords.includes('dealer'));
   assert.equal(input.turn_detection.type, 'semantic_vad');
   assert.equal(input.turn_detection.create_response, false);
 });

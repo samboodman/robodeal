@@ -38,6 +38,10 @@ export function fillPrompt(template, values) {
   ));
 }
 
+export function addRequiredVoiceKeywords(keywords = [], requiredKeywords = []) {
+  return [...new Set([...keywords, ...requiredKeywords])];
+}
+
 export function microphoneAudioConstraints(supported = {}) {
   return {
     echoCancellation: true,
