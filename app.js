@@ -29,11 +29,6 @@ const gameWinnerMessage = document.querySelector('#game-winner-message');
 const playerSeats = document.querySelector('#player-seats');
 const turnControl = document.querySelector('#turn-control');
 const turnIndicator = document.querySelector('#turn-indicator');
-const betInput = document.querySelector('#current-bet');
-const betIncrease = document.querySelector('#bet-increase');
-const betDecrease = document.querySelector('#bet-decrease');
-const foldButton = document.querySelector('#fold-button');
-const confirmButton = document.querySelector('#confirm-button');
 const undoButton = document.querySelector('#undo-button');
 const actionMenu = document.querySelector('#action-menu');
 const callActionButton = document.querySelector('#call-action-button');
@@ -53,8 +48,6 @@ const buttonHelp = document.querySelector('#button-help');
 const closeHelpButton = document.querySelector('#close-help-button');
 const potValue = document.querySelector('#pot-value');
 const sidePotValue = document.querySelector('#side-pot-value');
-const roundLabel = document.querySelector('#round-label');
-const actionButtons = document.querySelector('.action-buttons');
 const winnerPicker = document.querySelector('#winner-picker');
 const winnerQuestion = document.querySelector('#winner-question');
 const winnerOptions = document.querySelector('#winner-options');
@@ -281,21 +274,6 @@ async function keepScreenAwake() {
 async function allowScreenToSleep() {
   await screenWakeLock?.release();
   screenWakeLock = null;
-}
-
-function copyPots() {
-  return viewPots().map((potLayer) => ({
-    ...potLayer,
-    eligiblePlayerNumbers: [...potLayer.eligiblePlayerNumbers],
-  }));
-}
-
-function mainPotAmount() {
-  return viewPots()[0]?.amount || 0;
-}
-
-function sidePots() {
-  return viewPots().slice(1);
 }
 
 function totalPotAmount() {
@@ -840,7 +818,6 @@ function drawPlayerSeats() {
     turnControl.style.setProperty('--rotation', `${activeAngle - Math.PI / 2}rad`);
   }
   updatePotDisplay();
-  roundLabel.textContent = ['Preflop', 'Flop', 'Turn', 'River'][viewRoundNumber() - 1];
   turnIndicator.setAttribute('aria-label', `Your bet: ${pendingBet}. Total pot: ${totalPotAmount()}`);
   updateBetControls();
   voiceAgent?.updateContext();
@@ -849,24 +826,13 @@ function drawPlayerSeats() {
 function updateBetControls() {
   const currentPlayerNumber = viewActionPlayerNumber();
   const player = viewPlayer(currentPlayerNumber);
-  if (!player) {
-    actionButtons.hidden = true;
-    return;
-  }
+  if (!player) return;
   const minimumBet = amountToCallForView(player);
   const maximumBet = maximumAdditionalBet(enginePlayersForPotLogic(), currentPlayerNumber);
   const minimumAllowedBet = Math.min(minimumBet, maximumBet);
   const minimumRaiseBet = minimumAllowedBet;
   const canRaise = maximumBet > 0 && minimumRaiseBet <= maximumBet;
   pendingBet = Math.max(minimumAllowedBet, Math.min(pendingBet, maximumBet));
-  betInput.value = pendingBet;
-  betInput.min = minimumAllowedBet;
-  betInput.max = maximumBet;
-  betIncrease.disabled = pendingFold || pendingBet >= maximumBet;
-  betDecrease.disabled = pendingFold || pendingBet <= minimumBet;
-  betInput.disabled = pendingFold;
-  foldButton.classList.toggle('selected', pendingFold);
-  confirmButton.textContent = pendingFold ? 'Confirm fold' : 'Confirm bet';
   callActionButton.textContent = minimumAllowedBet > 0 ? `Call ${minimumAllowedBet}` : 'Call';
   callActionButton.disabled = minimumAllowedBet === 0;
   checkActionButton.disabled = minimumBet > 0;
@@ -886,7 +852,6 @@ function updateBetControls() {
   raisePanel.hidden = !raiseMode;
   const undoIsAvailable = canUndoLastTurn();
   undoButton.disabled = !undoIsAvailable;
-  actionButtons.classList.toggle('has-undo', undoIsAvailable);
 }
 
 function enterRaiseMode() {
@@ -961,7 +926,6 @@ function undoLastTurn(fromShowdown = false) {
 
 function showHandCompleteFromGameState() {
   turnIndicator.hidden = true;
-  actionButtons.hidden = true;
   winnerPicker.hidden = false;
   const winners = gameState.handWinnerIds.map((id) => viewPlayer(id)).filter(Boolean);
   const winnerNames = formatNameList(winners.map((winner) => winner.name));
@@ -984,7 +948,6 @@ function renderGameState() {
     dealPrompt.hidden = true;
     winnerPicker.hidden = true;
     turnIndicator.hidden = false;
-    actionButtons.hidden = false;
     const player = viewPlayer(gameState.actionPlayerId);
     pendingBet = player ? amountToCallForView(player) : 0;
     pendingFold = false;
@@ -993,7 +956,6 @@ function renderGameState() {
   }
 
   turnIndicator.hidden = true;
-  actionButtons.hidden = true;
   if (phase === GamePhase.DEAL_HOLE_CARDS) {
     const dealer = viewPlayer(gameState.dealerId);
     const introduction = gameState.handNumber === 1 ? `Game is Texas Hold'em. Ante is ${gameState.ante}.` : `New hand. Ante is ${gameState.ante}.`;
@@ -1076,7 +1038,6 @@ function showGameStatePotWinnerPicker() {
 
 function showPotWinnerPicker(question, players, awardFunction, splitFunction = null) {
   turnIndicator.hidden = true;
-  actionButtons.hidden = true;
   winnerQuestion.textContent = question;
   winnerOptions.replaceChildren();
   let splitMode = false;
@@ -1335,24 +1296,6 @@ closeHelpButton.addEventListener('click', closeButtonHelp);
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && !buttonHelp.hidden) closeButtonHelp();
 });
-betIncrease.addEventListener('click', () => {
-  betCurrentPlayer(pendingBet + 1);
-});
-betDecrease.addEventListener('click', () => {
-  betCurrentPlayer(pendingBet - 1);
-});
-betInput.addEventListener('change', () => {
-  betCurrentPlayer(betInput.value);
-});
-foldButton.addEventListener('click', () => {
-  if (pendingFold) {
-    pendingFold = false;
-    updateBetControls();
-  } else {
-    foldCurrentPlayer();
-  }
-});
-confirmButton.addEventListener('click', confirm);
 undoButton.addEventListener('click', () => undoLastTurn());
 showdownUndoButton.addEventListener('click', () => undoLastTurn(true));
 dealOkButton.addEventListener('click', cardsAreDealt);
@@ -1366,7 +1309,6 @@ form.addEventListener('submit', (event) => {
     anteIncrease: Number(document.querySelector('#ante-increase').value),
     useBigBlind: useBigBlindCheckbox.checked,
     dealerNumber: Number(dealerSelect.value),
-    firstDealerNumber: Number(dealerSelect.value),
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
     startMicrophoneAutomatically: startMicrophoneAutomaticallyCheckbox.checked,
     showVoiceTranscript: showVoiceTranscriptCheckbox.checked,
@@ -1384,7 +1326,6 @@ form.addEventListener('submit', (event) => {
   winnerPicker.hidden = true;
   dealPrompt.hidden = true;
   turnIndicator.hidden = false;
-  actionButtons.hidden = false;
   keepScreenAwake();
   startHand();
   connectVoiceAgent()

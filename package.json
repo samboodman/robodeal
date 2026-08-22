@@ -21,9 +21,6 @@
     "url": "https://github.com/samboodman/robodeal/issues"
   },
   "homepage": "https://github.com/samboodman/robodeal#readme",
-  "dependencies": {
-    "@huggingface/transformers": "^4.2.0"
-  },
   "devDependencies": {
     "vite": "^8.2.1"
   }
