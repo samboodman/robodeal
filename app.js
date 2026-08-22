@@ -33,6 +33,21 @@ const betDecrease = document.querySelector('#bet-decrease');
 const foldButton = document.querySelector('#fold-button');
 const confirmButton = document.querySelector('#confirm-button');
 const undoButton = document.querySelector('#undo-button');
+const actionMenu = document.querySelector('#action-menu');
+const callActionButton = document.querySelector('#call-action-button');
+const checkActionButton = document.querySelector('#check-action-button');
+const foldActionButton = document.querySelector('#fold-action-button');
+const allInActionButton = document.querySelector('#all-in-action-button');
+const raiseActionButton = document.querySelector('#raise-action-button');
+const raisePanel = document.querySelector('#raise-panel');
+const raiseDecreaseButton = document.querySelector('#raise-decrease-button');
+const raiseIncreaseButton = document.querySelector('#raise-increase-button');
+const raiseTotalValue = document.querySelector('#raise-total-value');
+const confirmRaiseButton = document.querySelector('#confirm-raise-button');
+const cancelRaiseButton = document.querySelector('#cancel-raise-button');
+const helpButton = document.querySelector('#help-button');
+const buttonHelp = document.querySelector('#button-help');
+const closeHelpButton = document.querySelector('#close-help-button');
 const potValue = document.querySelector('#pot-value');
 const sidePotValue = document.querySelector('#side-pot-value');
 const roundLabel = document.querySelector('#round-label');
@@ -91,6 +106,7 @@ let voiceAgent = null;
 let voicePreviewAgent = null;
 let voiceConnectionPromise = null;
 let pendingVoiceAction = null;
+let raiseMode = false;
 const lastGameSettingsKey = 'robodeal-last-game-settings';
 
 function selectedVoiceSettings() {
@@ -927,6 +943,7 @@ function setCurrentPlayer(number) {
   if (pendingVoiceAction && pendingVoiceAction.playerNumber !== number) {
     pendingVoiceAction = null;
   }
+  raiseMode = false;
   currentPlayerNumber = number;
   gameSettings.currentPlayerNumber = number;
   pendingBet = Math.max(0, highestRoundBet - playersByNumber[number].roundBet);
@@ -956,6 +973,8 @@ function updateBetControls() {
   const minimumBet = Math.max(0, highestRoundBet - player.roundBet);
   const maximumBet = maximumAdditionalBet(Object.values(playersByNumber), currentPlayerNumber);
   const minimumAllowedBet = Math.min(minimumBet, maximumBet);
+  const minimumRaiseBet = Math.max(minimumAllowedBet, highestRoundBet - player.roundBet + 1, 1);
+  const canRaise = minimumRaiseBet <= maximumBet;
   pendingBet = Math.max(minimumAllowedBet, Math.min(pendingBet, maximumBet));
   betInput.value = pendingBet;
   betInput.min = minimumAllowedBet;
@@ -965,9 +984,42 @@ function updateBetControls() {
   betInput.disabled = pendingFold;
   foldButton.classList.toggle('selected', pendingFold);
   confirmButton.textContent = pendingFold ? 'Confirm fold' : 'Confirm bet';
+  callActionButton.textContent = minimumAllowedBet > 0 ? `Call ${minimumAllowedBet}` : 'Call';
+  callActionButton.disabled = minimumAllowedBet === 0;
+  checkActionButton.disabled = minimumBet > 0;
+  allInActionButton.disabled = player.chips <= 0 || maximumBet !== player.chips;
+  raiseActionButton.disabled = !canRaise;
+  raiseTotalValue.value = String(player.roundBet + pendingBet);
+  raiseDecreaseButton.disabled = pendingBet <= minimumRaiseBet;
+  raiseIncreaseButton.disabled = pendingBet >= maximumBet;
+  confirmRaiseButton.disabled = !canRaise || pendingBet < minimumRaiseBet;
+  actionMenu.hidden = raiseMode;
+  raisePanel.hidden = !raiseMode;
   const undoIsAvailable = canUndoLastTurn();
   undoButton.hidden = !undoIsAvailable;
   actionButtons.classList.toggle('has-undo', undoIsAvailable);
+}
+
+function enterRaiseMode() {
+  const player = playersByNumber[currentPlayerNumber];
+  const maximumBet = maximumAdditionalBet(Object.values(playersByNumber), currentPlayerNumber);
+  const minimumBet = Math.max(0, highestRoundBet - player.roundBet);
+  const minimumRaiseBet = Math.max(Math.min(minimumBet, maximumBet), highestRoundBet - player.roundBet + 1, 1);
+  if (minimumRaiseBet > maximumBet) return;
+  raiseMode = true;
+  pendingBet = minimumRaiseBet;
+  updateBetControls();
+}
+
+function cancelRaiseMode() {
+  const player = playersByNumber[currentPlayerNumber];
+  raiseMode = false;
+  pendingBet = Math.min(Math.max(0, highestRoundBet - player.roundBet), player.chips);
+  updateBetControls();
+}
+
+function closeButtonHelp() {
+  buttonHelp.hidden = true;
 }
 
 function captureTurnState() {
@@ -992,6 +1044,7 @@ function canUndoLastTurn(fromShowdown = false) {
 function undoLastTurn(fromShowdown = false) {
   if (!canUndoLastTurn(fromShowdown)) return;
 
+  raiseMode = false;
   Object.entries(lastTurnState.players).forEach(([number, playerState]) => {
     Object.assign(playersByNumber[number], playerState);
   });
@@ -1488,6 +1541,53 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && !gameScreen.hidden && !isGameWon) {
     keepScreenAwake();
   }
+});
+callActionButton.addEventListener('click', () => {
+  if (callActionButton.disabled) return;
+  const player = playersByNumber[currentPlayerNumber];
+  raiseMode = false;
+  pendingBet = Math.min(Math.max(0, highestRoundBet - player.roundBet), player.chips);
+  confirm();
+});
+checkActionButton.addEventListener('click', () => {
+  if (checkActionButton.disabled) return;
+  raiseMode = false;
+  pendingBet = 0;
+  pendingFold = false;
+  confirm();
+});
+foldActionButton.addEventListener('click', () => {
+  raiseMode = false;
+  pendingFold = true;
+  confirm();
+});
+allInActionButton.addEventListener('click', () => {
+  if (allInActionButton.disabled) return;
+  const player = playersByNumber[currentPlayerNumber];
+  raiseMode = false;
+  betCurrentPlayer(player.chips);
+  confirm();
+});
+raiseActionButton.addEventListener('click', enterRaiseMode);
+raiseDecreaseButton.addEventListener('click', () => {
+  if (!raiseDecreaseButton.disabled) betCurrentPlayer(pendingBet - 1);
+});
+raiseIncreaseButton.addEventListener('click', () => {
+  if (!raiseIncreaseButton.disabled) betCurrentPlayer(pendingBet + 1);
+});
+confirmRaiseButton.addEventListener('click', () => {
+  if (confirmRaiseButton.disabled) return;
+  raiseMode = false;
+  confirm();
+});
+cancelRaiseButton.addEventListener('click', cancelRaiseMode);
+helpButton.addEventListener('click', () => {
+  buttonHelp.hidden = false;
+  closeHelpButton.focus();
+});
+closeHelpButton.addEventListener('click', closeButtonHelp);
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !buttonHelp.hidden) closeButtonHelp();
 });
 betIncrease.addEventListener('click', () => {
   betCurrentPlayer(pendingBet + 1);
