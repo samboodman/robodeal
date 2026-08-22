@@ -31,8 +31,7 @@ function completeByFolding(state) {
 
 function completeRoundWithCalls(state) {
   let next = action(state, Transition.CALL);
-  next = action(next, Transition.CALL);
-  return action(next, Transition.CHECK);
+  return action(next, Transition.CALL);
 }
 
 function completeRoundWithChecks(state) {
@@ -77,6 +76,17 @@ test('CARDS_DEALT starts preflop with only legal current-player actions', () => 
     { type: Transition.BET, minAdditionalChips: 6, maxAdditionalChips: 250 },
     { type: Transition.ALL_IN, additionalChips: 250 },
   ]);
+});
+
+test('matching the ante does not ask the ante player to act again', () => {
+  let state = start(game());
+
+  state = action(state, Transition.CALL); // C matches B's ante.
+  state = action(state, Transition.CALL); // A matches B's ante.
+
+  assert.equal(state.phase, GamePhase.DEAL_FLOP);
+  assert.equal(state.actionPlayerId, null);
+  assert.deepEqual(getAvailableActions(state), [{ type: Transition.CARDS_DEALT }]);
 });
 
 test('every betting transition validates its guard', () => {
@@ -261,4 +271,15 @@ test('big blind mode changes forced bets and first player to act', () => {
   assert.equal(state.players[1].roundBet, 5);
   assert.equal(state.players[2].roundBet, 10);
   assert.equal(state.actionPlayerId, 1);
+});
+
+test('the big blind retains its option when nobody raises', () => {
+  let state = start(game({ useBigBlind: true }));
+
+  state = action(state, Transition.CALL); // A matches the big blind.
+  state = action(state, Transition.CALL); // B matches the big blind.
+
+  assert.equal(state.phase, GamePhase.BETTING_PREFLOP);
+  assert.equal(state.actionPlayerId, 3);
+  assert.ok(getAvailableActions(state).some(({ type }) => type === Transition.CHECK));
 });

@@ -106,14 +106,16 @@ function refreshPots(state) {
   })));
 }
 
-function postBlind(state, playerId, requestedAmount) {
+function postBlind(state, playerId, requestedAmount, countsAsInitialAction = true) {
   const player = playerById(state, playerId);
   const amount = Math.min(requestedAmount, player.chips);
   player.chips -= amount;
   player.roundBet += amount;
   player.handContribution += amount;
-  // A forced blind is not a voluntary betting action.
-  player.hasActedThisRound = false;
+  // In this game, posting the ante counts as an initial matched action. A
+  // later raise still requires a response because roundBet will no longer
+  // equal highestRoundBet. A configured big blind retains its usual option.
+  player.hasActedThisRound = countsAsInitialAction;
   state.highestRoundBet = Math.max(state.highestRoundBet, player.roundBet);
 }
 
@@ -295,7 +297,7 @@ export function executeTransition(gameState, action) {
     state.smallBlindPlayerId = playerToDealersLeft(state, state.dealerId);
     state.bigBlindPlayerId = state.useBigBlind ? playerToDealersLeft(state, state.smallBlindPlayerId) : null;
     postBlind(state, state.smallBlindPlayerId, state.ante);
-    if (state.bigBlindPlayerId !== null) postBlind(state, state.bigBlindPlayerId, state.ante * 2);
+    if (state.bigBlindPlayerId !== null) postBlind(state, state.bigBlindPlayerId, state.ante * 2, false);
     refreshPots(state);
     state.actionPlayerId = nextPlayerFrom(state, state.bigBlindPlayerId ?? state.smallBlindPlayerId);
     return state;
