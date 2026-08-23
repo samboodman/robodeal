@@ -15,7 +15,7 @@ export default async function handler(request, response) {
 
   const form = new FormData();
   form.append('sdp', request.body.sdp);
-  form.append('session', JSON.stringify({ type: 'realtime', model: 'gpt-realtime-2.1-mini' }));
+  form.append('session', JSON.stringify({ type: 'realtime', model: 'gpt-realtime-2.1' }));
   const openAIResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
     method: 'POST',
     headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },

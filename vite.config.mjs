@@ -23,7 +23,7 @@ function localRealtimeApi(apiKey) {
           const requestBody = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           const form = new FormData();
           form.append('sdp', requestBody.sdp || '');
-          form.append('session', JSON.stringify({ type: 'realtime', model: 'gpt-realtime-2.1-mini' }));
+          form.append('session', JSON.stringify({ type: 'realtime', model: 'gpt-realtime-2.1' }));
           const openAIResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
             method: 'POST',
             headers: { Authorization: `Bearer ${apiKey}` },
