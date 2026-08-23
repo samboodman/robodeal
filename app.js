@@ -83,7 +83,6 @@ const voiceCustomizationBack = document.querySelector('#voice-customization-back
 const testVoiceButton = document.querySelector('#test-voice-button');
 const voiceChoice = document.querySelector('#voice-choice');
 const voiceAccent = document.querySelector('#voice-accent');
-const voicePersonality = document.querySelector('#voice-personality');
 const voicePace = document.querySelector('#voice-pace');
 const voicePreviewStatus = document.querySelector('#voice-preview-status');
 const voiceAudioTest = document.querySelector('#voice-audio-test');
@@ -241,7 +240,6 @@ function selectedVoiceSettings() {
   return {
     name: voiceChoice.value,
     accent: voiceAccent.value,
-    personality: voicePersonality.value,
     pace: voicePace.value,
   };
 }
@@ -324,7 +322,6 @@ function restoreLastGameSettings() {
   if (settings.voice) {
     voiceChoice.value = settings.voice.name || voiceChoice.value;
     voiceAccent.value = settings.voice.accent || voiceAccent.value;
-    voicePersonality.value = settings.voice.personality || voicePersonality.value;
     voicePace.value = settings.voice.pace || voicePace.value;
   }
 
@@ -536,7 +533,7 @@ function getVoiceInstructions() {
   const voice = gameSettings?.voice || selectedVoiceSettings();
   const instructions = fillPrompt(gameVoicePrompts.mainVoiceInstructions, {
     GAME_STATE: JSON.stringify(getVoiceSnapshot()),
-    PERSONALITY: voice.personality,
+    PERSONALITY: 'neutral',
     ACCENT: voice.accent,
     PACE: voice.pace,
     ACTIVATION_KEYWORDS: gameVoicePrompts.transcription.keywords.join(', '),
