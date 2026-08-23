@@ -861,11 +861,15 @@ function updateBetControls() {
   const minimumAllowedBet = Math.min(minimumBet, maximumBet);
   const minimumRaiseBet = minimumAllowedBet;
   const canRaise = maximumBet > 0 && minimumRaiseBet <= maximumBet;
+  const callIsAllIn = minimumAllowedBet > 0 && minimumAllowedBet === player.chips;
   pendingBet = Math.max(minimumAllowedBet, Math.min(pendingBet, maximumBet));
-  callActionButton.textContent = minimumAllowedBet > 0 ? `Call ${minimumAllowedBet}` : 'Call';
+  callActionButton.textContent = callIsAllIn
+    ? `Call ${minimumAllowedBet} (all in)`
+    : minimumAllowedBet > 0 ? `Call ${minimumAllowedBet}` : 'Call';
   callActionButton.disabled = minimumAllowedBet === 0;
   checkActionButton.disabled = minimumBet > 0;
-  allInActionButton.disabled = player.chips <= 0 || maximumBet !== player.chips;
+  allInActionButton.disabled = callIsAllIn || player.chips <= 0 || maximumBet !== player.chips;
+  allInActionButton.title = callIsAllIn ? 'Calling already uses all your remaining chips.' : '';
   raiseActionButton.disabled = !canRaise;
   raiseTotalValue.value = String(player.roundBet + pendingBet);
   raiseTotalValue.min = String(player.roundBet + minimumRaiseBet);
