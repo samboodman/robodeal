@@ -8,6 +8,7 @@ The project is a learning project for Sam. The game is intentionally one small s
 
 - Set up two to eight players, player names, starting chips, dealer, small blind, optional double-sized big blind, No Limit/Pot Limit/Fixed Limit betting, a configurable fixed-limit bet, and the scheduled blind increase.
 - Play a hand on one shared phone with physical cards.
+- Drag the labeled player seats into their physical table positions before the first deal; the locked clockwise order controls turns for the entire game.
 - Track bets, calls, checks, folds, all-ins, main pots, side pots, player elimination, and the dealer moving each hand.
 - Automatically post the configured small blind and, when enabled, a big blind worth twice the small blind.
 - Show whose turn it is around the table and rotate the controls toward that player.

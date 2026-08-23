@@ -10,6 +10,7 @@ import {
   Transition,
 } from './game-state.js';
 import { addRequiredVoiceKeywords, fillPrompt, VoiceAgent } from './voice-agent.js';
+import { clockwisePlayerIds, normalizeSeatAngle } from './seat-order.js';
 import promptsText from './Prompts.json?raw';
 
 const prompts = JSON.parse(promptsText);
@@ -42,6 +43,7 @@ const gameScreen = document.querySelector('#game-screen');
 const gameWinnerScreen = document.querySelector('#game-winner-screen');
 const gameWinnerMessage = document.querySelector('#game-winner-message');
 const playerSeats = document.querySelector('#player-seats');
+const lockSeatsButton = document.querySelector('#lock-seats-button');
 const turnControl = document.querySelector('#turn-control');
 const turnIndicator = document.querySelector('#turn-indicator');
 const undoButton = document.querySelector('#undo-button');
@@ -107,6 +109,8 @@ let voicePreviewAgent = null;
 let voiceConnectionPromise = null;
 let pendingVoiceAction = null;
 let raiseMode = false;
+let seatingMode = false;
+let seatAngles = {};
 const lastGameSettingsKey = 'robodeal-last-game-settings';
 const isLocalDebugEnvironment = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 const bettingLimitLabels = Object.freeze({
@@ -852,30 +856,96 @@ function makePlayerChipPiles(amount) {
   return container;
 }
 
+function initializeSeatAngles() {
+  seatAngles = Object.fromEntries(viewPlayers().map((player, index, players) => [
+    player.id,
+    (index / players.length) * Math.PI * 2 + Math.PI / 2,
+  ]));
+}
+
+function positionSeatElement(seat, playerId) {
+  const angle = seatAngles[playerId] ?? 0;
+  seat.style.setProperty('--x', `${50 + Math.cos(angle) * 40}%`);
+  seat.style.setProperty('--y', `${50 + Math.sin(angle) * 40}%`);
+  seat.style.setProperty('--rotation', `${angle - Math.PI / 2}rad`);
+}
+
+function pointerSeatAngle(event) {
+  const bounds = gameScreen.getBoundingClientRect();
+  const horizontal = (event.clientX - (bounds.left + bounds.width / 2)) / Math.max(1, bounds.width);
+  const vertical = (event.clientY - (bounds.top + bounds.height / 2)) / Math.max(1, bounds.height);
+  return normalizeSeatAngle(Math.atan2(vertical, horizontal));
+}
+
+function makeSeatDraggable(seat, playerId) {
+  let dragging = false;
+  const moveSeat = (event) => {
+    seatAngles[playerId] = pointerSeatAngle(event);
+    positionSeatElement(seat, playerId);
+  };
+
+  seat.addEventListener('pointerdown', (event) => {
+    if (!seatingMode) return;
+    dragging = true;
+    seat.setPointerCapture(event.pointerId);
+    seat.classList.add('dragging');
+    moveSeat(event);
+  });
+  seat.addEventListener('pointermove', (event) => {
+    if (dragging) moveSeat(event);
+  });
+  const stopDragging = (event) => {
+    if (!dragging) return;
+    dragging = false;
+    if (seat.hasPointerCapture(event.pointerId)) seat.releasePointerCapture(event.pointerId);
+    seat.classList.remove('dragging');
+  };
+  seat.addEventListener('pointerup', stopDragging);
+  seat.addEventListener('pointercancel', stopDragging);
+  seat.addEventListener('keydown', (event) => {
+    if (!seatingMode || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    event.preventDefault();
+    const direction = event.key === 'ArrowRight' ? 1 : -1;
+    seatAngles[playerId] = normalizeSeatAngle(seatAngles[playerId] + direction * Math.PI / 36);
+    positionSeatElement(seat, playerId);
+  });
+}
+
+function lockClockwiseSeatOrder() {
+  const playersById = new Map(viewPlayers().map((player) => [player.id, player]));
+  const players = clockwisePlayerIds(viewPlayers(), seatAngles).map((playerId) => playersById.get(playerId));
+  gameState = createGameState({
+    players,
+    ante: gameSettings.ante,
+    anteIncrease: gameSettings.anteIncrease,
+    dealerId: gameSettings.dealerNumber,
+    useBigBlind: gameSettings.useBigBlind,
+    bettingLimit: gameSettings.bettingLimit,
+    fixedLimitBet: gameSettings.fixedLimitBet,
+  });
+}
+
 function drawPlayerSeats() {
   playerSeats.replaceChildren();
   const players = viewPlayers();
   const currentPlayerNumber = viewActionPlayerNumber();
 
-  players.forEach((player, index) => {
-    const angle = (index / players.length) * Math.PI * 2 + Math.PI / 2;
+  players.forEach((player) => {
     const seat = document.createElement('div');
     seat.className = 'player-seat';
     const playerNumber = viewPlayerNumber(player);
     const isCurrentPlayer = playerNumber === currentPlayerNumber;
     if (isCurrentPlayer) seat.classList.add('current-player');
-    if (player.id === gameState.dealerId) seat.classList.add('dealer');
+    if (!seatingMode && player.id === gameState.dealerId) seat.classList.add('dealer');
     if (player.folded) seat.classList.add('folded');
     if (player.eliminated) seat.classList.add('eliminated');
-    seat.style.setProperty('--x', `${50 + Math.cos(angle) * 43}%`);
-    seat.style.setProperty('--y', `${50 + Math.sin(angle) * 43}%`);
-    seat.style.setProperty('--rotation', `${angle - Math.PI / 2}rad`);
+    positionSeatElement(seat, playerNumber);
     const name = document.createElement('span');
     name.className = 'player-seat-name';
     name.textContent = player.name;
     seat.append(name);
 
-    if (!player.eliminated) {
+    if (!seatingMode && !player.eliminated) {
       if (gameSettings.chipDisplayMode === 'pile') {
         seat.append(makePlayerChipPiles(player.chips));
       } else {
@@ -886,17 +956,20 @@ function drawPlayerSeats() {
       }
     }
     const isDealer = player.id === gameState.dealerId;
-    seat.setAttribute('aria-label', `${player.name}${player.eliminated ? ', out of the game' : `: ${player.chips} chips`}${isDealer ? ', dealer' : ''}${isCurrentPlayer ? ', current turn' : ''}${player.folded ? ', folded' : ''}`);
-    seat.setAttribute('role', 'status');
-    seat.tabIndex = -1;
+    seat.setAttribute('aria-label', seatingMode
+      ? `${player.name}, drag around the table to choose this seat`
+      : `${player.name}${player.eliminated ? ', out of the game' : `: ${player.chips} chips`}${isDealer ? ', dealer' : ''}${isCurrentPlayer ? ', current turn' : ''}${player.folded ? ', folded' : ''}`);
+    seat.setAttribute('role', seatingMode ? 'button' : 'status');
+    seat.tabIndex = seatingMode ? 0 : -1;
+    if (seatingMode) makeSeatDraggable(seat, playerNumber);
     playerSeats.append(seat);
   });
 
-  const activeIndex = players.findIndex((player) => viewPlayerNumber(player) === currentPlayerNumber);
-  if (activeIndex >= 0) {
-    const activeAngle = (activeIndex / players.length) * Math.PI * 2 + Math.PI / 2;
+  const activeAngle = seatAngles[currentPlayerNumber];
+  if (Number.isFinite(activeAngle)) {
     turnControl.style.setProperty('--rotation', `${activeAngle - Math.PI / 2}rad`);
   }
+  if (seatingMode) return;
   updatePotDisplay();
   turnIndicator.setAttribute('aria-label', `Your bet: ${pendingBet}. Total pot: ${totalPotAmount()}`);
   updateBetControls();
@@ -1257,6 +1330,50 @@ function startNewHand() {
   renderGameState();
 }
 
+function connectVoiceForCurrentGame() {
+  connectVoiceAgent()
+    .then(async (agent) => {
+      if (!dealPrompt.hidden && gameState.phase === GamePhase.DEAL_HOLE_CARDS) agent.speak(dealMessage.textContent);
+      if (gameSettings.startMicrophoneAutomatically) await agent.startMicrophone();
+      updateRecordingButton();
+    })
+    .catch((error) => {
+      const errorMessage = `Voice unavailable: ${error.message}`;
+      setVoiceStatus(errorMessage);
+      setVoiceTranscript(errorMessage);
+    });
+}
+
+function beginSeatPositioning() {
+  seatingMode = true;
+  initializeSeatAngles();
+  gameScreen.classList.add('seating-mode');
+  turnControl.hidden = true;
+  winnerPicker.hidden = true;
+  dealPrompt.hidden = true;
+  voiceTranscript.hidden = true;
+  voiceAudioTest.hidden = true;
+  lockSeatsButton.hidden = false;
+  drawPlayerSeats();
+}
+
+function lockSeatsAndStartGame() {
+  if (!seatingMode) return;
+  lockClockwiseSeatOrder();
+  seatingMode = false;
+  gameScreen.classList.remove('seating-mode');
+  lockSeatsButton.hidden = true;
+  turnControl.hidden = false;
+  updateDebugFeatures();
+  if (gameSettings.debugPreset === 'normal') {
+    startHand();
+  } else {
+    gameState = createDebugGameState(gameState, gameSettings.debugPreset);
+    renderGameState();
+  }
+  connectVoiceForCurrentGame();
+}
+
 function confirmTurn() {
   const currentPlayerNumber = gameState.actionPlayerId;
   const player = viewPlayer(currentPlayerNumber);
@@ -1421,6 +1538,7 @@ undoButton.addEventListener('click', () => undoLastTurn());
 showdownUndoButton.addEventListener('click', () => undoLastTurn(true));
 dealOkButton.addEventListener('click', cardsAreDealt);
 recordingButton.addEventListener('click', toggleRecording);
+lockSeatsButton.addEventListener('click', lockSeatsAndStartGame);
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   gameSettings = {
@@ -1450,25 +1568,8 @@ form.addEventListener('submit', (event) => {
   gameWinnerScreen.hidden = true;
   winnerPicker.hidden = true;
   dealPrompt.hidden = true;
-  turnIndicator.hidden = false;
   keepScreenAwake();
-  if (gameSettings.debugPreset === 'normal') {
-    startHand();
-  } else {
-    gameState = createDebugGameState(gameState, gameSettings.debugPreset);
-    renderGameState();
-  }
-  connectVoiceAgent()
-    .then(async (agent) => {
-      if (!dealPrompt.hidden && gameState.phase === GamePhase.DEAL_HOLE_CARDS) agent.speak(dealMessage.textContent);
-      if (gameSettings.startMicrophoneAutomatically) await agent.startMicrophone();
-      updateRecordingButton();
-    })
-    .catch((error) => {
-      const errorMessage = `Voice unavailable: ${error.message}`;
-      setVoiceStatus(errorMessage);
-      setVoiceTranscript(errorMessage);
-    });
+  beginSeatPositioning();
 });
 
 drawPlayerNames();

@@ -210,6 +210,28 @@ body {
   position: absolute;
   inset: 0;
 }
+.lock-seats-button {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  width: min(82vw, 330px);
+  min-height: 52px;
+  margin: 0;
+  border: 3px solid #fffdf6;
+  border-radius: 999px;
+  background: #7a3a20;
+  color: #fffdf6;
+  font: inherit;
+  font-weight: 900;
+  box-shadow: 0 5px 0 #45200f, 0 8px 22px #170b0677;
+  cursor: pointer;
+  transform: translateX(-50%);
+}
+.lock-seats-button:active {
+  transform: translate(-50%, 3px);
+  box-shadow: 0 2px 0 #45200f, 0 5px 14px #170b0677;
+}
 .turn-indicator {
   position: relative;
   display: grid;
@@ -536,6 +558,19 @@ body {
   box-shadow: 0 3px 0 #7c2517;
   cursor: pointer;
   transform: translate(-50%, -50%) rotate(var(--rotation));
+}
+.game-screen.seating-mode .player-seat {
+  z-index: 2;
+  background: #7a3a20;
+  box-shadow: 0 3px 0 #45200f;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.game-screen.seating-mode .player-seat.dragging {
+  z-index: 3;
+  cursor: grabbing;
+  box-shadow: 0 0 0 6px #f1c56588, 0 5px 0 #45200f;
 }
 .player-seat-name {
   display: block;

@@ -114,6 +114,21 @@ test('START_HAND posts the blind and enters a named deal state', () => {
   assert.deepEqual(getAvailableActions(state), [{ type: Transition.CARDS_DEALT }]);
 });
 
+test('turns follow the locked physical player order instead of numeric order', () => {
+  const state = executeTransition(createGameState({
+    players: [
+      { id: 1, name: 'One', chips: 100 },
+      { id: 3, name: 'Three', chips: 100 },
+      { id: 2, name: 'Two', chips: 100 },
+    ],
+    ante: 5,
+    dealerId: 1,
+  }), { type: Transition.START_HAND });
+
+  assert.equal(state.smallBlindPlayerId, 3);
+  assert.equal(state.actionPlayerId, 2);
+});
+
 test('CARDS_DEALT starts preflop with only legal current-player actions', () => {
   const state = start(game());
 
