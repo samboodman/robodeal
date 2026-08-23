@@ -118,7 +118,7 @@ const bettingLimitLabels = Object.freeze({
   [BettingLimit.POT_LIMIT]: 'Pot-Limit',
   [BettingLimit.FIXED_LIMIT]: 'Fixed-Limit',
 });
-const seatSnapDistance = Math.PI / 18;
+const seatSnapDistance = Math.PI / 36;
 
 function updateFixedLimitSetting() {
   fixedLimitSetting.hidden = bettingLimitSelect.value !== BettingLimit.FIXED_LIMIT;

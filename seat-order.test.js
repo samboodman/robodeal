@@ -32,8 +32,8 @@ test('every player count can snap to the four square angles', () => {
 
 test('leaves a seat free when it is outside the magnetic snap distance', () => {
   const requestedAngle = 0.3;
-  const tenDegrees = Math.PI / 18;
+  const fiveDegrees = Math.PI / 36;
 
-  assert.equal(snapSeatAngle(requestedAngle, 3, Math.PI / 2, tenDegrees), requestedAngle);
-  assert.equal(snapSeatAngle(0.05, 3, Math.PI / 2, tenDegrees), 0);
+  assert.equal(snapSeatAngle(requestedAngle, 3, Math.PI / 2, fiveDegrees), requestedAngle);
+  assert.equal(snapSeatAngle(0.05, 3, Math.PI / 2, fiveDegrees), 0);
 });
