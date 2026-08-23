@@ -533,7 +533,6 @@ function getVoiceInstructions() {
   const voice = gameSettings?.voice || selectedVoiceSettings();
   const instructions = fillPrompt(gameVoicePrompts.mainVoiceInstructions, {
     GAME_STATE: JSON.stringify(getVoiceSnapshot()),
-    PERSONALITY: 'neutral',
     ACCENT: voice.accent,
     PACE: voice.pace,
     ACTIVATION_KEYWORDS: gameVoicePrompts.transcription.keywords.join(', '),
