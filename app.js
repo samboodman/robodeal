@@ -1,5 +1,14 @@
-import { maximumAdditionalBet, potsForBettingDisplay } from './pot-logic.js';
-import { createDebugGameState, createGameState, executeTransition, GamePhase, getAvailableActions, Transition } from './game-state.js';
+import { potsForBettingDisplay } from './pot-logic.js';
+import {
+  BettingLimit,
+  createDebugGameState,
+  createGameState,
+  executeTransition,
+  GamePhase,
+  getAvailableActions,
+  getBettingBounds,
+  Transition,
+} from './game-state.js';
 import { addRequiredVoiceKeywords, fillPrompt, VoiceAgent } from './voice-agent.js';
 import promptsText from './Prompts.json?raw';
 
@@ -23,6 +32,7 @@ const debugOptions = document.querySelector('#debug-options');
 const debugPresetSelect = document.querySelector('#debug-preset');
 const enableAudioFileInputCheckbox = document.querySelector('#enable-audio-file-input');
 const useBigBlindCheckbox = document.querySelector('#use-big-blind');
+const bettingLimitSelect = document.querySelector('#betting-limit');
 const setupScreen = document.querySelector('#setup-screen');
 const voiceCustomizationScreen = document.querySelector('#voice-customization-screen');
 const chipDenominationsScreen = document.querySelector('#chip-denominations-screen');
@@ -97,6 +107,11 @@ let pendingVoiceAction = null;
 let raiseMode = false;
 const lastGameSettingsKey = 'robodeal-last-game-settings';
 const isLocalDebugEnvironment = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const bettingLimitLabels = Object.freeze({
+  [BettingLimit.NO_LIMIT]: 'No-Limit',
+  [BettingLimit.POT_LIMIT]: 'Pot-Limit',
+  [BettingLimit.FIXED_LIMIT]: 'Fixed-Limit',
+});
 
 function updateDebugFeatures() {
   const debugFeaturesEnabled = isLocalDebugEnvironment && debugFeaturesCheckbox.checked;
@@ -177,12 +192,27 @@ function viewIsGameWon() {
   return Boolean(gameState && [GamePhase.HAND_COMPLETE, GamePhase.GAME_COMPLETE].includes(gameState.phase));
 }
 
-function enginePlayersForPotLogic() {
-  return viewPlayers().map((player) => ({ ...player, number: viewPlayerNumber(player) }));
-}
-
 function amountToCallForView(player) {
   return Math.min(Math.max(0, viewHighestRoundBet() - player.roundBet), player.chips);
+}
+
+function bettingBoundsForView(player) {
+  return player && gameState
+    ? getBettingBounds(gameState, viewPlayerNumber(player))
+    : { callAmount: 0, minRaiseAdditionalChips: 0, maxAdditionalChips: 0 };
+}
+
+function isLegalPendingBet(player, amount) {
+  const callAmount = amountToCallForView(player);
+  if (amount === callAmount) return true;
+  const actions = currentGameActions();
+  if (amount === player.chips && actions.some(({ type }) => type === Transition.ALL_IN)) return true;
+  const betAction = actions.find(({ type }) => type === Transition.BET);
+  return Boolean(
+    betAction
+    && amount >= betAction.minAdditionalChips
+    && amount <= betAction.maxAdditionalChips,
+  );
 }
 
 function invokeGame(action) {
@@ -262,6 +292,9 @@ function restoreLastGameSettings() {
   document.querySelector('#ante').value = settings.ante;
   document.querySelector('#ante-increase').value = settings.anteIncrease;
   useBigBlindCheckbox.checked = settings.useBigBlind ?? settings.playerCount >= 6;
+  bettingLimitSelect.value = Object.values(BettingLimit).includes(settings.bettingLimit)
+    ? settings.bettingLimit
+    : BettingLimit.NO_LIMIT;
   drawPlayerNames();
 
   [...playerNames.querySelectorAll('input')].forEach((input, index) => {
@@ -443,11 +476,12 @@ function updateRecordingButton() {
 function getVoiceSnapshot() {
   const currentPlayerNumber = viewActionPlayerNumber();
   const player = viewPlayer(currentPlayerNumber) || null;
-  const maximumBet = player ? maximumAdditionalBet(enginePlayersForPotLogic(), currentPlayerNumber) : 0;
+  const maximumBet = bettingBoundsForView(player).maxAdditionalChips;
   const undoFromShowdown = !winnerPicker.hidden;
   return {
     phase: gameState?.phase || (gameScreen.hidden ? 'setup' : !dealPrompt.hidden ? 'waiting for cards' : !winnerPicker.hidden ? 'choosing winner' : 'betting'),
     round: ['preflop', 'flop', 'turn', 'river'][viewRoundNumber() - 1] || 'between hands',
+    bettingLimit: gameState?.bettingLimit || gameSettings?.bettingLimit || BettingLimit.NO_LIMIT,
     currentPlayerNumber,
     currentPlayer: player ? {
       name: player.name,
@@ -576,7 +610,8 @@ function executeVoiceTool(name, args) {
   }
 
   const amountToCall = amountToCallForView(player);
-  const maximumBet = maximumAdditionalBet(enginePlayersForPotLogic(), currentPlayerNumber);
+  const maximumBet = bettingBoundsForView(player).maxAdditionalChips;
+  const legalActions = currentGameActions();
   if (name !== 'fold' && name !== 'allIn') pendingVoiceAction = null;
   if (name === 'fold') {
     pendingVoiceAction = null;
@@ -596,8 +631,8 @@ function executeVoiceTool(name, args) {
     return { ok: true, message: `${player.name} calls ${amountToCall}.` };
   }
   if (name === 'allIn') {
-    if (maximumBet < player.chips) {
-      return { ok: false, message: `${player.name} cannot go all in because opponents can cover only ${maximumBet}; the maximum additional bet is ${maximumBet}.` };
+    if (!legalActions.some(({ type }) => type === Transition.ALL_IN)) {
+      return { ok: false, message: `${player.name} cannot go all in under the current ${bettingLimitLabels[gameState.bettingLimit]} betting limit; the maximum additional bet is ${maximumBet}.` };
     }
     pendingFold = false;
     updateBetControls();
@@ -607,8 +642,8 @@ function executeVoiceTool(name, args) {
   if (name === 'bet') {
     const total = Number(args.total);
     const amount = total - player.roundBet;
-    if (!Number.isFinite(total) || amount < amountToCall || amount > maximumBet) {
-      return { ok: false, message: `The total bet must be from ${player.roundBet + amountToCall} to ${player.roundBet + maximumBet}.` };
+    if (!Number.isFinite(total) || !isLegalPendingBet(player, amount)) {
+      return { ok: false, message: `That total is not legal in ${bettingLimitLabels[gameState.bettingLimit]} Hold'em. The maximum total is ${player.roundBet + maximumBet}.` };
     }
     if (amount === player.chips) {
       pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber, amount };
@@ -621,8 +656,8 @@ function executeVoiceTool(name, args) {
   if (name === 'raise') {
     const raiseAmount = Number(args.amount);
     const amount = amountToCall + raiseAmount;
-    if (!Number.isFinite(raiseAmount) || raiseAmount < 0 || amount > maximumBet) {
-      return { ok: false, message: `The raise must be from 0 to ${Math.max(0, maximumBet - amountToCall)}.` };
+    if (!Number.isFinite(raiseAmount) || raiseAmount < 0 || !isLegalPendingBet(player, amount)) {
+      return { ok: false, message: `That raise is not legal in ${bettingLimitLabels[gameState.bettingLimit]} Hold'em. The maximum raise is ${Math.max(0, maximumBet - amountToCall)}.` };
     }
     if (amount === player.chips) {
       pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber, amount };
@@ -760,6 +795,7 @@ function makePlayers() {
     anteIncrease: gameSettings.anteIncrease,
     dealerId: gameSettings.dealerNumber,
     useBigBlind: gameSettings.useBigBlind,
+    bettingLimit: gameSettings.bettingLimit,
   });
 }
 
@@ -858,10 +894,13 @@ function updateBetControls() {
   const player = viewPlayer(currentPlayerNumber);
   if (!player) return;
   const minimumBet = amountToCallForView(player);
-  const maximumBet = maximumAdditionalBet(enginePlayersForPotLogic(), currentPlayerNumber);
+  const maximumBet = bettingBoundsForView(player).maxAdditionalChips;
+  const legalActions = currentGameActions();
+  const betAction = legalActions.find(({ type }) => type === Transition.BET);
+  const allInAction = legalActions.find(({ type }) => type === Transition.ALL_IN);
   const minimumAllowedBet = Math.min(minimumBet, maximumBet);
   const minimumRaiseBet = minimumAllowedBet;
-  const canRaise = maximumBet > 0 && minimumRaiseBet <= maximumBet;
+  const canRaise = Boolean(betAction);
   const callIsAllIn = minimumAllowedBet > 0 && minimumAllowedBet === player.chips;
   pendingBet = Math.max(minimumAllowedBet, Math.min(pendingBet, maximumBet));
   callActionButton.textContent = callIsAllIn
@@ -869,8 +908,12 @@ function updateBetControls() {
     : minimumAllowedBet > 0 ? `Call ${minimumAllowedBet}` : 'Call';
   callActionButton.disabled = minimumAllowedBet === 0;
   checkActionButton.disabled = minimumBet > 0;
-  allInActionButton.disabled = callIsAllIn || player.chips <= 0 || maximumBet !== player.chips;
-  allInActionButton.title = callIsAllIn ? 'Calling already uses all your remaining chips.' : '';
+  allInActionButton.disabled = callIsAllIn || !allInAction;
+  allInActionButton.title = callIsAllIn
+    ? 'Calling already uses all your remaining chips.'
+    : !allInAction && player.chips > maximumBet
+      ? `${bettingLimitLabels[gameState.bettingLimit]} limits this bet to ${maximumBet}.`
+      : '';
   raiseActionButton.disabled = callIsAllIn || !canRaise;
   raiseTotalValue.value = String(player.roundBet + pendingBet);
   raiseTotalValue.min = String(player.roundBet + minimumRaiseBet);
@@ -881,7 +924,7 @@ function updateBetControls() {
     const adjustment = Number(button.dataset.raiseAdjustment);
     button.disabled = adjustment < 0 ? pendingBet <= minimumRaiseBet : pendingBet >= maximumBet;
   });
-  confirmRaiseButton.disabled = !canRaise || pendingBet < minimumRaiseBet;
+  confirmRaiseButton.disabled = !isLegalPendingBet(player, pendingBet);
   actionMenu.hidden = raiseMode;
   raisePanel.hidden = !raiseMode;
   const undoIsAvailable = canUndoLastTurn();
@@ -892,7 +935,7 @@ function enterRaiseMode() {
   const currentPlayerNumber = viewActionPlayerNumber();
   const player = viewPlayer(currentPlayerNumber);
   if (!player) return;
-  const maximumBet = maximumAdditionalBet(enginePlayersForPotLogic(), currentPlayerNumber);
+  const maximumBet = bettingBoundsForView(player).maxAdditionalChips;
   const minimumBet = amountToCallForView(player);
   const minimumRaiseBet = Math.min(minimumBet, maximumBet);
   if (minimumRaiseBet > maximumBet) return;
@@ -913,7 +956,8 @@ function setRaiseTotal(total) {
   const currentPlayerNumber = viewActionPlayerNumber();
   const player = viewPlayer(currentPlayerNumber);
   if (!player) return;
-  const maximumBet = maximumAdditionalBet(enginePlayersForPotLogic(), currentPlayerNumber);
+  const bounds = bettingBoundsForView(player);
+  const maximumBet = bounds.maxAdditionalChips;
   const minimumBet = amountToCallForView(player);
   const minimumRaiseBet = Math.min(minimumBet, maximumBet);
   const requestedTotal = Number(total);
@@ -923,13 +967,29 @@ function setRaiseTotal(total) {
     return;
   }
 
-  pendingBet = Math.max(minimumRaiseBet, Math.min(requestedTotal - player.roundBet, maximumBet));
+  const requestedAdditional = Math.max(
+    minimumRaiseBet,
+    Math.min(requestedTotal - player.roundBet, maximumBet),
+  );
+  if (gameState.bettingLimit === BettingLimit.FIXED_LIMIT && requestedAdditional > minimumBet) {
+    const fixedBet = currentGameActions().find(({ type }) => type === Transition.BET);
+    pendingBet = fixedBet?.maxAdditionalChips ?? minimumBet;
+  } else {
+    pendingBet = requestedAdditional;
+  }
   updateBetControls();
 }
 
 function adjustRaiseBy(amount) {
   const player = viewPlayer(viewActionPlayerNumber());
   if (!player) return;
+  if (gameState.bettingLimit === BettingLimit.FIXED_LIMIT) {
+    const callAmount = amountToCallForView(player);
+    const fixedBet = currentGameActions().find(({ type }) => type === Transition.BET);
+    pendingBet = amount < 0 ? callAmount : fixedBet?.maxAdditionalChips ?? callAmount;
+    updateBetControls();
+    return;
+  }
   setRaiseTotal(player.roundBet + pendingBet + amount);
 }
 
@@ -995,7 +1055,8 @@ function renderGameState() {
   turnIndicator.hidden = true;
   if (phase === GamePhase.DEAL_HOLE_CARDS) {
     const dealer = viewPlayer(gameState.dealerId);
-    dealMessage.textContent = `Game is No-Limit Texas Hold'em. Ante is ${gameState.ante}. ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK or say "cards are dealt" when done.`;
+    const bettingLimit = bettingLimitLabels[gameState.bettingLimit];
+    dealMessage.textContent = `Game is ${bettingLimit} Texas Hold'em. Ante is ${gameState.ante}. ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK or say "cards are dealt" when done.`;
     dealPrompt.hidden = false;
     drawPlayerSeats();
     voiceAgent?.speak(dealMessage.textContent);
@@ -1218,7 +1279,7 @@ function betCurrentPlayer(amount) {
   if (!Number.isFinite(requestedAmount) || requestedAmount < 0) return false;
 
   pendingFold = false;
-  const maximumBet = maximumAdditionalBet(enginePlayersForPotLogic(), currentPlayerNumber);
+  const maximumBet = bettingBoundsForView(player).maxAdditionalChips;
   pendingBet = Math.min(requestedAmount, maximumBet);
   updateBetControls();
   return true;
@@ -1350,6 +1411,7 @@ form.addEventListener('submit', (event) => {
     ante: Number(document.querySelector('#ante').value),
     anteIncrease: Number(document.querySelector('#ante-increase').value),
     useBigBlind: useBigBlindCheckbox.checked,
+    bettingLimit: bettingLimitSelect.value,
     dealerNumber: Number(dealerSelect.value),
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
     startMicrophoneAutomatically: startMicrophoneAutomaticallyCheckbox.checked,

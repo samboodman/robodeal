@@ -1,8 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createDebugGameState, createGameState, executeTransition, GamePhase, getAvailableActions, Transition } from './game-state.js';
+import {
+  BettingLimit,
+  createDebugGameState,
+  createGameState,
+  executeTransition,
+  GamePhase,
+  getAvailableActions,
+  Transition,
+} from './game-state.js';
 
-function game({ chips = [250, 250, 250], useBigBlind = false } = {}) {
+function game({ chips = [250, 250, 250], useBigBlind = false, bettingLimit = BettingLimit.NO_LIMIT } = {}) {
   return createGameState({
     players: [
       { id: 1, name: 'Dad', chips: chips[0] },
@@ -13,6 +21,7 @@ function game({ chips = [250, 250, 250], useBigBlind = false } = {}) {
     anteIncrease: 5,
     dealerId: 1,
     useBigBlind,
+    bettingLimit,
   });
 }
 
@@ -44,6 +53,12 @@ test('GameState creation validates the immutable table configuration', () => {
   assert.throws(() => createGameState({ players: [], ante: 5, dealerId: 1 }), /At least two/);
   assert.throws(() => createGameState({ players: [{ id: 1, chips: 1 }, { id: 2, chips: 1 }], ante: -1, dealerId: 1 }), /Ante/);
   assert.throws(() => createGameState({ players: [{ id: 1, chips: 1 }, { id: 2, chips: 1 }], ante: 1, dealerId: 3 }), /dealer/);
+  assert.throws(() => createGameState({
+    players: [{ id: 1, chips: 1 }, { id: 2, chips: 1 }],
+    ante: 1,
+    dealerId: 1,
+    bettingLimit: 'unlimited-ish',
+  }), /Betting limit/);
 });
 
 test('debug presets create authoritative states with working pots and transitions', () => {
@@ -303,4 +318,45 @@ test('the big blind retains its option when nobody raises', () => {
   assert.equal(state.phase, GamePhase.BETTING_PREFLOP);
   assert.equal(state.actionPlayerId, 3);
   assert.ok(getAvailableActions(state).some(({ type }) => type === Transition.CHECK));
+});
+
+test('pot-limit caps a raise at the size of the pot after calling', () => {
+  const state = start(game({ useBigBlind: true, bettingLimit: BettingLimit.POT_LIMIT }));
+  const actions = getAvailableActions(state);
+
+  assert.deepEqual(actions.find(({ type }) => type === Transition.BET), {
+    type: Transition.BET,
+    minAdditionalChips: 11,
+    maxAdditionalChips: 35,
+  });
+  assert.equal(actions.some(({ type }) => type === Transition.ALL_IN), false);
+  assert.throws(() => action(state, Transition.BET, { additionalChips: 36 }), /outside the legal range/);
+});
+
+test('fixed-limit uses one fixed bet before and on the flop, then doubles it', () => {
+  let state = start(game({ useBigBlind: true, bettingLimit: BettingLimit.FIXED_LIMIT }));
+  assert.deepEqual(getAvailableActions(state).find(({ type }) => type === Transition.BET), {
+    type: Transition.BET,
+    minAdditionalChips: 20,
+    maxAdditionalChips: 20,
+  });
+  assert.throws(() => action(state, Transition.BET, { additionalChips: 19 }), /outside the legal range/);
+
+  state = action(state, Transition.CALL);
+  state = action(state, Transition.CALL);
+  state = action(state, Transition.CHECK);
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+  assert.deepEqual(getAvailableActions(state).find(({ type }) => type === Transition.BET), {
+    type: Transition.BET,
+    minAdditionalChips: 10,
+    maxAdditionalChips: 10,
+  });
+
+  state = completeRoundWithChecks(state);
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+  assert.deepEqual(getAvailableActions(state).find(({ type }) => type === Transition.BET), {
+    type: Transition.BET,
+    minAdditionalChips: 20,
+    maxAdditionalChips: 20,
+  });
 });

@@ -29,6 +29,12 @@ export const Transition = Object.freeze({
   START_NEXT_HAND: 'START_NEXT_HAND',
 });
 
+export const BettingLimit = Object.freeze({
+  NO_LIMIT: 'no-limit',
+  POT_LIMIT: 'pot-limit',
+  FIXED_LIMIT: 'fixed-limit',
+});
+
 const bettingPhases = [
   GamePhase.BETTING_PREFLOP,
   GamePhase.BETTING_FLOP,
@@ -197,10 +203,18 @@ function makeAction(type, details = {}) {
  * Creates the initial, serializable GameState. It intentionally contains no
  * browser state: it can be constructed directly in a test.
  */
-export function createGameState({ players, ante, anteIncrease = 0, dealerId, useBigBlind = false }) {
+export function createGameState({
+  players,
+  ante,
+  anteIncrease = 0,
+  dealerId,
+  useBigBlind = false,
+  bettingLimit = BettingLimit.NO_LIMIT,
+}) {
   if (!Array.isArray(players) || players.length < 2) throw new Error('At least two players are required.');
   if (!Number.isInteger(ante) || ante < 0) throw new Error('Ante must be a non-negative integer.');
   if (!players.some((player) => player.id === dealerId)) throw new Error('The dealer must be a player.');
+  if (!Object.values(BettingLimit).includes(bettingLimit)) throw new Error('Betting limit is not supported.');
 
   return {
     phase: GamePhase.SETUP,
@@ -217,6 +231,7 @@ export function createGameState({ players, ante, anteIncrease = 0, dealerId, use
     ante,
     anteIncrease,
     useBigBlind,
+    bettingLimit,
     dealerId,
     firstDealerId: dealerId,
     actionPlayerId: null,
@@ -229,6 +244,39 @@ export function createGameState({ players, ante, anteIncrease = 0, dealerId, use
     potAwardIndex: 0,
     handWinnerIds: [],
   };
+}
+
+/** Returns the call and legal raise range for the selected Hold'em limit. */
+export function getBettingBounds(state, playerId = state.actionPlayerId) {
+  const player = playerById(state, playerId);
+  if (!player || player.folded || player.eliminated || player.chips <= 0) {
+    return { callAmount: 0, minRaiseAdditionalChips: 0, maxAdditionalChips: 0 };
+  }
+
+  const callAmount = amountToCall(state, player);
+  const effectiveMaximum = maximumAdditionalBet(
+    state.players.map((candidate) => ({ ...candidate, number: candidate.id })),
+    player.id,
+  );
+  let minRaiseAdditionalChips = callAmount === 0 ? 1 : callAmount + 1;
+  let maxAdditionalChips = effectiveMaximum;
+
+  if (state.bettingLimit === BettingLimit.POT_LIMIT) {
+    const potBeforeAction = state.players.reduce(
+      (total, candidate) => total + candidate.handContribution,
+      0,
+    );
+    maxAdditionalChips = Math.min(
+      effectiveMaximum,
+      Math.max(minRaiseAdditionalChips, potBeforeAction + (callAmount * 2)),
+    );
+  } else if (state.bettingLimit === BettingLimit.FIXED_LIMIT) {
+    const fixedRaiseSize = Math.max(1, state.ante * (state.round <= 2 ? 2 : 4));
+    minRaiseAdditionalChips = callAmount + fixedRaiseSize;
+    maxAdditionalChips = Math.min(effectiveMaximum, minRaiseAdditionalChips);
+  }
+
+  return { callAmount, minRaiseAdditionalChips, maxAdditionalChips };
 }
 
 const debugPresets = Object.freeze({
@@ -291,12 +339,14 @@ export function getAvailableActions(state) {
 
   const player = currentPlayer(state);
   if (!player) return [];
-  const callAmount = amountToCall(state, player);
-  const maximumBet = maximumAdditionalBet(state.players.map((candidate) => ({ ...candidate, number: candidate.id })), player.id);
+  const {
+    callAmount,
+    minRaiseAdditionalChips: minimumBet,
+    maxAdditionalChips: maximumBet,
+  } = getBettingBounds(state, player.id);
   const actions = [makeAction(Transition.FOLD)];
   if (callAmount === 0) actions.push(makeAction(Transition.CHECK));
   if (callAmount > 0) actions.push(makeAction(Transition.CALL, { additionalChips: callAmount }));
-  const minimumBet = callAmount === 0 ? 1 : callAmount + 1;
   if (maximumBet >= minimumBet) actions.push(makeAction(Transition.BET, {
     minAdditionalChips: minimumBet,
     maxAdditionalChips: maximumBet,
@@ -383,8 +433,11 @@ export function executeTransition(gameState, action) {
   }
 
   const player = assertBettingTurn(state, action);
-  const callAmount = amountToCall(state, player);
-  const maximumBet = maximumAdditionalBet(state.players.map((candidate) => ({ ...candidate, number: candidate.id })), player.id);
+  const {
+    callAmount,
+    minRaiseAdditionalChips: minimumBet,
+    maxAdditionalChips: maximumBet,
+  } = getBettingBounds(state, player.id);
 
   if (action.type === Transition.FOLD) {
     player.folded = true;
@@ -405,7 +458,6 @@ export function executeTransition(gameState, action) {
     additionalChips = maximumBet;
   } else if (action.type === Transition.BET) {
     additionalChips = Number(action.additionalChips);
-    const minimumBet = callAmount === 0 ? 1 : callAmount + 1;
     if (!Number.isInteger(additionalChips) || additionalChips < minimumBet || additionalChips > maximumBet) {
       throw new Error('BET amount is outside the legal range.');
     }
