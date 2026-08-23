@@ -995,8 +995,7 @@ function renderGameState() {
   turnIndicator.hidden = true;
   if (phase === GamePhase.DEAL_HOLE_CARDS) {
     const dealer = viewPlayer(gameState.dealerId);
-    const introduction = gameState.handNumber === 1 ? `Game is Texas Hold'em. Ante is ${gameState.ante}.` : `New hand. Ante is ${gameState.ante}.`;
-    dealMessage.textContent = `${introduction} ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK when done.`;
+    dealMessage.textContent = `Game is Texas Hold'em. Ante is ${gameState.ante}. ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK or say "cards are dealt" when done.`;
     dealPrompt.hidden = false;
     drawPlayerSeats();
     return;
