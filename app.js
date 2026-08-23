@@ -1360,9 +1360,9 @@ function startNewHand() {
 function connectVoiceForCurrentGame() {
   connectVoiceAgent()
     .then(async (agent) => {
-      if (!dealPrompt.hidden && gameState.phase === GamePhase.DEAL_HOLE_CARDS) agent.speak(dealMessage.textContent);
       if (gameSettings.startMicrophoneAutomatically) await agent.startMicrophone();
       updateRecordingButton();
+      if (!dealPrompt.hidden && gameState.phase === GamePhase.DEAL_HOLE_CARDS) agent.speak(dealMessage.textContent);
     })
     .catch((error) => {
       const errorMessage = `Voice unavailable: ${error.message}`;
