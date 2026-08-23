@@ -10,7 +10,7 @@ import {
   Transition,
 } from './game-state.js';
 import { addRequiredVoiceKeywords, fillPrompt, VoiceAgent } from './voice-agent.js';
-import { clockwisePlayerIds, normalizeSeatAngle } from './seat-order.js';
+import { clockwisePlayerIds, normalizeSeatAngle, snapSeatAngle } from './seat-order.js';
 import promptsText from './Prompts.json?raw';
 
 const prompts = JSON.parse(promptsText);
@@ -877,11 +877,31 @@ function pointerSeatAngle(event) {
   return normalizeSeatAngle(Math.atan2(vertical, horizontal));
 }
 
+function moveSeatToSnappedAngle(seat, playerId, requestedAngle) {
+  const currentAngle = seatAngles[playerId];
+  const targetAngle = snapSeatAngle(requestedAngle, viewPlayers().length);
+  if (Math.abs(normalizeSeatAngle(targetAngle - currentAngle)) < 0.0001) return;
+
+  const occupiedSeat = Object.entries(seatAngles).find(([candidateId, candidateAngle]) => (
+    String(candidateId) !== String(playerId)
+    && Math.abs(normalizeSeatAngle(targetAngle - candidateAngle)) < 0.0001
+  ));
+  if (occupiedSeat) {
+    const [occupiedPlayerId] = occupiedSeat;
+    seatAngles[occupiedPlayerId] = currentAngle;
+    const occupiedElement = [...playerSeats.children]
+      .find((candidate) => candidate.dataset.playerId === String(occupiedPlayerId));
+    if (occupiedElement) positionSeatElement(occupiedElement, occupiedPlayerId);
+  }
+
+  seatAngles[playerId] = targetAngle;
+  positionSeatElement(seat, playerId);
+}
+
 function makeSeatDraggable(seat, playerId) {
   let dragging = false;
   const moveSeat = (event) => {
-    seatAngles[playerId] = pointerSeatAngle(event);
-    positionSeatElement(seat, playerId);
+    moveSeatToSnappedAngle(seat, playerId, pointerSeatAngle(event));
   };
 
   seat.addEventListener('pointerdown', (event) => {
@@ -906,8 +926,11 @@ function makeSeatDraggable(seat, playerId) {
     if (!seatingMode || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
     event.preventDefault();
     const direction = event.key === 'ArrowRight' ? 1 : -1;
-    seatAngles[playerId] = normalizeSeatAngle(seatAngles[playerId] + direction * Math.PI / 36);
-    positionSeatElement(seat, playerId);
+    moveSeatToSnappedAngle(
+      seat,
+      playerId,
+      seatAngles[playerId] + direction * Math.PI * 2 / viewPlayers().length,
+    );
   });
 }
 
@@ -933,6 +956,7 @@ function drawPlayerSeats() {
   players.forEach((player) => {
     const seat = document.createElement('div');
     seat.className = 'player-seat';
+    seat.dataset.playerId = String(player.id);
     const playerNumber = viewPlayerNumber(player);
     const isCurrentPlayer = playerNumber === currentPlayerNumber;
     if (isCurrentPlayer) seat.classList.add('current-player');

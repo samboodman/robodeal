@@ -5,6 +5,14 @@ export function normalizeSeatAngle(angle) {
   return normalized < 0 ? normalized + fullCircle : normalized;
 }
 
+export function snapSeatAngle(angle, playerCount, offset = Math.PI / 2) {
+  const count = Math.max(2, Math.floor(Number(playerCount) || 2));
+  const step = fullCircle / count;
+  const relativeAngle = normalizeSeatAngle(angle - offset);
+  const slot = Math.round(relativeAngle / step) % count;
+  return normalizeSeatAngle(offset + slot * step);
+}
+
 /** Returns player IDs in clockwise screen order. The starting seat is irrelevant. */
 export function clockwisePlayerIds(players, seatAngles) {
   return players

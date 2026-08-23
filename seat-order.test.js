@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { clockwisePlayerIds, normalizeSeatAngle } from './seat-order.js';
+import { clockwisePlayerIds, normalizeSeatAngle, snapSeatAngle } from './seat-order.js';
 
 test('normalizes dragged seat angles around the table', () => {
   assert.equal(normalizeSeatAngle(0), 0);
@@ -13,4 +13,12 @@ test('uses physical clockwise positions instead of player numbers', () => {
   const seatAngles = { 1: 0.1, 3: 1.5, 2: 4.2 };
 
   assert.deepEqual(clockwisePlayerIds(players, seatAngles), [1, 3, 2]);
+});
+
+test('snaps seats to the regular shape for the player count', () => {
+  const triangleStep = Math.PI * 2 / 3;
+  const squareStep = Math.PI / 2;
+
+  assert.equal(snapSeatAngle(Math.PI / 2 + triangleStep * 0.8, 3), Math.PI / 2 + triangleStep);
+  assert.equal(snapSeatAngle(Math.PI / 2 + squareStep * 2.2, 4), Math.PI / 2 + squareStep * 2);
 });
