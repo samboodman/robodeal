@@ -995,7 +995,7 @@ function renderGameState() {
   turnIndicator.hidden = true;
   if (phase === GamePhase.DEAL_HOLE_CARDS) {
     const dealer = viewPlayer(gameState.dealerId);
-    dealMessage.textContent = `Game is Texas Hold'em. Ante is ${gameState.ante}. ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK or say "cards are dealt" when done.`;
+    dealMessage.textContent = `Game is No-Limit Texas Hold'em. Ante is ${gameState.ante}. ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK or say "cards are dealt" when done.`;
     dealPrompt.hidden = false;
     drawPlayerSeats();
     voiceAgent?.speak(dealMessage.textContent);
