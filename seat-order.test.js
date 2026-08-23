@@ -19,6 +19,13 @@ test('snaps seats to the regular shape for the player count', () => {
   const triangleStep = Math.PI * 2 / 3;
   const squareStep = Math.PI / 2;
 
-  assert.equal(snapSeatAngle(Math.PI / 2 + triangleStep * 0.8, 3), Math.PI / 2 + triangleStep);
+  assert.equal(snapSeatAngle(Math.PI / 2 + triangleStep * 1.05, 3), Math.PI / 2 + triangleStep);
   assert.equal(snapSeatAngle(Math.PI / 2 + squareStep * 2.2, 4), Math.PI / 2 + squareStep * 2);
+});
+
+test('every player count can snap to the four square angles', () => {
+  for (let playerCount = 2; playerCount <= 8; playerCount += 1) {
+    assert.equal(snapSeatAngle(0.04, playerCount), 0);
+    assert.equal(snapSeatAngle(Math.PI + 0.04, playerCount), Math.PI);
+  }
 });
