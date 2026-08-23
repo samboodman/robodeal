@@ -10,6 +10,7 @@ import {
   Transition,
 } from './game-state.js';
 import { addRequiredVoiceKeywords, fillPrompt, VoiceAgent } from './voice-agent.js';
+import { restoredPlayerName } from './game-settings.js';
 import { clockwisePlayerIds, normalizeSeatAngle, snapSeatAngle } from './seat-order.js';
 import promptsText from './Prompts.json?raw';
 
@@ -313,7 +314,7 @@ function restoreLastGameSettings() {
   drawPlayerNames();
 
   [...playerNames.querySelectorAll('input')].forEach((input, index) => {
-    input.value = settings.playerNames?.[index] || '';
+    input.value = restoredPlayerName(settings.playerNames?.[index], index + 1);
   });
   drawDealerOptions(String(settings.dealerNumber));
   dealerSelect.value = String(settings.dealerNumber);
@@ -1580,7 +1581,7 @@ form.addEventListener('submit', (event) => {
     bettingLimit: bettingLimitSelect.value,
     fixedLimitBet: Number(fixedLimitBetInput.value),
     dealerNumber: Number(dealerSelect.value),
-    playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
+    playerNames: [...playerNames.querySelectorAll('input')].map((input) => input.value),
     startMicrophoneAutomatically: startMicrophoneAutomaticallyCheckbox.checked,
     showVoiceTranscript: showVoiceTranscriptCheckbox.checked,
     chipDisplayMode,
