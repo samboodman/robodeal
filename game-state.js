@@ -210,11 +210,13 @@ export function createGameState({
   dealerId,
   useBigBlind = false,
   bettingLimit = BettingLimit.NO_LIMIT,
+  fixedLimitBet = Math.max(1, ante * 2),
 }) {
   if (!Array.isArray(players) || players.length < 2) throw new Error('At least two players are required.');
   if (!Number.isInteger(ante) || ante < 0) throw new Error('Ante must be a non-negative integer.');
   if (!players.some((player) => player.id === dealerId)) throw new Error('The dealer must be a player.');
   if (!Object.values(BettingLimit).includes(bettingLimit)) throw new Error('Betting limit is not supported.');
+  if (!Number.isInteger(fixedLimitBet) || fixedLimitBet <= 0) throw new Error('Fixed-limit bet must be a positive integer.');
 
   return {
     phase: GamePhase.SETUP,
@@ -232,6 +234,7 @@ export function createGameState({
     anteIncrease,
     useBigBlind,
     bettingLimit,
+    fixedLimitBet,
     dealerId,
     firstDealerId: dealerId,
     actionPlayerId: null,
@@ -271,7 +274,7 @@ export function getBettingBounds(state, playerId = state.actionPlayerId) {
       Math.max(minRaiseAdditionalChips, potBeforeAction + (callAmount * 2)),
     );
   } else if (state.bettingLimit === BettingLimit.FIXED_LIMIT) {
-    const fixedRaiseSize = Math.max(1, state.ante * (state.round <= 2 ? 2 : 4));
+    const fixedRaiseSize = state.fixedLimitBet * (state.round <= 2 ? 1 : 2);
     minRaiseAdditionalChips = callAmount + fixedRaiseSize;
     maxAdditionalChips = Math.min(effectiveMaximum, minRaiseAdditionalChips);
   }

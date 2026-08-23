@@ -710,6 +710,12 @@ select:focus {
   font-size: 0.87rem;
   line-height: 1.35;
 }
+.field-note {
+  margin: 7px 0 0;
+  color: #71857b;
+  font-size: 0.87rem;
+  line-height: 1.35;
+}
 .player-names {
   display: grid;
   gap: 9px;

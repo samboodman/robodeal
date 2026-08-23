@@ -33,6 +33,8 @@ const debugPresetSelect = document.querySelector('#debug-preset');
 const enableAudioFileInputCheckbox = document.querySelector('#enable-audio-file-input');
 const useBigBlindCheckbox = document.querySelector('#use-big-blind');
 const bettingLimitSelect = document.querySelector('#betting-limit');
+const fixedLimitSetting = document.querySelector('#fixed-limit-setting');
+const fixedLimitBetInput = document.querySelector('#fixed-limit-bet');
 const setupScreen = document.querySelector('#setup-screen');
 const voiceCustomizationScreen = document.querySelector('#voice-customization-screen');
 const chipDenominationsScreen = document.querySelector('#chip-denominations-screen');
@@ -112,6 +114,10 @@ const bettingLimitLabels = Object.freeze({
   [BettingLimit.POT_LIMIT]: 'Pot-Limit',
   [BettingLimit.FIXED_LIMIT]: 'Fixed-Limit',
 });
+
+function updateFixedLimitSetting() {
+  fixedLimitSetting.hidden = bettingLimitSelect.value !== BettingLimit.FIXED_LIMIT;
+}
 
 function updateDebugFeatures() {
   const debugFeaturesEnabled = isLocalDebugEnvironment && debugFeaturesCheckbox.checked;
@@ -295,6 +301,10 @@ function restoreLastGameSettings() {
   bettingLimitSelect.value = Object.values(BettingLimit).includes(settings.bettingLimit)
     ? settings.bettingLimit
     : BettingLimit.NO_LIMIT;
+  fixedLimitBetInput.value = Number.isInteger(settings.fixedLimitBet) && settings.fixedLimitBet > 0
+    ? settings.fixedLimitBet
+    : Math.max(1, Number(settings.ante) * 2 || 1);
+  updateFixedLimitSetting();
   drawPlayerNames();
 
   [...playerNames.querySelectorAll('input')].forEach((input, index) => {
@@ -482,6 +492,9 @@ function getVoiceSnapshot() {
     phase: gameState?.phase || (gameScreen.hidden ? 'setup' : !dealPrompt.hidden ? 'waiting for cards' : !winnerPicker.hidden ? 'choosing winner' : 'betting'),
     round: ['preflop', 'flop', 'turn', 'river'][viewRoundNumber() - 1] || 'between hands',
     bettingLimit: gameState?.bettingLimit || gameSettings?.bettingLimit || BettingLimit.NO_LIMIT,
+    fixedLimitBet: gameState?.bettingLimit === BettingLimit.FIXED_LIMIT
+      ? gameState.fixedLimitBet
+      : null,
     currentPlayerNumber,
     currentPlayer: player ? {
       name: player.name,
@@ -796,6 +809,7 @@ function makePlayers() {
     dealerId: gameSettings.dealerNumber,
     useBigBlind: gameSettings.useBigBlind,
     bettingLimit: gameSettings.bettingLimit,
+    fixedLimitBet: gameSettings.fixedLimitBet,
   });
 }
 
@@ -1056,7 +1070,10 @@ function renderGameState() {
   if (phase === GamePhase.DEAL_HOLE_CARDS) {
     const dealer = viewPlayer(gameState.dealerId);
     const bettingLimit = bettingLimitLabels[gameState.bettingLimit];
-    dealMessage.textContent = `Game is ${bettingLimit} Texas Hold'em. Ante is ${gameState.ante}. ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK or say "cards are dealt" when done.`;
+    const fixedLimit = gameState.bettingLimit === BettingLimit.FIXED_LIMIT
+      ? ` Limits are ${gameState.fixedLimitBet}/${gameState.fixedLimitBet * 2}.`
+      : '';
+    dealMessage.textContent = `Game is ${bettingLimit} Texas Hold'em.${fixedLimit} Ante is ${gameState.ante}. ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK or say "cards are dealt" when done.`;
     dealPrompt.hidden = false;
     drawPlayerSeats();
     voiceAgent?.speak(dealMessage.textContent);
@@ -1300,6 +1317,7 @@ playerCount.addEventListener('change', () => {
   drawPlayerNames();
   useBigBlindCheckbox.checked = Number(playerCount.value) >= 6;
 });
+bettingLimitSelect.addEventListener('change', updateFixedLimitSetting);
 debugFeaturesCheckbox.addEventListener('change', updateDebugFeatures);
 debugPresetSelect.addEventListener('change', selectDebugPreset);
 enableAudioFileInputCheckbox.addEventListener('change', updateDebugFeatures);
@@ -1412,6 +1430,7 @@ form.addEventListener('submit', (event) => {
     anteIncrease: Number(document.querySelector('#ante-increase').value),
     useBigBlind: useBigBlindCheckbox.checked,
     bettingLimit: bettingLimitSelect.value,
+    fixedLimitBet: Number(fixedLimitBetInput.value),
     dealerNumber: Number(dealerSelect.value),
     playerNames: [...playerNames.querySelectorAll('input')].map((input, index) => input.value || `Player ${index + 1}`),
     startMicrophoneAutomatically: startMicrophoneAutomaticallyCheckbox.checked,
@@ -1455,4 +1474,5 @@ form.addEventListener('submit', (event) => {
 drawPlayerNames();
 updateChipDisplayModeButton();
 restoreLastGameSettings();
+updateFixedLimitSetting();
 updateDebugFeatures();

@@ -48,6 +48,11 @@
             <option value="pot-limit">Pot Limit</option>
             <option value="fixed-limit">Fixed Limit</option>
           </select>
+          <div id="fixed-limit-setting" hidden>
+            <label for="fixed-limit-bet">Fixed-limit bet</label>
+            <input id="fixed-limit-bet" name="fixedLimitBet" type="number" min="1" value="10" inputmode="numeric" required />
+            <p class="field-note">Used before and on the flop. The turn and river use double this amount.</p>
+          </div>
 
           <div class="players-heading">
             <label>Player names <span>(optional)</span></label>
