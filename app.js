@@ -268,8 +268,6 @@ function restoreLastGameSettings() {
   });
   drawDealerOptions(String(settings.dealerNumber));
   dealerSelect.value = String(settings.dealerNumber);
-  startMicrophoneAutomaticallyCheckbox.checked = settings.startMicrophoneAutomatically !== false;
-  showVoiceTranscriptCheckbox.checked = Boolean(settings.showVoiceTranscript);
   chipDisplayMode = settings.chipDisplayMode === 'pile' ? 'pile' : 'value';
   updateChipDisplayModeButton();
   restoreChipDenominations(settings.chipDenominations);
