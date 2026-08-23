@@ -87,6 +87,7 @@ let pendingFold = false;
 let renderedPotLayerCount = 0;
 let potAnimationTimer = null;
 let lastTurnState = null;
+let lastTurnEndedHandByFold = false;
 let chipDisplayMode = 'value';
 let screenWakeLock = null;
 let voiceAgent = null;
@@ -954,6 +955,7 @@ function undoLastTurn(fromShowdown = false) {
   pendingFold = false;
   pendingVoiceAction = null;
   lastTurnState = null;
+  lastTurnEndedHandByFold = false;
   renderGameState();
 }
 
@@ -964,11 +966,13 @@ function showHandCompleteFromGameState() {
   const winnerNames = formatNameList(winners.map((winner) => winner.name));
   winnerQuestion.textContent = `${winnerNames} ${winners.length === 1 ? 'wins' : 'win'} the hand!`;
   winnerOptions.replaceChildren();
-  const closeButton = document.createElement('button');
-  closeButton.type = 'button';
-  closeButton.textContent = 'Close';
-  closeButton.addEventListener('click', startNewHand);
-  winnerOptions.append(closeButton);
+  const nextHandButton = document.createElement('button');
+  nextHandButton.type = 'button';
+  nextHandButton.textContent = 'Next hand';
+  nextHandButton.addEventListener('click', startNewHand);
+  showdownUndoButton.hidden = false;
+  showdownUndoButton.disabled = !lastTurnEndedHandByFold || !canUndoLastTurn(true);
+  winnerOptions.append(nextHandButton, showdownUndoButton);
   drawPlayerSeats();
 }
 
@@ -1157,6 +1161,7 @@ function showGameWinner(winner) {
 
 function startHand() {
   lastTurnState = null;
+  lastTurnEndedHandByFold = false;
   pendingBet = 0;
   pendingFold = false;
   pendingVoiceAction = null;
@@ -1166,6 +1171,7 @@ function startHand() {
 
 function startNewHand() {
   lastTurnState = null;
+  lastTurnEndedHandByFold = false;
   pendingBet = 0;
   pendingFold = false;
   pendingVoiceAction = null;
@@ -1192,6 +1198,7 @@ function confirmTurn() {
     action = { type: Transition.BET, playerId: currentPlayerNumber, additionalChips: pendingBet };
   }
   invokeGame(action);
+  lastTurnEndedHandByFold = action.type === Transition.FOLD && gameState.phase === GamePhase.HAND_COMPLETE;
   pendingFold = false;
   pendingVoiceAction = null;
   renderGameState();
