@@ -5,7 +5,12 @@ export function normalizeSeatAngle(angle) {
   return normalized < 0 ? normalized + fullCircle : normalized;
 }
 
-export function snapSeatAngle(angle, playerCount, offset = Math.PI / 2) {
+export function snapSeatAngle(
+  angle,
+  playerCount,
+  offset = Math.PI / 2,
+  maxSnapDistance = Number.POSITIVE_INFINITY,
+) {
   const count = Math.max(2, Math.floor(Number(playerCount) || 2));
   const step = fullCircle / count;
   const requestedAngle = normalizeSeatAngle(angle);
@@ -22,9 +27,10 @@ export function snapSeatAngle(angle, playerCount, offset = Math.PI / 2) {
     const difference = Math.abs(normalizeSeatAngle(candidate - requestedAngle));
     return Math.min(difference, fullCircle - difference);
   };
-  return candidates.reduce((closest, candidate) => (
-    angularDistance(candidate) < angularDistance(closest) ? candidate : closest
+  const closest = candidates.reduce((currentClosest, candidate) => (
+    angularDistance(candidate) < angularDistance(currentClosest) ? candidate : currentClosest
   ));
+  return angularDistance(closest) <= maxSnapDistance ? closest : requestedAngle;
 }
 
 /** Returns player IDs in clockwise screen order. The starting seat is irrelevant. */

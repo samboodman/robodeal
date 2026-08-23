@@ -572,7 +572,7 @@ body {
   z-index: 3;
   cursor: grabbing;
   box-shadow: 0 0 0 6px #f1c56588, 0 5px 0 #45200f;
-  transition-duration: 70ms;
+  transition: none;
 }
 .player-seat-name {
   display: block;

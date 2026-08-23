@@ -118,6 +118,7 @@ const bettingLimitLabels = Object.freeze({
   [BettingLimit.POT_LIMIT]: 'Pot-Limit',
   [BettingLimit.FIXED_LIMIT]: 'Fixed-Limit',
 });
+const seatSnapDistance = Math.PI / 18;
 
 function updateFixedLimitSetting() {
   fixedLimitSetting.hidden = bettingLimitSelect.value !== BettingLimit.FIXED_LIMIT;
@@ -879,7 +880,12 @@ function pointerSeatAngle(event) {
 
 function moveSeatToSnappedAngle(seat, playerId, requestedAngle) {
   const currentAngle = seatAngles[playerId];
-  const targetAngle = snapSeatAngle(requestedAngle, viewPlayers().length);
+  const targetAngle = snapSeatAngle(
+    requestedAngle,
+    viewPlayers().length,
+    Math.PI / 2,
+    seatSnapDistance,
+  );
   if (Math.abs(normalizeSeatAngle(targetAngle - currentAngle)) < 0.0001) return;
 
   const occupiedSeat = Object.entries(seatAngles).find(([candidateId, candidateAngle]) => (
