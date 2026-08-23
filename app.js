@@ -998,6 +998,7 @@ function renderGameState() {
     dealMessage.textContent = `Game is Texas Hold'em. Ante is ${gameState.ante}. ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK or say "cards are dealt" when done.`;
     dealPrompt.hidden = false;
     drawPlayerSeats();
+    voiceAgent?.speak(dealMessage.textContent);
     return;
   }
 
@@ -1378,6 +1379,7 @@ form.addEventListener('submit', (event) => {
   }
   connectVoiceAgent()
     .then(async (agent) => {
+      if (!dealPrompt.hidden && gameState.phase === GamePhase.DEAL_HOLE_CARDS) agent.speak(dealMessage.textContent);
       if (gameSettings.startMicrophoneAutomatically) await agent.startMicrophone();
       updateRecordingButton();
     })

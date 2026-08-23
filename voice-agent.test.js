@@ -53,6 +53,27 @@ test('the session exposes supplied tools with automatic tool choice', () => {
   assert.deepEqual(session.tools, tools);
 });
 
+test('speaks an exact instruction as an audio response without conversation context', () => {
+  const statuses = [];
+  const { agent, sent } = testAgent({ onStatus: (status) => statuses.push(status) });
+
+  agent.speak('Deal two cards.');
+
+  assert.deepEqual(sent, [{
+    type: 'response.create',
+    response: {
+      conversation: 'none',
+      input: [],
+      output_modalities: ['audio'],
+      instructions: 'Say exactly this: Deal two cards.',
+      tools: [],
+      tool_choice: 'none',
+    },
+  }]);
+  assert.equal(agent.pendingResponseCount, 1);
+  assert.deepEqual(statuses, ['Thinking…']);
+});
+
 test('required voice keywords are added once', () => {
   assert.deepEqual(addRequiredVoiceKeywords(['call', 'undo'], ['undo']), ['call', 'undo']);
   assert.deepEqual(addRequiredVoiceKeywords(['call'], ['undo']), ['call', 'undo']);

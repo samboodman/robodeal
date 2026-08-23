@@ -179,15 +179,16 @@ export class VoiceAgent {
 
   speak(text) {
     if (!this.connected) return;
+    this.pendingResponseCount += 1;
+    this.onStatus('Thinking…');
     this.send({
       type: 'response.create',
       response: {
         conversation: 'none',
-        input: [{
-          type: 'message',
-          role: 'user',
-          content: [{ type: 'input_text', text: fillPrompt(this.prompts.sayExactly, { TEXT: text }) }],
-        }],
+        input: [],
+        output_modalities: ['audio'],
+        instructions: fillPrompt(this.prompts.sayExactly, { TEXT: text }),
+        tools: [],
         tool_choice: 'none',
       },
     });
