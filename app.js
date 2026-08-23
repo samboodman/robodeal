@@ -870,7 +870,7 @@ function updateBetControls() {
   checkActionButton.disabled = minimumBet > 0;
   allInActionButton.disabled = callIsAllIn || player.chips <= 0 || maximumBet !== player.chips;
   allInActionButton.title = callIsAllIn ? 'Calling already uses all your remaining chips.' : '';
-  raiseActionButton.disabled = !canRaise;
+  raiseActionButton.disabled = callIsAllIn || !canRaise;
   raiseTotalValue.value = String(player.roundBet + pendingBet);
   raiseTotalValue.min = String(player.roundBet + minimumRaiseBet);
   raiseTotalValue.max = String(player.roundBet + maximumBet);
