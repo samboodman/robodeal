@@ -107,6 +107,7 @@ let screenWakeLock = null;
 let voiceAgent = null;
 let voicePreviewAgent = null;
 let voiceConnectionPromise = null;
+let startMicrophoneAfterSpeech = false;
 let pendingVoiceAction = null;
 let raiseMode = false;
 let seatingMode = false;
@@ -697,7 +698,19 @@ async function connectVoiceAgent() {
     tools: voiceTools,
     executeTool: executeVoiceTool,
     onTranscript: setVoiceTranscript,
-    onStatus: setVoiceStatus,
+    onStatus: (status) => {
+      setVoiceStatus(status);
+      if (!startMicrophoneAfterSpeech || status !== 'Microphone off') return;
+
+      startMicrophoneAfterSpeech = false;
+      voiceAgent.startMicrophone()
+        .then(updateRecordingButton)
+        .catch((error) => {
+          const errorMessage = `Voice unavailable: ${error.message}`;
+          setVoiceStatus(errorMessage);
+          setVoiceTranscript(errorMessage);
+        });
+    },
   });
   voiceConnectionPromise = voiceAgent.connect(gameSettings?.voice?.name || voiceChoice.value)
     .then(() => voiceAgent)
@@ -706,6 +719,7 @@ async function connectVoiceAgent() {
 }
 
 async function toggleRecording() {
+  startMicrophoneAfterSpeech = false;
   try {
     const agent = await connectVoiceAgent();
     if (agent.recording) await agent.stopMicrophone();
@@ -1360,9 +1374,14 @@ function startNewHand() {
 function connectVoiceForCurrentGame() {
   connectVoiceAgent()
     .then(async (agent) => {
-      if (gameSettings.startMicrophoneAutomatically) await agent.startMicrophone();
+      const shouldAnnounceDeal = !dealPrompt.hidden && gameState.phase === GamePhase.DEAL_HOLE_CARDS;
+      if (shouldAnnounceDeal) {
+        startMicrophoneAfterSpeech = gameSettings.startMicrophoneAutomatically;
+        agent.speak(dealMessage.textContent);
+      } else if (gameSettings.startMicrophoneAutomatically) {
+        await agent.startMicrophone();
+      }
       updateRecordingButton();
-      if (!dealPrompt.hidden && gameState.phase === GamePhase.DEAL_HOLE_CARDS) agent.speak(dealMessage.textContent);
     })
     .catch((error) => {
       const errorMessage = `Voice unavailable: ${error.message}`;
