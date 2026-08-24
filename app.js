@@ -9,20 +9,12 @@ import {
   getBettingBounds,
   Transition,
 } from './game-state.js';
-import { addRequiredVoiceKeywords, fillPrompt, VoiceAgent } from './voice-agent.js';
+import { fillPrompt, VoiceAgent } from './voice-agent.js';
 import { restoredPlayerName } from './game-settings.js';
 import { clockwisePlayerIds, normalizeSeatAngle, snapSeatAngle } from './seat-order.js';
 import promptsText from './Prompts.json?raw';
 
 const prompts = JSON.parse(promptsText);
-const gameVoicePrompts = {
-  ...prompts,
-  transcription: {
-    ...prompts.transcription,
-    keywords: addRequiredVoiceKeywords(prompts.transcription.keywords, ['undo']),
-  },
-};
-
 const playerCount = document.querySelector('#player-count');
 const playerNames = document.querySelector('#player-names');
 const form = document.querySelector('#setup-form');
@@ -532,13 +524,12 @@ function getVoiceSnapshot() {
 
 function getVoiceInstructions() {
   const voice = gameSettings?.voice || selectedVoiceSettings();
-  const instructions = fillPrompt(gameVoicePrompts.mainVoiceInstructions, {
+  const instructions = fillPrompt(prompts.mainVoiceInstructions, {
     GAME_STATE: JSON.stringify(getVoiceSnapshot()),
     ACCENT: voice.accent,
     PACE: voice.pace,
-    ACTIVATION_KEYWORDS: gameVoicePrompts.transcription.keywords.join(', '),
   });
-  return `${instructions}\n\n"Undo" is an activation keyword and an undo request is always related to this poker game. When the foreground speaker says "undo," "undo that," or "undo the last turn," call the undo tool. Never classify a clear undo request as unrelated speech.`;
+  return instructions;
 }
 
 const voiceTools = [
@@ -552,7 +543,7 @@ const voiceTools = [
   { type: 'function', name: 'confirmAction', description: prompts.toolDescriptions.confirmAction, parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'cancelAction', description: prompts.toolDescriptions.cancelAction, parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'cardsDealt', description: prompts.toolDescriptions.cardsDealt, parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'undo', description: 'Poker action for a clear request containing "undo," including "undo," "undo that," and "undo the last turn." Call this tool instead of ignoreSpeech. It restores the most recently confirmed poker turn when available.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'undo', description: 'Restore the most recently confirmed poker turn when the player asks to undo it.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
 ];
 
 function executeVoiceTool(name, args) {
@@ -694,7 +685,7 @@ async function connectVoiceAgent() {
   voiceAgent?.disconnect();
   voiceAgent = new VoiceAgent({
     getInstructions: getVoiceInstructions,
-    prompts: gameVoicePrompts,
+    prompts,
     tools: voiceTools,
     executeTool: executeVoiceTool,
     onTranscript: setVoiceTranscript,

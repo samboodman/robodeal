@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { addRequiredVoiceKeywords, audioBufferToPcm16, containsActivationKeyword, microphoneAudioConstraints, VoiceAgent } from './voice-agent.js';
+import { audioBufferToPcm16, microphoneAudioConstraints, VoiceAgent } from './voice-agent.js';
 
 const prompts = JSON.parse(readFileSync(new URL('./Prompts.json', import.meta.url), 'utf8'));
 
@@ -15,27 +15,13 @@ function testAgent(options = {}) {
   return { agent, sent };
 }
 
-test('utterances without an activation keyword never reach the AI', async () => {
-  const statuses = [];
-  const { agent, sent } = testAgent({ onStatus: (status) => statuses.push(status) });
+test('every completed transcription reaches the AI regardless of wording', async () => {
+  const { agent, sent } = testAgent();
 
   await agent.handleEvent({
     type: 'conversation.item.input_audio_transcription.completed',
     transcript: 'What should we order for dinner?',
     item_id: 'audio-item-1',
-  });
-
-  assert.deepEqual(sent, [{ type: 'conversation.item.delete', item_id: 'audio-item-1' }]);
-  assert.equal(statuses.at(-1), 'Microphone off');
-});
-
-test('utterances with an activation keyword are sent to the AI', async () => {
-  const { agent, sent } = testAgent();
-
-  await agent.handleEvent({
-    type: 'conversation.item.input_audio_transcription.completed',
-    transcript: 'Dealer, call.',
-    item_id: 'audio-item-2',
   });
 
   assert.equal(sent[0].type, 'session.update');
@@ -74,20 +60,6 @@ test('speaks an exact instruction as an audio response without conversation cont
   assert.deepEqual(statuses, ['Thinking…']);
 });
 
-test('required voice keywords are added once', () => {
-  assert.deepEqual(addRequiredVoiceKeywords(['call', 'undo'], ['undo']), ['call', 'undo']);
-  assert.deepEqual(addRequiredVoiceKeywords(['call'], ['undo']), ['call', 'undo']);
-});
-
-test('activation keyword matching uses complete words and normalized phrases', () => {
-  const keywords = ['AI', 'all in', "i'm out"];
-
-  assert.equal(containsActivationKeyword('AI, can you help?', keywords), true);
-  assert.equal(containsActivationKeyword('I am ALL-IN.', keywords), true);
-  assert.equal(containsActivationKeyword('I’m out!', keywords), true);
-  assert.equal(containsActivationKeyword('The waiter said hello.', keywords), false);
-});
-
 test('the session is configured for noisy restaurant speech', () => {
   const { agent } = testAgent();
 
@@ -98,8 +70,7 @@ test('the session is configured for noisy restaurant speech', () => {
   assert.equal(input.transcription.delay, 'medium');
   assert.deepEqual(input.transcription.languages, ['en']);
   assert.match(input.transcription.prompt, /noisy restaurant poker table/);
-  assert.ok(input.transcription.keywords.includes('all in'));
-  assert.ok(input.transcription.keywords.includes('dealer'));
+  assert.equal(Object.hasOwn(input.transcription, 'keywords'), false);
   assert.equal(input.turn_detection.type, 'semantic_vad');
   assert.equal(input.turn_detection.create_response, false);
 });
