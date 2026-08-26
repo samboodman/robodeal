@@ -1371,6 +1371,7 @@ function takeAnte() {
   for (let i = 0; i < gameState.players.length; i++) {
     gameState.players[i].chips -= gameSettings.ante;
   }
+  gameState.pots[0].amount = gameState.players.length * gameSettings.ante;
 }
 
 function startHand() {
