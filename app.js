@@ -1183,11 +1183,16 @@ function renderGameState() {
   turnIndicator.hidden = true;
   if (phase === GamePhase.DEAL_HOLE_CARDS) {
     const dealer = viewPlayer(gameState.dealerId);
+    const smallBlindPlayer = viewPlayer(gameState.smallBlindPlayerId);
+    const bigBlindPlayer = viewPlayer(gameState.bigBlindPlayerId);
     const bettingLimit = bettingLimitLabels[gameState.bettingLimit];
     const fixedLimit = gameState.bettingLimit === BettingLimit.FIXED_LIMIT
       ? ` Limits are ${gameState.fixedLimitBet}/${gameState.fixedLimitBet * 2}.`
       : '';
-    dealMessage.textContent = `Game is ${bettingLimit} Texas Hold'em.${fixedLimit} Small blind is ${gameState.smallBlind}. ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK or say "cards are dealt" when done.`;
+    const blindPlayers = bigBlindPlayer
+      ? `${smallBlindPlayer.name} is the small blind, and ${bigBlindPlayer.name} is the big blind.`
+      : `${smallBlindPlayer.name} is the small blind.`;
+    dealMessage.textContent = `Game is ${bettingLimit} Texas Hold'em.${fixedLimit} Small blind is ${gameState.smallBlind}. ${blindPlayers} ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK or say "cards are dealt" when done.`;
     dealPrompt.hidden = false;
     drawPlayerSeats();
     voiceAgent?.speak(dealMessage.textContent);
