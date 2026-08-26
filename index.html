@@ -41,6 +41,14 @@
             <input id="use-big-blind" name="useBigBlind" type="checkbox" />
             Use big blind (double the small blind)
           </label>
+          <label class="checkbox-setting" for="use-ante">
+            <input id="use-ante" name="useAnte" type="checkbox" />
+            Use ante
+          </label>
+          <div id="ante-setting" hidden>
+            <label for="ante">Ante amount</label>
+            <input id="ante" name="ante" type="number" min="1" value="5" inputmode="numeric" required disabled />
+          </div>
 
           <label for="betting-limit">Betting limit</label>
           <select id="betting-limit" name="bettingLimit">

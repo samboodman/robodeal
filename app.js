@@ -26,6 +26,9 @@ const debugOptions = document.querySelector('#debug-options');
 const debugPresetSelect = document.querySelector('#debug-preset');
 const enableAudioFileInputCheckbox = document.querySelector('#enable-audio-file-input');
 const useBigBlindCheckbox = document.querySelector('#use-big-blind');
+const useAnteCheckbox = document.querySelector('#use-ante');
+const anteSetting = document.querySelector('#ante-setting');
+const anteInput = document.querySelector('#ante');
 const bettingLimitSelect = document.querySelector('#betting-limit');
 const fixedLimitSetting = document.querySelector('#fixed-limit-setting');
 const fixedLimitBetInput = document.querySelector('#fixed-limit-bet');
@@ -115,6 +118,11 @@ const seatSnapDistance = Math.PI / 36;
 
 function updateFixedLimitSetting() {
   fixedLimitSetting.hidden = bettingLimitSelect.value !== BettingLimit.FIXED_LIMIT;
+}
+
+function updateAnteSetting() {
+  anteSetting.hidden = !useAnteCheckbox.checked;
+  anteInput.disabled = !useAnteCheckbox.checked;
 }
 
 function updateDebugFeatures() {
@@ -304,6 +312,9 @@ function restoreLastGameSettings() {
   smallBlindInput.value = smallBlind;
   smallBlindIncreaseInput.value = smallBlindIncrease;
   useBigBlindCheckbox.checked = settings.useBigBlind ?? settings.playerCount >= 6;
+  useAnteCheckbox.checked = settings.useAnte === true;
+  if (Number.isInteger(settings.ante) && settings.ante > 0) anteInput.value = settings.ante;
+  updateAnteSetting();
   bettingLimitSelect.value = Object.values(BettingLimit).includes(settings.bettingLimit)
     ? settings.bettingLimit
     : BettingLimit.NO_LIMIT;
@@ -1486,6 +1497,7 @@ playerCount.addEventListener('change', () => {
   useBigBlindCheckbox.checked = Number(playerCount.value) >= 6;
 });
 bettingLimitSelect.addEventListener('change', updateFixedLimitSetting);
+useAnteCheckbox.addEventListener('change', updateAnteSetting);
 debugFeaturesCheckbox.addEventListener('change', updateDebugFeatures);
 debugPresetSelect.addEventListener('change', selectDebugPreset);
 enableAudioFileInputCheckbox.addEventListener('change', updateDebugFeatures);
@@ -1598,6 +1610,8 @@ form.addEventListener('submit', (event) => {
     smallBlind: Number(document.querySelector('#small-blind').value),
     smallBlindIncrease: Number(document.querySelector('#small-blind-increase').value),
     useBigBlind: useBigBlindCheckbox.checked,
+    useAnte: useAnteCheckbox.checked,
+    ante: useAnteCheckbox.checked ? Number(anteInput.value) : 0,
     bettingLimit: bettingLimitSelect.value,
     fixedLimitBet: Number(fixedLimitBetInput.value),
     dealerNumber: Number(dealerSelect.value),
@@ -1627,4 +1641,5 @@ drawPlayerNames();
 updateChipDisplayModeButton();
 restoreLastGameSettings();
 updateFixedLimitSetting();
+updateAnteSetting();
 updateDebugFeatures();
