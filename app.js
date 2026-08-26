@@ -1370,6 +1370,7 @@ function showGameWinner(winner) {
 function takeAnte() {
   for (let i = 0; i < gameState.players.length; i++) {
     gameState.players[i].chips -= gameSettings.ante;
+    gameState.players[i].handContribution += gameSettings.ante;
   }
   gameState.pots[0].amount += gameState.players.length * gameSettings.ante;
 }
@@ -1392,6 +1393,7 @@ function startNewHand() {
   pendingFold = false;
   pendingVoiceAction = null;
   invokeGame({ type: Transition.START_NEXT_HAND });
+  takeAnte();
   renderGameState();
 }
 
