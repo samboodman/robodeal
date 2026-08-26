@@ -1367,6 +1367,12 @@ function showGameWinner(winner) {
   gameWinnerScreen.hidden = false;
 }
 
+function takeAnte() {
+  for (let i = 0; i < gameState.players.length; i++) {
+    gameState.players[i].chips -= gameSettings.ante;
+  }
+}
+
 function startHand() {
   lastTurnState = null;
   lastTurnEndedHandByFold = false;
@@ -1374,6 +1380,7 @@ function startHand() {
   pendingFold = false;
   pendingVoiceAction = null;
   invokeGame({ type: Transition.START_HAND });
+  takeAnte();
   renderGameState();
 }
 
