@@ -14,13 +14,13 @@ The project is a learning project for Sam. The game is intentionally one small s
 - Show whose turn it is around the table and rotate the controls toward that player.
 - Keep the phone screen awake during an active game when the browser supports it.
 - Remember the latest setup in that browser, including players and chip settings.
-- Connect a small OpenAI Realtime voice agent when a game starts. It can answer short poker questions and call six guarded game actions: fold, check, call, bet, all-in, and cards-dealt. The recording button controls only the microphone, and the voice customization page selects the output voice, accent, and speaking pace.
-- Input audio files for debugging.
+- Connect a small OpenAI Realtime voice agent when a game starts. It can answer short poker questions; perform check, call, bet, raise, fold, all-in, cards-dealt, and undo actions; manage all-in confirmation or cancellation; and silently ignore unrelated speech. The recording button controls only the microphone, and the voice customization page selects the output voice, accent, and speaking pace.
+- Input audio files for debugging on localhost after enabling both debug features and audio-file input.
 
 ## How it is built
 
 - `index.html`, `styles.css`, and `app.js` contain the game interface and main game flow.
-- `game-state.js` is the authoritative poker transition engine. It exports `GamePhase`, `Transition`, `createGameState`, `getAvailableActions(state)`, and `executeTransition(state, action)`. The interface and voice agent consume its state and legal-action list rather than deciding poker rules independently.
+- `game-state.js` is the authoritative poker transition engine. It exports `GamePhase`, `Transition`, `BettingLimit`, `createGameState`, `getBettingBounds`, `createDebugGameState`, `getAvailableActions(state)`, and `executeTransition(state, action)`. The interface and voice agent consume its state and legal-action list rather than deciding poker rules independently.
 - `pot-logic.js` calculates contribution-based main and side pots and decides when betting rounds are complete. `pot-logic.test.js` tests that logic.
 - Vite runs the local development server and builds the site for deployment.
 - `voice-agent.js` owns the WebRTC voice connection, while `api/realtime-call.js` keeps the OpenAI API key on the server.
@@ -28,7 +28,7 @@ The project is a learning project for Sam. The game is intentionally one small s
 
 ## Poker transition engine
 
-`GameState` is plain serializable data: players, chips, blinds, dealer, active player, betting totals, pots, hand number, and one named phase. `getAvailableActions(state)` is the only source for the actions currently permitted. `executeTransition(state, action)` validates a named transition, returns a new state, and resolves deterministic outcomes such as advancing the turn, dealing the next street, running out all-in hands, or finishing a hand.
+`GameState` is plain serializable data: players, chips, blinds, dealer, active player, betting totals, pots, hand number, and one named phase. `getAvailableActions(state)` is the source for legal poker-engine transitions in the current state. Interface-only behavior such as undo and voice confirmation is managed separately in `app.js`. `executeTransition(state, action)` validates a named transition, returns a new state, and resolves deterministic outcomes such as advancing the turn, dealing the next street, running out all-in hands, or finishing a hand.
 
 Run `npm test` to execute the transition tests, including illegal-action guards, blinds, all-ins, all-in runouts, folds, pot awards, side-pot splits, and big-blind mode.
 
