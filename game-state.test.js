@@ -22,8 +22,8 @@ function game({
       { id: 2, name: 'Abby', chips: chips[1] },
       { id: 3, name: 'Sam', chips: chips[2] },
     ],
-    ante: 5,
-    anteIncrease: 5,
+    smallBlind: 5,
+    smallBlindIncrease: 5,
     dealerId: 1,
     useBigBlind,
     bettingLimit,
@@ -56,18 +56,18 @@ function completeRoundWithChecks(state) {
 }
 
 test('GameState creation validates the immutable table configuration', () => {
-  assert.throws(() => createGameState({ players: [], ante: 5, dealerId: 1 }), /At least two/);
-  assert.throws(() => createGameState({ players: [{ id: 1, chips: 1 }, { id: 2, chips: 1 }], ante: -1, dealerId: 1 }), /Ante/);
-  assert.throws(() => createGameState({ players: [{ id: 1, chips: 1 }, { id: 2, chips: 1 }], ante: 1, dealerId: 3 }), /dealer/);
+  assert.throws(() => createGameState({ players: [], smallBlind: 5, dealerId: 1 }), /At least two/);
+  assert.throws(() => createGameState({ players: [{ id: 1, chips: 1 }, { id: 2, chips: 1 }], smallBlind: -1, dealerId: 1 }), /Small blind/);
+  assert.throws(() => createGameState({ players: [{ id: 1, chips: 1 }, { id: 2, chips: 1 }], smallBlind: 1, dealerId: 3 }), /dealer/);
   assert.throws(() => createGameState({
     players: [{ id: 1, chips: 1 }, { id: 2, chips: 1 }],
-    ante: 1,
+    smallBlind: 1,
     dealerId: 1,
     bettingLimit: 'unlimited-ish',
   }), /Betting limit/);
   assert.throws(() => createGameState({
     players: [{ id: 1, chips: 1 }, { id: 2, chips: 1 }],
-    ante: 1,
+    smallBlind: 1,
     dealerId: 1,
     bettingLimit: BettingLimit.FIXED_LIMIT,
     fixedLimitBet: 0,
@@ -121,7 +121,7 @@ test('turns follow the locked physical player order instead of numeric order', (
       { id: 3, name: 'Three', chips: 100 },
       { id: 2, name: 'Two', chips: 100 },
     ],
-    ante: 5,
+    smallBlind: 5,
     dealerId: 1,
   }), { type: Transition.START_HAND });
 
@@ -142,11 +142,11 @@ test('CARDS_DEALT starts preflop with only legal current-player actions', () => 
   ]);
 });
 
-test('matching the ante does not ask the ante player to act again', () => {
+test('matching the small blind does not ask the small-blind player to act again', () => {
   let state = start(game());
 
-  state = action(state, Transition.CALL); // C matches B's ante.
-  state = action(state, Transition.CALL); // A matches B's ante.
+  state = action(state, Transition.CALL); // C matches B's small blind.
+  state = action(state, Transition.CALL); // A matches B's small blind.
 
   assert.equal(state.phase, GamePhase.DEAL_FLOP);
   assert.equal(state.actionPlayerId, null);
@@ -313,7 +313,7 @@ test('the blind increases only when the dealer returns to the first dealer', () 
   state = executeTransition(state, { type: Transition.START_NEXT_HAND });
 
   assert.equal(state.dealerId, 1);
-  assert.equal(state.ante, 10);
+  assert.equal(state.smallBlind, 10);
 });
 
 test('GAME_COMPLETE has no available transitions', () => {

@@ -118,7 +118,7 @@ function postBlind(state, playerId, requestedAmount, countsAsInitialAction = tru
   player.chips -= amount;
   player.roundBet += amount;
   player.handContribution += amount;
-  // In this game, posting the ante counts as an initial matched action. A
+  // In this game, posting the small blind counts as an initial matched action. A
   // later raise still requires a response because roundBet will no longer
   // equal highestRoundBet. A configured big blind retains its usual option.
   player.hasActedThisRound = countsAsInitialAction;
@@ -205,15 +205,15 @@ function makeAction(type, details = {}) {
  */
 export function createGameState({
   players,
-  ante,
-  anteIncrease = 0,
+  smallBlind,
+  smallBlindIncrease = 0,
   dealerId,
   useBigBlind = false,
   bettingLimit = BettingLimit.NO_LIMIT,
-  fixedLimitBet = Math.max(1, ante * 2),
+  fixedLimitBet = Math.max(1, smallBlind * 2),
 }) {
   if (!Array.isArray(players) || players.length < 2) throw new Error('At least two players are required.');
-  if (!Number.isInteger(ante) || ante < 0) throw new Error('Ante must be a non-negative integer.');
+  if (!Number.isInteger(smallBlind) || smallBlind < 0) throw new Error('Small blind must be a non-negative integer.');
   if (!players.some((player) => player.id === dealerId)) throw new Error('The dealer must be a player.');
   if (!Object.values(BettingLimit).includes(bettingLimit)) throw new Error('Betting limit is not supported.');
   if (!Number.isInteger(fixedLimitBet) || fixedLimitBet <= 0) throw new Error('Fixed-limit bet must be a positive integer.');
@@ -230,8 +230,8 @@ export function createGameState({
       handContribution: 0,
       hasActedThisRound: false,
     })),
-    ante,
-    anteIncrease,
+    smallBlind,
+    smallBlindIncrease,
     useBigBlind,
     bettingLimit,
     fixedLimitBet,
@@ -371,7 +371,7 @@ export function executeTransition(gameState, action) {
     if (state.phase !== expected) throw new Error(`${action.type} is not allowed during ${state.phase}.`);
     if (action.type === Transition.START_NEXT_HAND) {
       state.dealerId = playerToDealersLeft(state, state.dealerId);
-      if (state.dealerId === state.firstDealerId) state.ante += state.anteIncrease;
+      if (state.dealerId === state.firstDealerId) state.smallBlind += state.smallBlindIncrease;
     }
     state.handNumber += 1;
     state.phase = GamePhase.DEAL_HOLE_CARDS;
@@ -388,8 +388,8 @@ export function executeTransition(gameState, action) {
     });
     state.smallBlindPlayerId = playerToDealersLeft(state, state.dealerId);
     state.bigBlindPlayerId = state.useBigBlind ? playerToDealersLeft(state, state.smallBlindPlayerId) : null;
-    postBlind(state, state.smallBlindPlayerId, state.ante);
-    if (state.bigBlindPlayerId !== null) postBlind(state, state.bigBlindPlayerId, state.ante * 2, false);
+    postBlind(state, state.smallBlindPlayerId, state.smallBlind);
+    if (state.bigBlindPlayerId !== null) postBlind(state, state.bigBlindPlayerId, state.smallBlind * 2, false);
     refreshPots(state);
     state.actionPlayerId = nextPlayerFrom(state, state.bigBlindPlayerId ?? state.smallBlindPlayerId);
     return state;

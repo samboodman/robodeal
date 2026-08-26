@@ -730,7 +730,7 @@ select:focus {
   grid-template-columns: 1fr 1fr;
   gap: 14px;
 }
-.ante-increase-field {
+.small-blind-increase-field {
   grid-column: 1 / -1;
 }
 .money-grid label {

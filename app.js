@@ -290,17 +290,26 @@ function restoreLastGameSettings() {
   const settings = savedGame?.settings;
   if (!settings || !Number.isInteger(settings.playerCount) || settings.playerCount < 2 || settings.playerCount > 8) return;
 
+  const smallBlindInput = document.querySelector('#small-blind');
+  const smallBlindIncreaseInput = document.querySelector('#small-blind-increase');
+  const smallBlind = Number.isInteger(settings.smallBlind) && settings.smallBlind >= 0
+    ? settings.smallBlind
+    : Number(smallBlindInput.value);
+  const smallBlindIncrease = Number.isInteger(settings.smallBlindIncrease) && settings.smallBlindIncrease >= 0
+    ? settings.smallBlindIncrease
+    : Number(smallBlindIncreaseInput.value);
+
   playerCount.value = settings.playerCount;
   document.querySelector('#starting-money').value = settings.startingMoney;
-  document.querySelector('#ante').value = settings.ante;
-  document.querySelector('#ante-increase').value = settings.anteIncrease;
+  smallBlindInput.value = smallBlind;
+  smallBlindIncreaseInput.value = smallBlindIncrease;
   useBigBlindCheckbox.checked = settings.useBigBlind ?? settings.playerCount >= 6;
   bettingLimitSelect.value = Object.values(BettingLimit).includes(settings.bettingLimit)
     ? settings.bettingLimit
     : BettingLimit.NO_LIMIT;
   fixedLimitBetInput.value = Number.isInteger(settings.fixedLimitBet) && settings.fixedLimitBet > 0
     ? settings.fixedLimitBet
-    : Math.max(1, Number(settings.ante) * 2 || 1);
+    : Math.max(1, smallBlind * 2 || 1);
   updateFixedLimitSetting();
   drawPlayerNames();
 
@@ -811,8 +820,8 @@ function makePlayers() {
 
   gameState = createGameState({
     players,
-    ante: gameSettings.ante,
-    anteIncrease: gameSettings.anteIncrease,
+    smallBlind: gameSettings.smallBlind,
+    smallBlindIncrease: gameSettings.smallBlindIncrease,
     dealerId: gameSettings.dealerNumber,
     useBigBlind: gameSettings.useBigBlind,
     bettingLimit: gameSettings.bettingLimit,
@@ -947,8 +956,8 @@ function lockClockwiseSeatOrder() {
   const players = clockwisePlayerIds(viewPlayers(), seatAngles).map((playerId) => playersById.get(playerId));
   gameState = createGameState({
     players,
-    ante: gameSettings.ante,
-    anteIncrease: gameSettings.anteIncrease,
+    smallBlind: gameSettings.smallBlind,
+    smallBlindIncrease: gameSettings.smallBlindIncrease,
     dealerId: gameSettings.dealerNumber,
     useBigBlind: gameSettings.useBigBlind,
     bettingLimit: gameSettings.bettingLimit,
@@ -1178,7 +1187,7 @@ function renderGameState() {
     const fixedLimit = gameState.bettingLimit === BettingLimit.FIXED_LIMIT
       ? ` Limits are ${gameState.fixedLimitBet}/${gameState.fixedLimitBet * 2}.`
       : '';
-    dealMessage.textContent = `Game is ${bettingLimit} Texas Hold'em.${fixedLimit} Ante is ${gameState.ante}. ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK or say "cards are dealt" when done.`;
+    dealMessage.textContent = `Game is ${bettingLimit} Texas Hold'em.${fixedLimit} Small blind is ${gameState.smallBlind}. ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK or say "cards are dealt" when done.`;
     dealPrompt.hidden = false;
     drawPlayerSeats();
     voiceAgent?.speak(dealMessage.textContent);
@@ -1581,8 +1590,8 @@ form.addEventListener('submit', (event) => {
   gameSettings = {
     playerCount: Number(playerCount.value),
     startingMoney: Number(document.querySelector('#starting-money').value),
-    ante: Number(document.querySelector('#ante').value),
-    anteIncrease: Number(document.querySelector('#ante-increase').value),
+    smallBlind: Number(document.querySelector('#small-blind').value),
+    smallBlindIncrease: Number(document.querySelector('#small-blind-increase').value),
     useBigBlind: useBigBlindCheckbox.checked,
     bettingLimit: bettingLimitSelect.value,
     fixedLimitBet: Number(fixedLimitBetInput.value),
