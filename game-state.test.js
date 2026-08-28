@@ -201,6 +201,51 @@ test('tracks the last full raise size and calls do not replace it', () => {
   assert.equal(getAvailableActions(state).find(({ type }) => type === Transition.BET).minAdditionalChips, 20);
 });
 
+test('a 50-chip opening bet requires at least 100 additional chips to raise', () => {
+  let state = start(game());
+  state = completeRoundWithCalls(state);
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+
+  state = action(state, Transition.BET, { additionalChips: 50 });
+
+  assert.equal(state.lastFullRaiseSize, 50);
+  assert.deepEqual(getAvailableActions(state).find(({ type }) => type === Transition.CALL), {
+    type: Transition.CALL,
+    additionalChips: 50,
+  });
+  assert.deepEqual(getAvailableActions(state).find(({ type }) => type === Transition.BET), {
+    type: Transition.BET,
+    minAdditionalChips: 100,
+    maxAdditionalChips: 245,
+  });
+  assert.throws(() => action(state, Transition.BET, { additionalChips: 99 }), /outside the legal range/);
+});
+
+test('limited chips allow a short all-in without replacing the last full raise size', () => {
+  let state = start(game({ chips: [250, 250, 75] }));
+  state = completeRoundWithCalls(state);
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+
+  state = action(state, Transition.BET, { additionalChips: 50 });
+  const limitedPlayerActions = getAvailableActions(state);
+
+  assert.equal(limitedPlayerActions.some(({ type }) => type === Transition.BET), false);
+  assert.deepEqual(limitedPlayerActions.find(({ type }) => type === Transition.ALL_IN), {
+    type: Transition.ALL_IN,
+    additionalChips: 70,
+  });
+
+  state = action(state, Transition.ALL_IN);
+
+  assert.equal(state.lastFullRaiseSize, 50);
+  assert.equal(state.players.find((player) => player.id === 3).chips, 0);
+  assert.deepEqual(getAvailableActions(state).find(({ type }) => type === Transition.BET), {
+    type: Transition.BET,
+    minAdditionalChips: 120,
+    maxAdditionalChips: 245,
+  });
+});
+
 test('the two-all-in sequence cannot skip the player who still owes chips', () => {
   let state = start(game());
   state = action(state, Transition.ALL_IN);
