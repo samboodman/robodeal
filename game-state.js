@@ -272,7 +272,12 @@ export function getBettingBounds(state, playerId = state.actionPlayerId) {
     state.players.map((candidate) => ({ ...candidate, number: candidate.id })),
     player.id,
   );
-  let minRaiseAdditionalChips = callAmount === 0 ? 1 : callAmount + 1;
+  let minRaiseAdditionalChips;
+  if (state.lastFullRaiseSize !== 1) {
+    minRaiseAdditionalChips = callAmount + state.lastFullRaiseSize;
+  } else {
+    minRaiseAdditionalChips = callAmount === 0 ? 1 : callAmount + 1;
+  }
   let maxAdditionalChips = effectiveMaximum;
 
   if (state.bettingLimit === BettingLimit.POT_LIMIT) {
