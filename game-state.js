@@ -102,6 +102,13 @@ function amountToCall(state, player) {
   return Math.min(Math.max(0, state.highestRoundBet - player.roundBet), player.chips);
 }
 
+function minimumFullBetForRound(state) {
+  if (state.bettingLimit === BettingLimit.FIXED_LIMIT) {
+    return state.fixedLimitBet * (state.round <= 2 ? 1 : 2);
+  }
+  return Math.max(1, state.smallBlind * (state.useBigBlind ? 2 : 1));
+}
+
 function refreshPots(state) {
   state.pots = calculatePots(state.players.map((player) => ({
     number: player.id,
@@ -175,6 +182,7 @@ function assertBettingTurn(state, action) {
 
 function prepareNextBettingRound(state) {
   state.highestRoundBet = 0;
+  state.lastFullRaiseSize = minimumFullBetForRound(state);
   state.players.forEach((player) => {
     player.roundBet = 0;
     player.hasActedThisRound = false;
@@ -241,6 +249,9 @@ export function createGameState({
     smallBlindPlayerId: null,
     bigBlindPlayerId: null,
     highestRoundBet: 0,
+    lastFullRaiseSize: bettingLimit === BettingLimit.FIXED_LIMIT
+      ? fixedLimitBet
+      : Math.max(1, smallBlind * (useBigBlind ? 2 : 1)),
     round: 1,
     pots: [],
     handNumber: 0,
@@ -261,7 +272,10 @@ export function getBettingBounds(state, playerId = state.actionPlayerId) {
     state.players.map((candidate) => ({ ...candidate, number: candidate.id })),
     player.id,
   );
-  let minRaiseAdditionalChips = callAmount === 0 ? 1 : callAmount + 1;
+  const lastFullRaiseSize = Number.isInteger(state.lastFullRaiseSize) && state.lastFullRaiseSize > 0
+    ? state.lastFullRaiseSize
+    : minimumFullBetForRound(state);
+  let minRaiseAdditionalChips = callAmount + lastFullRaiseSize;
   let maxAdditionalChips = effectiveMaximum;
 
   if (state.bettingLimit === BettingLimit.POT_LIMIT) {
@@ -307,6 +321,7 @@ export function createDebugGameState(gameState, presetName) {
   state.smallBlindPlayerId = playerToDealersLeft(state, state.dealerId);
   state.bigBlindPlayerId = null;
   state.highestRoundBet = Math.max(0, ...preset.contributions);
+  state.lastFullRaiseSize = minimumFullBetForRound(state);
   state.potAwardIndex = 0;
   state.handWinnerIds = [...(preset.winnerIds || [])];
   state.players.forEach((player, index) => {
@@ -377,6 +392,7 @@ export function executeTransition(gameState, action) {
     state.phase = GamePhase.DEAL_HOLE_CARDS;
     state.highestRoundBet = 0;
     state.round = 1;
+    state.lastFullRaiseSize = minimumFullBetForRound(state);
     state.pots = [];
     state.potAwardIndex = 0;
     state.handWinnerIds = [];
@@ -468,10 +484,15 @@ export function executeTransition(gameState, action) {
     throw new Error(`Unknown transition: ${action.type}.`);
   }
 
+  const previousHighestRoundBet = state.highestRoundBet;
+  const newRoundBet = player.roundBet + additionalChips;
+  const raiseSize = Math.max(0, newRoundBet - previousHighestRoundBet);
+
   player.chips -= additionalChips;
-  player.roundBet += additionalChips;
+  player.roundBet = newRoundBet;
   player.handContribution += additionalChips;
   player.hasActedThisRound = true;
+  if (raiseSize >= state.lastFullRaiseSize) state.lastFullRaiseSize = raiseSize;
   state.highestRoundBet = Math.max(state.highestRoundBet, player.roundBet);
   refreshPots(state);
   resolveBetting(state);
