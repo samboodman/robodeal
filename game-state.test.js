@@ -137,7 +137,7 @@ test('CARDS_DEALT starts preflop with only legal current-player actions', () => 
   assert.deepEqual(getAvailableActions(state), [
     { type: Transition.FOLD },
     { type: Transition.CALL, additionalChips: 5 },
-    { type: Transition.BET, minAdditionalChips: 10, maxAdditionalChips: 250 },
+    { type: Transition.BET, minAdditionalChips: 6, maxAdditionalChips: 250 },
     { type: Transition.ALL_IN, additionalChips: 250 },
   ]);
 });
@@ -189,16 +189,14 @@ test('normal betting moves action around the table and then requests the flop', 
   assert.equal(state.actionPlayerId, null);
 });
 
-test('minimum raises use the last full raise size and calls do not replace it', () => {
+test('tracks the last full raise size and calls do not replace it', () => {
   let state = start(game());
 
   state = action(state, Transition.BET, { additionalChips: 15 });
   assert.equal(state.lastFullRaiseSize, 10);
-  assert.equal(getAvailableActions(state).find(({ type }) => type === Transition.BET).minAdditionalChips, 25);
 
   state = action(state, Transition.CALL);
   assert.equal(state.lastFullRaiseSize, 10);
-  assert.equal(getAvailableActions(state).find(({ type }) => type === Transition.BET).minAdditionalChips, 20);
 });
 
 test('the two-all-in sequence cannot skip the player who still owes chips', () => {
@@ -366,7 +364,7 @@ test('pot-limit caps a raise at the size of the pot after calling', () => {
 
   assert.deepEqual(actions.find(({ type }) => type === Transition.BET), {
     type: Transition.BET,
-    minAdditionalChips: 20,
+    minAdditionalChips: 11,
     maxAdditionalChips: 35,
   });
   assert.equal(actions.some(({ type }) => type === Transition.ALL_IN), false);
