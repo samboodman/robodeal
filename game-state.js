@@ -433,7 +433,7 @@ export function executeTransition(gameState, action) {
           state.newDealerIndex = state.players.findIndex((player) => player.id === state.dealerId) - 1
           if (state.newDealerIndex <= -1) {
             const activePlayers = state.players.filter((player) => !player.eliminated);
-            const newDealerIndex = state.players.findIndex(
+            let newDealerIndex = state.players.findIndex(
               (player) => player.id === activePlayers[activePlayers.length - 1].id,
             );
             while (true) {
