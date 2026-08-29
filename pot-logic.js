@@ -4,12 +4,12 @@ function samePlayers(first, second) {
 
 export function maximumAdditionalBet(players, playerNumber) {
   const player = players.find((candidate) => candidate.number === playerNumber);
-  if (!player || player.folded || player.eliminated) return 0;
+  if (!player || player.folded || player.eliminated) {return 0;}
 
   const opposingTotals = players
     .filter((candidate) => candidate.number !== playerNumber && !candidate.folded && !candidate.eliminated)
     .map((candidate) => (Number(candidate.handContribution) || 0) + (Number(candidate.chips) || 0));
-  if (opposingTotals.length === 0) return 0;
+  if (opposingTotals.length === 0) {return 0;}
 
   const playerContribution = Number(player.handContribution) || 0;
   const playerChips = Math.max(0, Number(player.chips) || 0);
@@ -96,14 +96,14 @@ export function potsForBettingDisplay(pots) {
 export function hasBettingRoundFinished(players, highestRoundBet) {
   const playersWhoCanAct = players.filter((player) => !player.folded && !player.eliminated && player.chips > 0);
 
-  if (playersWhoCanAct.length === 0) return true;
+  if (playersWhoCanAct.length === 0) {return true;}
   return playersWhoCanAct.every((player) =>
     player.hasActedThisRound && player.roundBet === highestRoundBet);
 }
 
 export function splitPotAmount(amount, orderedWinnerNumbers) {
   const winnerNumbers = [...new Set(orderedWinnerNumbers)];
-  if (winnerNumbers.length === 0) return [];
+  if (winnerNumbers.length === 0) {return [];}
 
   const equalShare = Math.floor(amount / winnerNumbers.length);
   const oddChips = amount % winnerNumbers.length;

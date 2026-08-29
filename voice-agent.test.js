@@ -1,81 +1,72 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { audioBufferToPcm16, microphoneAudioConstraints, VoiceAgent } from './voice-agent.js';
+import test from 'node:test';
+import { fillPrompt, microphoneAudioConstraints, VoiceAgent } from './voice-agent.js';
+import { handleVoiceApi } from './voice-api-handler.js';
 
-const prompts = JSON.parse(readFileSync(new URL('./Prompts.json', import.meta.url), 'utf8'));
+const prompts = {
+  transcription: { prompt: 'Poker commands at a noisy table.' },
+};
 
-function testAgent(options = {}) {
-  const sent = [];
-  const agent = new VoiceAgent({ getInstructions: () => 'Current game state', prompts, ...options });
-  agent.channel = {
-    readyState: 'open',
-    send: (event) => sent.push(JSON.parse(event)),
-  };
-  return { agent, sent };
+function jsonResponse(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
 
-test('every completed transcription reaches the AI regardless of wording', async () => {
-  const { agent, sent } = testAgent();
-
-  await agent.handleEvent({
-    type: 'conversation.item.input_audio_transcription.completed',
-    transcript: 'What should we order for dinner?',
-    item_id: 'audio-item-1',
+function audioResponse(bytes = new Uint8Array([1, 2, 3, 4])) {
+  return new Response(bytes, {
+    status: 200,
+    headers: { 'Content-Type': 'audio/mpeg' },
   });
+}
 
-  assert.equal(sent[0].type, 'session.update');
-  assert.deepEqual(sent[1], { type: 'response.create' });
-  assert.equal(sent.some(({ type }) => type === 'conversation.item.delete'), false);
-});
+function installAudioPlayer() {
+  const played = [];
+  const originalAudio = globalThis.Audio;
+  globalThis.Audio = class FakeAudio {
+    constructor(url) {
+      this.url = url;
+      this.listeners = new Map();
+      played.push(this);
+    }
 
-test('the session exposes supplied tools with automatic tool choice', () => {
-  const tools = [{ type: 'function', name: 'call', parameters: { type: 'object', properties: {} } }];
-  const { agent } = testAgent({ tools });
+    addEventListener(type, listener) {
+      this.listeners.set(type, listener);
+    }
 
-  const session = agent.sessionConfiguration('marin');
+    async play() {
+      queueMicrotask(() => this.listeners.get('ended')?.());
+    }
 
-  assert.equal(session.tool_choice, 'auto');
-  assert.deepEqual(session.tools, tools);
-});
-
-test('speaks an exact instruction as an audio response without conversation context', () => {
-  const statuses = [];
-  const { agent, sent } = testAgent({ onStatus: (status) => statuses.push(status) });
-
-  agent.speak('Deal two cards.');
-
-  assert.deepEqual(sent, [{
-    type: 'response.create',
-    response: {
-      conversation: 'none',
-      input: [],
-      output_modalities: ['audio'],
-      instructions: 'Say exactly this: Deal two cards.',
-      tools: [],
-      tool_choice: 'none',
+    pause() {
+      this.paused = true;
+    }
+  };
+  return {
+    played,
+    restore() {
+      globalThis.Audio = originalAudio;
     },
-  }]);
-  assert.equal(agent.pendingResponseCount, 1);
-  assert.deepEqual(statuses, ['Thinking…']);
+  };
+}
+
+function makeAgent(options = {}) {
+  return new VoiceAgent({
+    getInstructions: () => 'Current poker state.',
+    prompts,
+    ...options,
+  });
+}
+
+test('fills dynamic values into voice instructions', () => {
+  assert.equal(
+    fillPrompt('Player {{PLAYER}} owes {{AMOUNT}}.', { PLAYER: 'Sam', AMOUNT: 5 }),
+    'Player Sam owes 5.',
+  );
 });
 
-test('the session is configured for noisy restaurant speech', () => {
-  const { agent } = testAgent();
-
-  const input = agent.sessionConfiguration('marin').audio.input;
-
-  assert.equal(input.noise_reduction.type, 'far_field');
-  assert.equal(input.transcription.model, 'gpt-live-transcribe');
-  assert.equal(input.transcription.delay, 'medium');
-  assert.deepEqual(input.transcription.languages, ['en']);
-  assert.match(input.transcription.prompt, /noisy restaurant poker table/);
-  assert.equal(Object.hasOwn(input.transcription, 'keywords'), false);
-  assert.equal(input.turn_detection.type, 'semantic_vad');
-  assert.equal(input.turn_detection.create_response, false);
-});
-
-test('microphone constraints enable supported browser voice isolation', () => {
+test('microphone constraints request supported voice isolation', () => {
   assert.deepEqual(microphoneAudioConstraints({ voiceIsolation: true }), {
     echoCancellation: true,
     noiseSuppression: true,
@@ -86,110 +77,225 @@ test('microphone constraints enable supported browser voice isolation', () => {
   assert.equal('voiceIsolation' in microphoneAudioConstraints(), false);
 });
 
-test('an AI tool call is executed and returned to the conversation', async () => {
-  const calls = [];
-  const { agent, sent } = testAgent({
+test('connect selects a TTS voice without opening a Realtime connection', async () => {
+  const statuses = [];
+  const agent = makeAgent({ onStatus: (status) => statuses.push(status) });
+
+  await agent.connect('coral');
+
+  assert.equal(agent.connected, true);
+  assert.equal(agent.voice, 'coral');
+  assert.deepEqual(statuses, ['AI connected.']);
+});
+
+test('speak sends exact text to TTS and plays the returned audio', async () => {
+  const originalFetch = globalThis.fetch;
+  const audio = installAudioPlayer();
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url, body: JSON.parse(options.body) });
+    return audioResponse();
+  };
+  const transcripts = [];
+  const agent = makeAgent({ onTranscript: (text) => transcripts.push(text) });
+  await agent.connect('coral');
+
+  try {
+    await agent.speak('Deal two cards.');
+  } finally {
+    globalThis.fetch = originalFetch;
+    audio.restore();
+    agent.disconnect();
+  }
+
+  assert.deepEqual(requests, [{
+    url: '/api/voice',
+    body: { action: 'speech', text: 'Deal two cards.', voice: 'coral' },
+  }]);
+  assert.equal(audio.played.length, 1);
+  assert.match(transcripts.at(-1), /Deal two cards/);
+});
+
+test('audio runs through transcription, GPT tools, tool output, and TTS', async () => {
+  const originalFetch = globalThis.fetch;
+  const audio = installAudioPlayer();
+  const requestBodies = [];
+  const responses = [
+    jsonResponse({ text: 'I call.' }),
+    jsonResponse({
+      id: 'response-1',
+      output: [{ type: 'function_call', name: 'call', arguments: '{}', call_id: 'call-1' }],
+    }),
+    jsonResponse({
+      id: 'response-2',
+      output: [{ type: 'message', content: [{ type: 'output_text', text: 'Sam calls 5.' }] }],
+    }),
+    audioResponse(),
+  ];
+  globalThis.fetch = async (_url, options) => {
+    requestBodies.push(JSON.parse(options.body));
+    return responses.shift();
+  };
+  const toolCalls = [];
+  const transcripts = [];
+  const agent = makeAgent({
+    tools: [{ type: 'function', name: 'call', parameters: { type: 'object', properties: {} } }],
     executeTool: async (name, args) => {
-      calls.push({ name, args });
-      return { ok: true, message: 'Player 1 calls 5.' };
+      toolCalls.push({ name, args });
+      return { ok: true, message: 'Sam calls 5.' };
+    },
+    onTranscript: (text) => transcripts.push(text),
+  });
+  await agent.connect('coral');
+
+  try {
+    await agent.playAudioFile(new Blob(['voice'], { type: 'audio/wav' }));
+  } finally {
+    globalThis.fetch = originalFetch;
+    audio.restore();
+    agent.disconnect();
+  }
+
+  assert.deepEqual(toolCalls, [{ name: 'call', args: {} }]);
+  assert.deepEqual(requestBodies.map(({ action }) => action), [
+    'transcribe',
+    'respond',
+    'respond',
+    'speech',
+  ]);
+  assert.equal(requestBodies[2].previousResponseId, 'response-1');
+  assert.deepEqual(requestBodies[2].input, [{
+    type: 'function_call_output',
+    call_id: 'call-1',
+    output: JSON.stringify({ ok: true, message: 'Sam calls 5.' }),
+  }]);
+  assert.match(transcripts[0], /I call/);
+  assert.match(transcripts[1], /Sam calls 5/);
+  assert.equal(audio.played.length, 1);
+});
+
+test('a silent tool result performs the function without requesting speech', async () => {
+  const originalFetch = globalThis.fetch;
+  const requestBodies = [];
+  const responses = [
+    jsonResponse({ text: 'background conversation' }),
+    jsonResponse({
+      id: 'response-1',
+      output: [{ type: 'function_call', name: 'ignoreSpeech', arguments: '{}', call_id: 'ignore-1' }],
+    }),
+  ];
+  globalThis.fetch = async (_url, options) => {
+    requestBodies.push(JSON.parse(options.body));
+    return responses.shift();
+  };
+  let toolWasCalled = false;
+  const agent = makeAgent({
+    executeTool: async () => {
+      toolWasCalled = true;
+      return { ok: true, silent: true };
     },
   });
+  await agent.connect();
 
-  await agent.handleEvent({
-    type: 'response.function_call_arguments.done',
-    name: 'call',
-    arguments: '{}',
-    call_id: 'call-1',
-  });
+  try {
+    await agent.playAudioFile(new Blob(['voice'], { type: 'audio/wav' }));
+  } finally {
+    globalThis.fetch = originalFetch;
+    agent.disconnect();
+  }
 
-  assert.deepEqual(calls, [{ name: 'call', args: {} }]);
-  assert.equal(sent[0].type, 'conversation.item.create');
-  assert.match(sent[0].item.output, /Player 1 calls 5/);
-  assert.equal(sent[1].type, 'session.update');
-  assert.equal(sent[2].type, 'response.create');
+  assert.equal(toolWasCalled, true);
+  assert.deepEqual(requestBodies.map(({ action }) => action), ['transcribe', 'respond']);
 });
 
-test('an AI-selected silent tool call produces no follow-up response', async () => {
-  const statuses = [];
-  const { agent, sent } = testAgent({
-    executeTool: async () => ({ ok: true, silent: true }),
-    onStatus: (status) => statuses.push(status),
-  });
+test('the deal-page cancellation events abort work and stop playing audio', async () => {
+  const agent = makeAgent();
+  await agent.connect();
+  let aborted = false;
+  agent.activeRequest = { abort: () => { aborted = true; } };
+  agent.audio = { pause() { this.paused = true; } };
+  const playingAudio = agent.audio;
+  agent.pendingResponseCount = 1;
 
-  await agent.handleEvent({
-    type: 'response.function_call_arguments.done',
-    name: 'ignoreSpeech',
-    arguments: '{}',
-    call_id: 'ignore-1',
-  });
+  agent.send({ type: 'response.cancel' });
 
-  assert.deepEqual(sent.map(({ type }) => type), ['conversation.item.create']);
-  assert.match(sent[0].item.output, /\"silent\":true/);
-  assert.deepEqual(statuses, ['Applying action…', 'Microphone off']);
+  assert.equal(aborted, true);
+  assert.equal(playingAudio.paused, true);
+  assert.equal(agent.pendingResponseCount, 0);
 });
 
-test('voice status follows thinking, speaking, and idle response states', async () => {
-  const statuses = [];
-  const { agent } = testAgent({ onStatus: (status) => statuses.push(status) });
-  agent.microphoneStream = { getTracks: () => [] };
-
-  await agent.handleEvent({
-    type: 'conversation.item.input_audio_transcription.completed',
-    transcript: 'Dealer, call.',
-  });
-  await agent.handleEvent({ type: 'response.output_audio.delta', delta: 'audio' });
-  await agent.handleEvent({ type: 'response.done' });
-
-  assert.deepEqual(statuses, ['Thinking…', 'Speaking…', 'Listening']);
-});
-
-test('converts decoded audio to 24 kHz mono PCM16', () => {
-  const pcm = audioBufferToPcm16({
-    sampleRate: 12_000,
-    length: 2,
-    numberOfChannels: 1,
-    getChannelData: () => new Float32Array([-1, 1]),
-  });
-
-  assert.equal(pcm.length, 8);
-  assert.equal(new DataView(pcm.buffer).getInt16(0, true), -32_768);
-});
-
-test('an audio file is appended and committed through the Realtime input buffer', async () => {
-  const { agent, sent } = testAgent();
-  const microphoneTrack = { kind: 'microphone' };
-  const replacedTracks = [];
-  agent.sender = {
-    track: microphoneTrack,
-    async replaceTrack(track) { replacedTracks.push(track); },
+test('server transcription always uses gpt-transcribe', async () => {
+  const originalFetch = globalThis.fetch;
+  let request;
+  globalThis.fetch = async (url, options) => {
+    request = { url, options };
+    return jsonResponse({ text: 'I call.' });
   };
 
-  class FakeAudioContext {
-    async resume() {}
-    async decodeAudioData() {
-      return {
-        sampleRate: 24_000,
-        length: 2_400,
-        numberOfChannels: 1,
-        getChannelData: () => new Float32Array(2_400).fill(0.25),
-      };
-    }
-    async close() {}
-  }
-
-  const originalWindow = globalThis.window;
-  globalThis.window = { AudioContext: FakeAudioContext };
   try {
-    await agent.playAudioFile({ name: 'call.wav', arrayBuffer: async () => new ArrayBuffer(1) });
+    const result = await handleVoiceApi({
+      action: 'transcribe',
+      audio: Buffer.from('audio').toString('base64'),
+      mimeType: 'audio/wav',
+      fileName: 'call.wav',
+    }, 'test-key');
+    assert.equal(result.status, 200);
   } finally {
-    globalThis.window = originalWindow;
+    globalThis.fetch = originalFetch;
   }
 
-  assert.deepEqual(replacedTracks, [null, microphoneTrack]);
-  assert.deepEqual(sent.map(({ type }) => type), [
-    'input_audio_buffer.clear',
-    'input_audio_buffer.append',
-    'input_audio_buffer.commit',
-  ]);
-  assert.equal(agent.audioTestRunning, false);
+  assert.equal(request.url, 'https://api.openai.com/v1/audio/transcriptions');
+  assert.equal(request.options.body.get('model'), 'gpt-transcribe');
+});
+
+test('server thinking always uses gpt-5.6-sol with function tools', async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody;
+  globalThis.fetch = async (_url, options) => {
+    requestBody = JSON.parse(options.body);
+    return jsonResponse({ id: 'response-1', output: [] });
+  };
+  const tools = [{ type: 'function', name: 'call', parameters: { type: 'object', properties: {} } }];
+
+  try {
+    const result = await handleVoiceApi({
+      action: 'respond',
+      input: 'I call.',
+      instructions: 'Operate the poker game.',
+      tools,
+    }, 'test-key');
+    assert.equal(result.status, 200);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(requestBody.model, 'gpt-5.6-sol');
+  assert.deepEqual(requestBody.reasoning, { effort: 'medium' });
+  assert.deepEqual(requestBody.tools, tools);
+  assert.equal(requestBody.tool_choice, 'auto');
+});
+
+test('server speech uses tts-1 and replaces unsupported Realtime voices', async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody;
+  globalThis.fetch = async (_url, options) => {
+    requestBody = JSON.parse(options.body);
+    return audioResponse();
+  };
+
+  try {
+    const result = await handleVoiceApi({
+      action: 'speech',
+      text: 'Sam calls 5.',
+      voice: 'marin',
+    }, 'test-key');
+    assert.equal(result.status, 200);
+    assert.equal(result.contentType, 'audio/mpeg');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(requestBody.model, 'tts-1');
+  assert.equal(requestBody.voice, 'coral');
+  assert.equal(requestBody.input, 'Sam calls 5.');
 });

@@ -74,24 +74,36 @@ function playersWhoCanAct(state) {
 
 function nextPlayerFrom(state, playerId) {
   const index = state.players.findIndex((player) => player.id === playerId);
-  if (index < 0) return null;
+  if (index < 0) {return null;}
 
   for (let step = 1; step <= state.players.length; step += 1) {
     const player = state.players[(index + step) % state.players.length];
-    if (!player.folded && !player.eliminated && player.chips > 0) return player.id;
+    if (!player.folded && !player.eliminated && player.chips > 0) {return player.id;}
   }
   return null;
 }
 
 function playerToDealersLeft(state, dealerId) {
   const index = state.players.findIndex((player) => player.id === dealerId);
-  if (index < 0) throw new Error('The dealer must be seated at the table.');
+  if (index < 0) {throw new Error('The dealer must be seated at the table.');}
 
   for (let step = 1; step <= state.players.length; step += 1) {
     const player = state.players[(index + step) % state.players.length];
-    if (!player.eliminated) return player.id;
+    if (!player.eliminated) {return player.id;}
   }
   return dealerId;
+}
+
+function winnerIdsInOddChipOrder(state, winnerIds) {
+  const dealerIndex = state.players.findIndex((player) => player.id === state.dealerId);
+  const winnerSet = new Set(winnerIds);
+  const orderedWinnerIds = [];
+
+  for (let step = 1; step <= state.players.length; step += 1) {
+    const playerId = state.players[(dealerIndex + step) % state.players.length].id;
+    if (winnerSet.has(playerId)) {orderedWinnerIds.push(playerId);}
+  }
+  return orderedWinnerIds;
 }
 
 function currentPlayer(state) {
@@ -100,6 +112,15 @@ function currentPlayer(state) {
 
 function amountToCall(state, player) {
   return Math.min(Math.max(0, state.highestRoundBet - player.roundBet), player.chips);
+}
+
+function raiseRightsAreOpen(state, player) {
+  return player.lastActionBetLevel == null
+    || state.highestRoundBet - player.lastActionBetLevel >= state.lastFullRaiseSize;
+}
+
+function fixedLimitRaiseCapIsOpen(state) {
+  return state.bettingLimit !== BettingLimit.FIXED_LIMIT || state.fullRaisesThisRound < 3;
 }
 
 function minimumFullBetForRound(state) {
@@ -119,6 +140,14 @@ function refreshPots(state) {
   })));
 }
 
+function takeAnte(state, ante) {
+  for (let i = state.players.length - 1; i >= 0; i--) {
+    let takenAmount = Math.min(ante, state.players[i].chips);
+    state.players[i].chips -= takenAmount;
+    state.players[i].handContribution += takenAmount;
+  }
+}
+
 function postBlind(state, playerId, requestedAmount, countsAsInitialAction = true) {
   const player = playerById(state, playerId);
   const amount = Math.min(requestedAmount, player.chips);
@@ -134,7 +163,7 @@ function postBlind(state, playerId, requestedAmount, countsAsInitialAction = tru
 
 function phaseAfterBetting(state) {
   const nextPhase = dealPhaseFor[state.phase];
-  if (nextPhase === GamePhase.SHOWDOWN) return GamePhase.SHOWDOWN;
+  if (nextPhase === GamePhase.SHOWDOWN) {return GamePhase.SHOWDOWN;}
   return playersWhoCanAct(state).length <= 1 ? GamePhase.ALL_IN_RUNOUT : nextPhase;
 }
 
@@ -173,24 +202,23 @@ function resolveBetting(state) {
 }
 
 function assertBettingTurn(state, action) {
-  if (!bettingPhases.includes(state.phase)) throw new Error(`No betting action is allowed during ${state.phase}.`);
-  if (action.playerId !== state.actionPlayerId) throw new Error('It is not that player’s turn.');
+  if (!bettingPhases.includes(state.phase)) {throw new Error(`No betting action is allowed during ${state.phase}.`);}
+  if (action.playerId !== state.actionPlayerId) {throw new Error('It is not that player’s turn.');}
   const player = currentPlayer(state);
-  if (!player || player.folded || player.eliminated || player.chips <= 0) throw new Error('That player cannot act.');
+  if (!player || player.folded || player.eliminated || player.chips <= 0) {throw new Error('That player cannot act.');}
   return player;
 }
 
 function prepareNextBettingRound(state) {
   state.highestRoundBet = 0;
   state.lastFullRaiseSize = minimumFullBetForRound(state);
+  state.fullRaisesThisRound = 0;
   state.players.forEach((player) => {
     player.roundBet = 0;
     player.hasActedThisRound = false;
+    player.lastActionBetLevel = null;
   });
-  const first = playerById(state, state.smallBlindPlayerId);
-  state.actionPlayerId = first && !first.folded && !first.eliminated && first.chips > 0
-    ? first.id
-    : nextPlayerFrom(state, state.smallBlindPlayerId);
+  state.actionPlayerId = nextPlayerFrom(state, state.dealerId);
 }
 
 function advanceAward(state) {
@@ -215,16 +243,17 @@ export function createGameState({
   players,
   smallBlind,
   smallBlindIncrease = 0,
+  ante = 0,
   dealerId,
   useBigBlind = false,
   bettingLimit = BettingLimit.NO_LIMIT,
   fixedLimitBet = Math.max(1, smallBlind * 2),
 }) {
-  if (!Array.isArray(players) || players.length < 2) throw new Error('At least two players are required.');
-  if (!Number.isInteger(smallBlind) || smallBlind < 0) throw new Error('Small blind must be a non-negative integer.');
-  if (!players.some((player) => player.id === dealerId)) throw new Error('The dealer must be a player.');
-  if (!Object.values(BettingLimit).includes(bettingLimit)) throw new Error('Betting limit is not supported.');
-  if (!Number.isInteger(fixedLimitBet) || fixedLimitBet <= 0) throw new Error('Fixed-limit bet must be a positive integer.');
+  if (!Array.isArray(players) || players.length < 2) {throw new Error('At least two players are required.');}
+  if (!Number.isInteger(smallBlind) || smallBlind < 0) {throw new Error('Small blind must be a non-negative integer.');}
+  if (!players.some((player) => player.id === dealerId)) {throw new Error('The dealer must be a player.');}
+  if (!Object.values(BettingLimit).includes(bettingLimit)) {throw new Error('Betting limit is not supported.');}
+  if (!Number.isInteger(fixedLimitBet) || fixedLimitBet <= 0) {throw new Error('Fixed-limit bet must be a positive integer.');}
 
   return {
     phase: GamePhase.SETUP,
@@ -237,9 +266,11 @@ export function createGameState({
       roundBet: 0,
       handContribution: 0,
       hasActedThisRound: false,
+      lastActionBetLevel: null,
     })),
     smallBlind,
     smallBlindIncrease,
+    ante,
     useBigBlind,
     bettingLimit,
     fixedLimitBet,
@@ -249,6 +280,7 @@ export function createGameState({
     smallBlindPlayerId: null,
     bigBlindPlayerId: null,
     highestRoundBet: 0,
+    fullRaisesThisRound: 0,
     lastFullRaiseSize: bettingLimit === BettingLimit.FIXED_LIMIT
       ? fixedLimitBet
       : Math.max(1, smallBlind * (useBigBlind ? 2 : 1)),
@@ -311,9 +343,9 @@ const debugPresets = Object.freeze({
 /** Creates a named, internally consistent state for localhost debug starts. */
 export function createDebugGameState(gameState, presetName) {
   const preset = debugPresets[presetName];
-  if (!preset) return executeTransition(gameState, { type: Transition.START_HAND });
-  if (gameState.phase !== GamePhase.SETUP) throw new Error('A debug starting point can only be created from setup.');
-  if (gameState.players.length !== preset.chips.length) throw new Error(`${presetName} requires ${preset.chips.length} players.`);
+  if (!preset) {return executeTransition(gameState, { type: Transition.START_HAND });}
+  if (gameState.phase !== GamePhase.SETUP) {throw new Error('A debug starting point can only be created from setup.');}
+  if (gameState.players.length !== preset.chips.length) {throw new Error(`${presetName} requires ${preset.chips.length} players.`);}
 
   const state = clone(gameState);
   state.phase = preset.phase;
@@ -323,6 +355,7 @@ export function createDebugGameState(gameState, presetName) {
   state.smallBlindPlayerId = playerToDealersLeft(state, state.dealerId);
   state.bigBlindPlayerId = null;
   state.highestRoundBet = Math.max(0, ...preset.contributions);
+  state.fullRaisesThisRound = 0;
   state.lastFullRaiseSize = minimumFullBetForRound(state);
   state.potAwardIndex = 0;
   state.handWinnerIds = [...(preset.winnerIds || [])];
@@ -331,6 +364,7 @@ export function createDebugGameState(gameState, presetName) {
     player.roundBet = preset.contributions[index];
     player.handContribution = preset.contributions[index];
     player.hasActedThisRound = false;
+    player.lastActionBetLevel = null;
     player.folded = false;
     player.eliminated = preset.phase === GamePhase.GAME_COMPLETE && player.chips === 0;
   });
@@ -348,30 +382,34 @@ export function getAvailableActions(state) {
   }
   if (state.phase === GamePhase.SHOWDOWN) {
     const pot = state.pots[state.potAwardIndex];
-    if (!pot) return [];
+    if (!pot) {return [];}
     const eligiblePlayerIds = [...pot.eligiblePlayerNumbers];
     return [
       makeAction(Transition.AWARD_POT, { potIndex: state.potAwardIndex, eligiblePlayerIds }),
       ...(eligiblePlayerIds.length > 1 ? [makeAction(Transition.SPLIT_POT, { potIndex: state.potAwardIndex, eligiblePlayerIds })] : []),
     ];
   }
-  if (!bettingPhases.includes(state.phase)) return [];
+  if (!bettingPhases.includes(state.phase)) {return [];}
 
   const player = currentPlayer(state);
-  if (!player) return [];
+  if (!player) {return [];}
   const {
     callAmount,
     minRaiseAdditionalChips: minimumBet,
     maxAdditionalChips: maximumBet,
   } = getBettingBounds(state, player.id);
+  const canRaise = raiseRightsAreOpen(state, player) && fixedLimitRaiseCapIsOpen(state);
   const actions = [makeAction(Transition.FOLD)];
-  if (callAmount === 0) actions.push(makeAction(Transition.CHECK));
-  if (callAmount > 0) actions.push(makeAction(Transition.CALL, { additionalChips: callAmount }));
-  if (maximumBet >= minimumBet) actions.push(makeAction(Transition.BET, {
+  if (callAmount === 0) {actions.push(makeAction(Transition.CHECK));}
+  if (callAmount > 0) {actions.push(makeAction(Transition.CALL, { additionalChips: callAmount }));}
+  if (canRaise && maximumBet >= minimumBet) {actions.push(makeAction(Transition.BET, {
     minAdditionalChips: minimumBet,
     maxAdditionalChips: maximumBet,
-  }));
-  if (maximumBet === player.chips && maximumBet > 0) actions.push(makeAction(Transition.ALL_IN, { additionalChips: maximumBet }));
+  }));}
+  const allInDoesNotRaise = player.roundBet + maximumBet <= state.highestRoundBet;
+  if (maximumBet === player.chips && maximumBet > 0 && (canRaise || allInDoesNotRaise)) {
+    actions.push(makeAction(Transition.ALL_IN, { additionalChips: maximumBet }));
+  }
   return actions;
 }
 
@@ -380,19 +418,27 @@ export function getAvailableActions(state) {
  * throw without modifying the supplied state.
  */
 export function executeTransition(gameState, action) {
-  if (!action?.type) throw new Error('A transition type is required.');
+  if (!action?.type) {throw new Error('A transition type is required.');}
   const state = clone(gameState);
 
   if (action.type === Transition.START_HAND || action.type === Transition.START_NEXT_HAND) {
     const expected = action.type === Transition.START_HAND ? GamePhase.SETUP : GamePhase.HAND_COMPLETE;
-    if (state.phase !== expected) throw new Error(`${action.type} is not allowed during ${state.phase}.`);
+    if (state.phase !== expected) {throw new Error(`${action.type} is not allowed during ${state.phase}.`);}
     if (action.type === Transition.START_NEXT_HAND) {
       state.dealerId = playerToDealersLeft(state, state.dealerId);
-      if (state.dealerId === state.firstDealerId) state.smallBlind += state.smallBlindIncrease;
+      if (playerById(state, state.firstDealerId).eliminated) {
+        state.ActiveFirstDealerId = playerToDealersLeft(state, state.firstDealerId)
+      } else {
+        state.ActiveFirstDealerId = state.firstDealerId
+      }
+      if (state.dealerId === state.ActiveFirstDealerId) {
+        state.smallBlind += state.smallBlindIncrease;
+      }
     }
     state.handNumber += 1;
     state.phase = GamePhase.DEAL_HOLE_CARDS;
     state.highestRoundBet = 0;
+    state.fullRaisesThisRound = 0;
     state.round = 1;
     state.lastFullRaiseSize = minimumFullBetForRound(state);
     state.pots = [];
@@ -403,11 +449,19 @@ export function executeTransition(gameState, action) {
       player.roundBet = 0;
       player.handContribution = 0;
       player.hasActedThisRound = false;
+      player.lastActionBetLevel = null;
     });
-    state.smallBlindPlayerId = playerToDealersLeft(state, state.dealerId);
-    state.bigBlindPlayerId = state.useBigBlind ? playerToDealersLeft(state, state.smallBlindPlayerId) : null;
+    const activePlayerCount = state.players.filter((player) => !player.eliminated).length;
+    if (activePlayerCount === 2 && state.useBigBlind) {
+      state.smallBlindPlayerId = state.dealerId;
+      state.bigBlindPlayerId = playerToDealersLeft(state, state.dealerId);
+    } else {
+      state.smallBlindPlayerId = playerToDealersLeft(state, state.dealerId);
+      state.bigBlindPlayerId = state.useBigBlind ? playerToDealersLeft(state, state.smallBlindPlayerId) : null;
+    }
+    takeAnte(state, state.ante);
     postBlind(state, state.smallBlindPlayerId, state.smallBlind);
-    if (state.bigBlindPlayerId !== null) postBlind(state, state.bigBlindPlayerId, state.smallBlind * 2, false);
+    if (state.bigBlindPlayerId !== null) {postBlind(state, state.bigBlindPlayerId, state.smallBlind * 2, false);}
     refreshPots(state);
     state.actionPlayerId = nextPlayerFrom(state, state.bigBlindPlayerId ?? state.smallBlindPlayerId);
     return state;
@@ -420,7 +474,7 @@ export function executeTransition(gameState, action) {
       return state;
     }
     const nextBettingPhase = bettingPhaseFor[state.phase];
-    if (!nextBettingPhase) throw new Error(`CARDS_DEALT is not allowed during ${state.phase}.`);
+    if (!nextBettingPhase) {throw new Error(`CARDS_DEALT is not allowed during ${state.phase}.`);}
     state.phase = nextBettingPhase;
     if (state.phase !== GamePhase.BETTING_PREFLOP) {
       state.round += 1;
@@ -430,22 +484,25 @@ export function executeTransition(gameState, action) {
   }
 
   if (action.type === Transition.AWARD_POT || action.type === Transition.SPLIT_POT) {
-    if (state.phase !== GamePhase.SHOWDOWN) throw new Error(`A pot cannot be awarded during ${state.phase}.`);
-    if (action.potIndex !== state.potAwardIndex) throw new Error('That pot is not ready to be awarded.');
+    if (state.phase !== GamePhase.SHOWDOWN) {throw new Error(`A pot cannot be awarded during ${state.phase}.`);}
+    if (action.potIndex !== state.potAwardIndex) {throw new Error('That pot is not ready to be awarded.');}
     const pot = state.pots[state.potAwardIndex];
-    if (!pot || pot.amount <= 0) throw new Error('There is no pot to award.');
+    if (!pot || pot.amount <= 0) {throw new Error('There is no pot to award.');}
 
     const winnerIds = action.type === Transition.AWARD_POT ? [action.winnerId] : action.winnerIds;
     if (!Array.isArray(winnerIds) || winnerIds.length === 0 || !winnerIds.every((id) => pot.eligiblePlayerNumbers.includes(id))) {
       throw new Error('A pot winner must be eligible for that pot.');
     }
-    if (action.type === Transition.AWARD_POT && winnerIds.length !== 1) throw new Error('AWARD_POT requires exactly one winner.');
-    if (action.type === Transition.SPLIT_POT && new Set(winnerIds).size < 2) throw new Error('SPLIT_POT requires at least two distinct winners.');
+    if (action.type === Transition.AWARD_POT && winnerIds.length !== 1) {throw new Error('AWARD_POT requires exactly one winner.');}
+    if (action.type === Transition.SPLIT_POT && new Set(winnerIds).size < 2) {throw new Error('SPLIT_POT requires at least two distinct winners.');}
 
-    const awards = splitPotAmount(pot.amount, winnerIds);
+    const orderedWinnerIds = action.type === Transition.SPLIT_POT
+      ? winnerIdsInOddChipOrder(state, winnerIds)
+      : winnerIds;
+    const awards = splitPotAmount(pot.amount, orderedWinnerIds);
     awards.forEach(({ number: winnerId, amount }) => {
       playerById(state, winnerId).chips += amount;
-      if (!state.handWinnerIds.includes(winnerId)) state.handWinnerIds.push(winnerId);
+      if (!state.handWinnerIds.includes(winnerId)) {state.handWinnerIds.push(winnerId);}
     });
     pot.amount = 0;
     state.potAwardIndex += 1;
@@ -459,6 +516,9 @@ export function executeTransition(gameState, action) {
     minRaiseAdditionalChips: minimumBet,
     maxAdditionalChips: maximumBet,
   } = getBettingBounds(state, player.id);
+  const raiseRightsOpen = raiseRightsAreOpen(state, player);
+  const raiseCapOpen = fixedLimitRaiseCapIsOpen(state);
+  const canRaise = raiseRightsOpen && raiseCapOpen;
 
   if (action.type === Transition.FOLD) {
     player.folded = true;
@@ -469,15 +529,25 @@ export function executeTransition(gameState, action) {
 
   let additionalChips;
   if (action.type === Transition.CHECK) {
-    if (callAmount !== 0) throw new Error('CHECK is not legal while chips are owed.');
+    if (callAmount !== 0) {throw new Error('CHECK is not legal while chips are owed.');}
     additionalChips = 0;
   } else if (action.type === Transition.CALL) {
-    if (callAmount === 0) throw new Error('CALL is not legal when nothing is owed.');
+    if (callAmount === 0) {throw new Error('CALL is not legal when nothing is owed.');}
     additionalChips = callAmount;
   } else if (action.type === Transition.ALL_IN) {
-    if (maximumBet !== player.chips || maximumBet === 0) throw new Error('ALL_IN is not legal for this player.');
+    if (maximumBet !== player.chips || maximumBet === 0) {throw new Error('ALL_IN is not legal for this player.');}
+    if (!canRaise && player.roundBet + maximumBet > state.highestRoundBet) {
+      throw new Error(raiseCapOpen
+        ? 'ALL_IN cannot raise because betting was not reopened.'
+        : 'ALL_IN cannot raise because the fixed-limit raise cap has been reached.');
+    }
     additionalChips = maximumBet;
   } else if (action.type === Transition.BET) {
+    if (!canRaise) {
+      throw new Error(raiseCapOpen
+        ? 'BET cannot raise because betting was not reopened.'
+        : 'BET cannot raise because the fixed-limit raise cap has been reached.');
+    }
     additionalChips = Number(action.additionalChips);
     if (!Number.isInteger(additionalChips) || additionalChips < minimumBet || additionalChips > maximumBet) {
       throw new Error('BET amount is outside the legal range.');
@@ -489,13 +559,18 @@ export function executeTransition(gameState, action) {
   const previousHighestRoundBet = state.highestRoundBet;
   const newRoundBet = player.roundBet + additionalChips;
   const raiseSize = Math.max(0, newRoundBet - previousHighestRoundBet);
+  const isFullRaise = raiseSize >= state.lastFullRaiseSize;
 
   player.chips -= additionalChips;
   player.roundBet = newRoundBet;
   player.handContribution += additionalChips;
   player.hasActedThisRound = true;
-  if (raiseSize >= state.lastFullRaiseSize) state.lastFullRaiseSize = raiseSize;
+  if (state.bettingLimit === BettingLimit.FIXED_LIMIT && previousHighestRoundBet > 0 && isFullRaise) {
+    state.fullRaisesThisRound += 1;
+  }
+  if (isFullRaise) {state.lastFullRaiseSize = raiseSize;}
   state.highestRoundBet = Math.max(state.highestRoundBet, player.roundBet);
+  player.lastActionBetLevel = state.highestRoundBet;
   refreshPots(state);
   resolveBetting(state);
   return state;

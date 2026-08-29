@@ -42,6 +42,7 @@ const playerSeats = document.querySelector('#player-seats');
 const lockSeatsButton = document.querySelector('#lock-seats-button');
 const turnControl = document.querySelector('#turn-control');
 const turnIndicator = document.querySelector('#turn-indicator');
+const gamePhaseLabel = document.querySelector('#game-phase-label');
 const undoButton = document.querySelector('#undo-button');
 const actionMenu = document.querySelector('#action-menu');
 const callActionButton = document.querySelector('#call-action-button');
@@ -114,6 +115,20 @@ const bettingLimitLabels = Object.freeze({
   [BettingLimit.POT_LIMIT]: 'Pot-Limit',
   [BettingLimit.FIXED_LIMIT]: 'Fixed-Limit',
 });
+const gamePhaseLabels = Object.freeze({
+  [GamePhase.DEAL_HOLE_CARDS]: 'Preflop',
+  [GamePhase.BETTING_PREFLOP]: 'Preflop',
+  [GamePhase.DEAL_FLOP]: 'Flop',
+  [GamePhase.BETTING_FLOP]: 'Flop',
+  [GamePhase.DEAL_TURN]: 'Turn',
+  [GamePhase.BETTING_TURN]: 'Turn',
+  [GamePhase.DEAL_RIVER]: 'River',
+  [GamePhase.BETTING_RIVER]: 'River',
+  [GamePhase.ALL_IN_RUNOUT]: 'All-in runout',
+  [GamePhase.SHOWDOWN]: 'Showdown',
+  [GamePhase.HAND_COMPLETE]: 'Hand complete',
+  [GamePhase.GAME_COMPLETE]: 'Game complete',
+});
 const seatSnapDistance = Math.PI / 36;
 
 function updateFixedLimitSetting() {
@@ -152,16 +167,16 @@ const debugPresetPlayerCounts = Object.freeze({
 
 function selectDebugPreset() {
   const requiredPlayerCount = debugPresetPlayerCounts[debugPresetSelect.value];
-  if (!requiredPlayerCount) return;
+  if (!requiredPlayerCount) {return;}
   playerCount.value = String(requiredPlayerCount);
   drawPlayerNames();
   useBigBlindCheckbox.checked = requiredPlayerCount >= 6;
 }
 
 function roundNumberFromGamePhase(phase) {
-  if ([GamePhase.BETTING_PREFLOP, GamePhase.DEAL_FLOP].includes(phase)) return 1;
-  if ([GamePhase.BETTING_FLOP, GamePhase.DEAL_TURN].includes(phase)) return 2;
-  if ([GamePhase.BETTING_TURN, GamePhase.DEAL_RIVER].includes(phase)) return 3;
+  if ([GamePhase.BETTING_PREFLOP, GamePhase.DEAL_FLOP].includes(phase)) {return 1;}
+  if ([GamePhase.BETTING_FLOP, GamePhase.DEAL_TURN].includes(phase)) {return 2;}
+  if ([GamePhase.BETTING_TURN, GamePhase.DEAL_RIVER].includes(phase)) {return 3;}
   return 4;
 }
 
@@ -216,9 +231,9 @@ function bettingBoundsForView(player) {
 
 function isLegalPendingBet(player, amount) {
   const callAmount = amountToCallForView(player);
-  if (amount === callAmount) return true;
+  if (amount === callAmount) {return true;}
   const actions = currentGameActions();
-  if (amount === player.chips && actions.some(({ type }) => type === Transition.ALL_IN)) return true;
+  if (amount === player.chips && actions.some(({ type }) => type === Transition.ALL_IN)) {return true;}
   const betAction = actions.find(({ type }) => type === Transition.BET);
   return Boolean(
     betAction
@@ -228,7 +243,7 @@ function isLegalPendingBet(player, amount) {
 }
 
 function invokeGame(action) {
-  if (!gameState) throw new Error('The game state has not been initialized.');
+  if (!gameState) {throw new Error('The game state has not been initialized.');}
   gameState = executeTransition(gameState, action);
   return gameState;
 }
@@ -270,15 +285,15 @@ function updateChipDenominationAvailability(checkbox) {
 }
 
 function restoreChipDenominations(savedDenominations) {
-  if (!savedDenominations || typeof savedDenominations !== 'object') return;
+  if (!savedDenominations || typeof savedDenominations !== 'object') {return;}
   chipDenominationInputs.forEach((input) => {
     const color = input.dataset.chipColor;
-    if (!Object.hasOwn(savedDenominations, color)) return;
+    if (!Object.hasOwn(savedDenominations, color)) {return;}
     const savedDenomination = savedDenominations[color];
     const checkbox = chipEnabledCheckboxes.find((candidate) => candidate.dataset.chipEnabled === color);
     checkbox.checked = savedDenomination !== null && savedDenomination !== false;
     const savedValue = Number(savedDenomination);
-    if (Number.isFinite(savedValue) && savedValue >= 1) input.value = savedValue;
+    if (Number.isFinite(savedValue) && savedValue >= 1) {input.value = savedValue;}
     updateChipDenominationAvailability(checkbox);
   });
 }
@@ -286,7 +301,7 @@ function restoreChipDenominations(savedDenominations) {
 function getLastGameSettings() {
   try {
     const savedGame = JSON.parse(localStorage.getItem(lastGameSettingsKey));
-    if (!savedGame || typeof savedGame !== 'object' || !savedGame.settings) return null;
+    if (!savedGame || typeof savedGame !== 'object' || !savedGame.settings) {return null;}
     return savedGame;
   } catch {
     return null;
@@ -296,7 +311,7 @@ function getLastGameSettings() {
 function restoreLastGameSettings() {
   const savedGame = getLastGameSettings();
   const settings = savedGame?.settings;
-  if (!settings || !Number.isInteger(settings.playerCount) || settings.playerCount < 2 || settings.playerCount > 8) return;
+  if (!settings || !Number.isInteger(settings.playerCount) || settings.playerCount < 2 || settings.playerCount > 8) {return;}
 
   const smallBlindInput = document.querySelector('#small-blind');
   const smallBlindIncreaseInput = document.querySelector('#small-blind-increase');
@@ -313,7 +328,7 @@ function restoreLastGameSettings() {
   smallBlindIncreaseInput.value = smallBlindIncrease;
   useBigBlindCheckbox.checked = settings.useBigBlind ?? settings.playerCount >= 6;
   useAnteCheckbox.checked = settings.useAnte === true;
-  if (Number.isInteger(settings.ante) && settings.ante > 0) anteInput.value = settings.ante;
+  if (Number.isInteger(settings.ante) && settings.ante > 0) {anteInput.value = settings.ante;}
   updateAnteSetting();
   bettingLimitSelect.value = Object.values(BettingLimit).includes(settings.bettingLimit)
     ? settings.bettingLimit
@@ -348,7 +363,7 @@ function saveLastGameSettings() {
 }
 
 async function keepScreenAwake() {
-  if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+  if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') {return;}
 
   try {
     screenWakeLock = await navigator.wakeLock.request('screen');
@@ -481,13 +496,13 @@ function setVoiceTranscript(text) {
 function setVoiceStatus(text) {
   const normalizedText = String(text || '').toLowerCase();
   let state = 'connected';
-  if (normalizedText.includes('thinking')) state = 'thinking';
-  else if (normalizedText.includes('applying') || normalizedText.includes('action')) state = 'acting';
-  else if (normalizedText.includes('speaking')) state = 'speaking';
-  else if (normalizedText.includes('listening')) state = 'listening';
-  else if (normalizedText.includes('error') || normalizedText.includes('could not') || normalizedText.includes('unavailable')) state = 'error';
-  else if (normalizedText.includes('disconnect') || normalizedText.includes('ended')) state = 'disconnected';
-  else if (normalizedText.includes('off')) state = 'off';
+  if (normalizedText.includes('thinking')) {state = 'thinking';}
+  else if (normalizedText.includes('applying') || normalizedText.includes('action')) {state = 'acting';}
+  else if (normalizedText.includes('speaking')) {state = 'speaking';}
+  else if (normalizedText.includes('listening')) {state = 'listening';}
+  else if (normalizedText.includes('error') || normalizedText.includes('could not') || normalizedText.includes('unavailable')) {state = 'error';}
+  else if (normalizedText.includes('disconnect') || normalizedText.includes('ended')) {state = 'disconnected';}
+  else if (normalizedText.includes('off')) {state = 'off';}
 
   voiceStatus.textContent = text;
   voiceStatus.dataset.state = state;
@@ -567,7 +582,7 @@ const voiceTools = [
 ];
 
 function executeVoiceTool(name, args) {
-  if (name === 'ignoreSpeech') return { ok: true, silent: true };
+  if (name === 'ignoreSpeech') {return { ok: true, silent: true };}
 
   if (name === 'undo') {
     const fromShowdown = !winnerPicker.hidden;
@@ -586,16 +601,16 @@ function executeVoiceTool(name, args) {
   }
 
   if (name === 'cardsDealt') {
-    if (!cardsAreDealt()) return { ok: false, message: 'The game is not waiting for cards.' };
+    if (!cardsAreDealt()) {return { ok: false, message: 'The game is not waiting for cards.' };}
     return { ok: true, message: 'Cards confirmed.' };
   }
 
   const currentPlayerNumber = viewActionPlayerNumber();
   const player = viewPlayer(currentPlayerNumber);
-  if (!player) return { ok: false, message: 'There is no active player.' };
+  if (!player) {return { ok: false, message: 'There is no active player.' };}
 
   if (name === 'cancelAction') {
-    if (!pendingFold && !pendingVoiceAction) return { ok: false, message: 'There is no action waiting for confirmation.' };
+    if (!pendingFold && !pendingVoiceAction) {return { ok: false, message: 'There is no action waiting for confirmation.' };}
     const cancelledFold = pendingFold;
     pendingFold = false;
     pendingVoiceAction = null;
@@ -604,7 +619,7 @@ function executeVoiceTool(name, args) {
   }
 
   if (name === 'confirmAction') {
-    if (!pendingFold && !pendingVoiceAction) return { ok: false, message: 'There is no action waiting for confirmation.' };
+    if (!pendingFold && !pendingVoiceAction) {return { ok: false, message: 'There is no action waiting for confirmation.' };}
     if (gameScreen.hidden || !dealPrompt.hidden || !winnerPicker.hidden || !gameWinnerScreen.hidden) {
       pendingFold = false;
       pendingVoiceAction = null;
@@ -639,7 +654,7 @@ function executeVoiceTool(name, args) {
   const amountToCall = amountToCallForView(player);
   const maximumBet = bettingBoundsForView(player).maxAdditionalChips;
   const legalActions = currentGameActions();
-  if (name !== 'fold' && name !== 'allIn') pendingVoiceAction = null;
+  if (name !== 'fold' && name !== 'allIn') {pendingVoiceAction = null;}
   if (name === 'fold') {
     pendingVoiceAction = null;
     foldCurrentPlayer();
@@ -647,7 +662,7 @@ function executeVoiceTool(name, args) {
     return { ok: true, message: `${player.name} folds.` };
   }
   if (name === 'check') {
-    if (amountToCall > 0) return { ok: false, message: `${player.name} must call ${amountToCall} or fold.` };
+    if (amountToCall > 0) {return { ok: false, message: `${player.name} must call ${amountToCall} or fold.` };}
     betCurrentPlayer(0);
     confirm();
     return { ok: true, message: `${player.name} checks.` };
@@ -699,8 +714,8 @@ function executeVoiceTool(name, args) {
 }
 
 async function connectVoiceAgent() {
-  if (voiceAgent?.connected) return voiceAgent;
-  if (voiceConnectionPromise) return voiceConnectionPromise;
+  if (voiceAgent?.connected) {return voiceAgent;}
+  if (voiceConnectionPromise) {return voiceConnectionPromise;}
 
   voiceAgent?.disconnect();
   voiceAgent = new VoiceAgent({
@@ -711,7 +726,7 @@ async function connectVoiceAgent() {
     onTranscript: setVoiceTranscript,
     onStatus: (status) => {
       setVoiceStatus(status);
-      if (!startMicrophoneAfterSpeech || status !== 'Microphone off') return;
+      if (!startMicrophoneAfterSpeech || status !== 'Microphone off') {return;}
 
       startMicrophoneAfterSpeech = false;
       voiceAgent.startMicrophone()
@@ -733,8 +748,8 @@ async function toggleRecording() {
   startMicrophoneAfterSpeech = false;
   try {
     const agent = await connectVoiceAgent();
-    if (agent.recording) await agent.stopMicrophone();
-    else await agent.startMicrophone();
+    if (agent.recording) {await agent.stopMicrophone();}
+    else {await agent.startMicrophone();}
   } catch (error) {
     const errorMessage = `Voice unavailable: ${error.message}`;
     setVoiceStatus(errorMessage);
@@ -768,13 +783,13 @@ async function previewVoice() {
 
 async function testVoiceWithAudioFile() {
   const file = voiceAudioFile.files[0];
-  if (!file) return;
+  if (!file) {return;}
   voiceAudioTestButton.disabled = true;
   voiceAudioTestStatus.textContent = 'Sending audio…';
   try {
     const agent = await connectVoiceAgent();
     await agent.playAudioFile(file);
-    voiceAudioTestStatus.textContent = 'Audio sent through the Realtime input path.';
+    voiceAudioTestStatus.textContent = 'Audio transcribed and processed.';
   } catch (error) {
     voiceAudioTestStatus.textContent = `Audio test failed: ${error.message}`;
   } finally {
@@ -833,6 +848,7 @@ function makePlayers() {
     players,
     smallBlind: gameSettings.smallBlind,
     smallBlindIncrease: gameSettings.smallBlindIncrease,
+    ante: gameSettings.ante,
     dealerId: gameSettings.dealerNumber,
     useBigBlind: gameSettings.useBigBlind,
     bettingLimit: gameSettings.bettingLimit,
@@ -854,7 +870,7 @@ function makePlayerChipPiles(amount) {
   denominations.forEach(({ color, value }) => {
     const chipCount = Math.floor(remaining / value);
     remaining %= value;
-    if (chipCount === 0) return;
+    if (chipCount === 0) {return;}
     const visibleChipCount = Math.min(chipCount, 100);
     for (let firstChip = 0; firstChip < visibleChipCount; firstChip += 10) {
       const stack = document.createElement('span');
@@ -908,7 +924,7 @@ function moveSeatToSnappedAngle(seat, playerId, requestedAngle) {
     Math.PI / 2,
     seatSnapDistance,
   );
-  if (Math.abs(normalizeSeatAngle(targetAngle - currentAngle)) < 0.0001) return;
+  if (Math.abs(normalizeSeatAngle(targetAngle - currentAngle)) < 0.0001) {return;}
 
   const occupiedSeat = Object.entries(seatAngles).find(([candidateId, candidateAngle]) => (
     String(candidateId) !== String(playerId)
@@ -919,7 +935,7 @@ function moveSeatToSnappedAngle(seat, playerId, requestedAngle) {
     seatAngles[occupiedPlayerId] = currentAngle;
     const occupiedElement = [...playerSeats.children]
       .find((candidate) => candidate.dataset.playerId === String(occupiedPlayerId));
-    if (occupiedElement) positionSeatElement(occupiedElement, occupiedPlayerId);
+    if (occupiedElement) {positionSeatElement(occupiedElement, occupiedPlayerId);}
   }
 
   seatAngles[playerId] = targetAngle;
@@ -933,25 +949,25 @@ function makeSeatDraggable(seat, playerId) {
   };
 
   seat.addEventListener('pointerdown', (event) => {
-    if (!seatingMode) return;
+    if (!seatingMode) {return;}
     dragging = true;
     seat.setPointerCapture(event.pointerId);
     seat.classList.add('dragging');
     moveSeat(event);
   });
   seat.addEventListener('pointermove', (event) => {
-    if (dragging) moveSeat(event);
+    if (dragging) {moveSeat(event);}
   });
   const stopDragging = (event) => {
-    if (!dragging) return;
+    if (!dragging) {return;}
     dragging = false;
-    if (seat.hasPointerCapture(event.pointerId)) seat.releasePointerCapture(event.pointerId);
+    if (seat.hasPointerCapture(event.pointerId)) {seat.releasePointerCapture(event.pointerId);}
     seat.classList.remove('dragging');
   };
   seat.addEventListener('pointerup', stopDragging);
   seat.addEventListener('pointercancel', stopDragging);
   seat.addEventListener('keydown', (event) => {
-    if (!seatingMode || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    if (!seatingMode || !['ArrowLeft', 'ArrowRight'].includes(event.key)) {return;}
     event.preventDefault();
     const direction = event.key === 'ArrowRight' ? 1 : -1;
     moveSeatToSnappedAngle(
@@ -969,6 +985,7 @@ function lockClockwiseSeatOrder() {
     players,
     smallBlind: gameSettings.smallBlind,
     smallBlindIncrease: gameSettings.smallBlindIncrease,
+    ante: gameSettings.ante,
     dealerId: gameSettings.dealerNumber,
     useBigBlind: gameSettings.useBigBlind,
     bettingLimit: gameSettings.bettingLimit,
@@ -987,10 +1004,10 @@ function drawPlayerSeats() {
     seat.dataset.playerId = String(player.id);
     const playerNumber = viewPlayerNumber(player);
     const isCurrentPlayer = playerNumber === currentPlayerNumber;
-    if (isCurrentPlayer) seat.classList.add('current-player');
-    if (!seatingMode && player.id === gameState.dealerId) seat.classList.add('dealer');
-    if (player.folded) seat.classList.add('folded');
-    if (player.eliminated) seat.classList.add('eliminated');
+    if (isCurrentPlayer) {seat.classList.add('current-player');}
+    if (!seatingMode && player.id === gameState.dealerId) {seat.classList.add('dealer');}
+    if (player.folded) {seat.classList.add('folded');}
+    if (player.eliminated) {seat.classList.add('eliminated');}
     positionSeatElement(seat, playerNumber);
     const name = document.createElement('span');
     name.className = 'player-seat-name';
@@ -1013,7 +1030,7 @@ function drawPlayerSeats() {
       : `${player.name}${player.eliminated ? ', out of the game' : `: ${player.chips} chips`}${isDealer ? ', dealer' : ''}${isCurrentPlayer ? ', current turn' : ''}${player.folded ? ', folded' : ''}`);
     seat.setAttribute('role', seatingMode ? 'button' : 'status');
     seat.tabIndex = seatingMode ? 0 : -1;
-    if (seatingMode) makeSeatDraggable(seat, playerNumber);
+    if (seatingMode) {makeSeatDraggable(seat, playerNumber);}
     playerSeats.append(seat);
   });
 
@@ -1021,7 +1038,7 @@ function drawPlayerSeats() {
   if (Number.isFinite(activeAngle)) {
     turnControl.style.setProperty('--rotation', `${activeAngle - Math.PI / 2}rad`);
   }
-  if (seatingMode) return;
+  if (seatingMode) {return;}
   updatePotDisplay();
   turnIndicator.setAttribute('aria-label', `Your bet: ${pendingBet}. Total pot: ${totalPotAmount()}`);
   updateBetControls();
@@ -1031,17 +1048,19 @@ function drawPlayerSeats() {
 function updateBetControls() {
   const currentPlayerNumber = viewActionPlayerNumber();
   const player = viewPlayer(currentPlayerNumber);
-  if (!player) return;
+  if (!player) {return;}
   const minimumBet = amountToCallForView(player);
-  const maximumBet = bettingBoundsForView(player).maxAdditionalChips;
+  const bounds = bettingBoundsForView(player);
+  const maximumBet = bounds.maxAdditionalChips;
   const legalActions = currentGameActions();
   const betAction = legalActions.find(({ type }) => type === Transition.BET);
   const allInAction = legalActions.find(({ type }) => type === Transition.ALL_IN);
   const minimumAllowedBet = Math.min(minimumBet, maximumBet);
-  const minimumRaiseBet = minimumAllowedBet;
+  const minimumRaiseBet = bounds.minRaiseAdditionalChips;
   const canRaise = Boolean(betAction);
   const callIsAllIn = minimumAllowedBet > 0 && minimumAllowedBet === player.chips;
-  pendingBet = Math.max(minimumAllowedBet, Math.min(pendingBet, maximumBet));
+  const minimumPendingBet = raiseMode ? minimumRaiseBet : minimumAllowedBet;
+  pendingBet = Math.max(minimumPendingBet, Math.min(pendingBet, maximumBet));
   callActionButton.textContent = callIsAllIn
     ? `Call ${minimumAllowedBet} (all in)`
     : minimumAllowedBet > 0 ? `Call ${minimumAllowedBet}` : 'Call';
@@ -1073,11 +1092,11 @@ function updateBetControls() {
 function enterRaiseMode() {
   const currentPlayerNumber = viewActionPlayerNumber();
   const player = viewPlayer(currentPlayerNumber);
-  if (!player) return;
-  const maximumBet = bettingBoundsForView(player).maxAdditionalChips;
-  const minimumBet = amountToCallForView(player);
-  const minimumRaiseBet = Math.min(minimumBet, maximumBet);
-  if (minimumRaiseBet > maximumBet) return;
+  if (!player) {return;}
+  const bounds = bettingBoundsForView(player);
+  const maximumBet = bounds.maxAdditionalChips;
+  const minimumRaiseBet = bounds.minRaiseAdditionalChips;
+  if (minimumRaiseBet > maximumBet) {return;}
   raiseMode = true;
   pendingBet = minimumRaiseBet;
   updateBetControls();
@@ -1085,7 +1104,7 @@ function enterRaiseMode() {
 
 function cancelRaiseMode() {
   const player = viewPlayer(viewActionPlayerNumber());
-  if (!player) return;
+  if (!player) {return;}
   raiseMode = false;
   pendingBet = amountToCallForView(player);
   updateBetControls();
@@ -1094,11 +1113,11 @@ function cancelRaiseMode() {
 function setRaiseTotal(total) {
   const currentPlayerNumber = viewActionPlayerNumber();
   const player = viewPlayer(currentPlayerNumber);
-  if (!player) return;
+  if (!player) {return;}
   const bounds = bettingBoundsForView(player);
   const maximumBet = bounds.maxAdditionalChips;
   const minimumBet = amountToCallForView(player);
-  const minimumRaiseBet = Math.min(minimumBet, maximumBet);
+  const minimumRaiseBet = bounds.minRaiseAdditionalChips;
   const requestedTotal = Number(total);
 
   if (!Number.isFinite(requestedTotal)) {
@@ -1121,7 +1140,7 @@ function setRaiseTotal(total) {
 
 function adjustRaiseBy(amount) {
   const player = viewPlayer(viewActionPlayerNumber());
-  if (!player) return;
+  if (!player) {return;}
   if (gameState.bettingLimit === BettingLimit.FIXED_LIMIT) {
     const callAmount = amountToCallForView(player);
     const fixedBet = currentGameActions().find(({ type }) => type === Transition.BET);
@@ -1145,7 +1164,7 @@ function canUndoLastTurn(fromShowdown = false) {
 }
 
 function undoLastTurn(fromShowdown = false) {
-  if (!canUndoLastTurn(fromShowdown)) return;
+  if (!canUndoLastTurn(fromShowdown)) {return;}
 
   raiseMode = false;
   gameState = structuredClone(lastTurnState);
@@ -1176,8 +1195,9 @@ function showHandCompleteFromGameState() {
 }
 
 function renderGameState() {
-  if (!gameState) return;
+  if (!gameState) {return;}
   const phase = gameState.phase;
+  gamePhaseLabel.textContent = gamePhaseLabels[phase] || '';
   const betting = [GamePhase.BETTING_PREFLOP, GamePhase.BETTING_FLOP, GamePhase.BETTING_TURN, GamePhase.BETTING_RIVER].includes(phase);
 
   if (betting) {
@@ -1211,12 +1231,12 @@ function renderGameState() {
   }
 
   if ([GamePhase.DEAL_FLOP, GamePhase.DEAL_TURN, GamePhase.DEAL_RIVER].includes(phase)) {
-    const card = {
-      [GamePhase.DEAL_FLOP]: 'the flop',
-      [GamePhase.DEAL_TURN]: 'the turn',
-      [GamePhase.DEAL_RIVER]: 'the river',
+    const instruction = {
+      [GamePhase.DEAL_FLOP]: 'Burn one card, then deal the flop',
+      [GamePhase.DEAL_TURN]: 'Burn one card, then deal the turn',
+      [GamePhase.DEAL_RIVER]: 'Burn one card, then deal the river',
     }[phase];
-    dealMessage.textContent = `Deal ${card}. Press OK to continue.`;
+    dealMessage.textContent = `${instruction}. Press OK to continue.`;
     dealPrompt.hidden = false;
     drawPlayerSeats();
     return;
@@ -1224,7 +1244,9 @@ function renderGameState() {
 
   if (phase === GamePhase.ALL_IN_RUNOUT) {
     const cards = remainingCommunityCards();
-    dealMessage.textContent = `Deal ${formatCardList(cards)}. Press OK for showdown.`;
+    const instructions = cards.map((card) => `burn one card, then deal ${card}`);
+    dealMessage.textContent = `${formatCardList(instructions)}. Press OK for showdown.`;
+    dealMessage.textContent = dealMessage.textContent[0].toUpperCase() + dealMessage.textContent.slice(1);
     dealPrompt.hidden = false;
     drawPlayerSeats();
     return;
@@ -1245,25 +1267,25 @@ function remainingCommunityCards() {
 }
 
 function formatCardList(cards) {
-  if (cards.length <= 1) return cards[0] || '';
-  if (cards.length === 2) return `${cards[0]} and ${cards[1]}`;
+  if (cards.length <= 1) {return cards[0] || '';}
+  if (cards.length === 2) {return `${cards[0]} and ${cards[1]}`;}
   return `${cards.slice(0, -1).join(', ')}, and ${cards.at(-1)}`;
 }
 
 function formatNameList(names) {
-  if (names.length <= 1) return names[0] || '';
-  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  if (names.length <= 1) {return names[0] || '';}
+  if (names.length === 2) {return `${names[0]} and ${names[1]}`;}
   return `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}`;
 }
 
 function showWinnerPicker() {
-  if (gameState.phase === GamePhase.SHOWDOWN) showGameStatePotWinnerPicker();
+  if (gameState.phase === GamePhase.SHOWDOWN) {showGameStatePotWinnerPicker();}
 }
 
 function showGameStatePotWinnerPicker() {
   const potIndex = gameState.potAwardIndex;
   const pot = gameState.pots[potIndex];
-  if (!pot || pot.amount <= 0) return;
+  if (!pot || pot.amount <= 0) {return;}
   const eligiblePlayers = pot.eligiblePlayerNumbers
     .map((playerId) => viewPlayer(playerId))
     .filter((player) => player && !player.folded && !player.eliminated);
@@ -1309,7 +1331,7 @@ function showPotWinnerPicker(question, players, awardFunction, splitFunction = n
       const isSelected = selectedWinnerNumbers.has(player.number);
       winnerButton.classList.toggle('selected', isSelected);
       winnerButton.setAttribute('aria-pressed', String(isSelected));
-      if (confirmSplitButton) confirmSplitButton.disabled = selectedWinnerNumbers.size < 2;
+      if (confirmSplitButton) {confirmSplitButton.disabled = selectedWinnerNumbers.size < 2;}
     });
     playerButtons.push(winnerButton);
     winnerOptions.append(winnerButton);
@@ -1367,14 +1389,6 @@ function showGameWinner(winner) {
   gameWinnerScreen.hidden = false;
 }
 
-function takeAnte() {
-  for (let i = 0; i < gameState.players.length; i++) {
-    gameState.players[i].chips -= gameSettings.ante;
-    gameState.players[i].handContribution += gameSettings.ante;
-  }
-  gameState.pots[0].amount += gameState.players.length * gameSettings.ante;
-}
-
 function startHand() {
   lastTurnState = null;
   lastTurnEndedHandByFold = false;
@@ -1382,7 +1396,6 @@ function startHand() {
   pendingFold = false;
   pendingVoiceAction = null;
   invokeGame({ type: Transition.START_HAND });
-  takeAnte();
   renderGameState();
 }
 
@@ -1393,7 +1406,6 @@ function startNewHand() {
   pendingFold = false;
   pendingVoiceAction = null;
   invokeGame({ type: Transition.START_NEXT_HAND });
-  takeAnte();
   renderGameState();
 }
 
@@ -1430,7 +1442,7 @@ function beginSeatPositioning() {
 }
 
 function lockSeatsAndStartGame() {
-  if (!seatingMode) return;
+  if (!seatingMode) {return;}
   lockClockwiseSeatOrder();
   seatingMode = false;
   gameScreen.classList.remove('seating-mode');
@@ -1482,7 +1494,7 @@ function betCurrentPlayer(amount) {
   const player = viewPlayer(currentPlayerNumber);
   const requestedAmount = Number(amount);
 
-  if (!Number.isFinite(requestedAmount) || requestedAmount < 0) return false;
+  if (!Number.isFinite(requestedAmount) || requestedAmount < 0) {return false;}
 
   pendingFold = false;
   const maximumBet = bettingBoundsForView(player).maxAdditionalChips;
@@ -1495,8 +1507,19 @@ function confirm() {
   confirmTurn();
 }
 
+function stopDealNarration() {
+  if (!voiceAgent?.connected) {
+    return;
+  }
+  if (voiceAgent.pendingResponseCount > 0) {
+    voiceAgent.send({ type: 'response.cancel' });
+  }
+  voiceAgent.send({ type: 'output_audio_buffer.clear' });
+}
+
 function cardsAreDealt() {
-  if (!currentGameActions().some(({ type }) => type === Transition.CARDS_DEALT)) return false;
+  if (!currentGameActions().some(({ type }) => type === Transition.CARDS_DEALT)) {return false;}
+  stopDealNarration();
   invokeGame({ type: Transition.CARDS_DEALT });
   renderGameState();
   return true;
@@ -1547,15 +1570,15 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 callActionButton.addEventListener('click', () => {
-  if (callActionButton.disabled) return;
+  if (callActionButton.disabled) {return;}
   const player = viewPlayer(viewActionPlayerNumber());
-  if (!player) return;
+  if (!player) {return;}
   raiseMode = false;
   pendingBet = amountToCallForView(player);
   confirm();
 });
 checkActionButton.addEventListener('click', () => {
-  if (checkActionButton.disabled) return;
+  if (checkActionButton.disabled) {return;}
   raiseMode = false;
   pendingBet = 0;
   pendingFold = false;
@@ -1567,34 +1590,34 @@ foldActionButton.addEventListener('click', () => {
   confirm();
 });
 allInActionButton.addEventListener('click', () => {
-  if (allInActionButton.disabled) return;
+  if (allInActionButton.disabled) {return;}
   const player = viewPlayer(viewActionPlayerNumber());
-  if (!player) return;
+  if (!player) {return;}
   raiseMode = false;
   betCurrentPlayer(player.chips);
   confirm();
 });
 raiseActionButton.addEventListener('click', enterRaiseMode);
 raiseDecreaseButton.addEventListener('click', () => {
-  if (!raiseDecreaseButton.disabled) adjustRaiseBy(-1);
+  if (!raiseDecreaseButton.disabled) {adjustRaiseBy(-1);}
 });
 raiseIncreaseButton.addEventListener('click', () => {
-  if (!raiseIncreaseButton.disabled) adjustRaiseBy(1);
+  if (!raiseIncreaseButton.disabled) {adjustRaiseBy(1);}
 });
 raiseShortcutButtons.forEach((button) => {
   button.addEventListener('click', () => {
-    if (!button.disabled) adjustRaiseBy(Number(button.dataset.raiseAdjustment));
+    if (!button.disabled) {adjustRaiseBy(Number(button.dataset.raiseAdjustment));}
   });
 });
 raiseTotalValue.addEventListener('change', () => setRaiseTotal(raiseTotalValue.value));
 raiseTotalValue.addEventListener('keydown', (event) => {
-  if (event.key !== 'Enter') return;
+  if (event.key !== 'Enter') {return;}
   event.preventDefault();
   setRaiseTotal(raiseTotalValue.value);
   raiseTotalValue.blur();
 });
 confirmRaiseButton.addEventListener('click', () => {
-  if (confirmRaiseButton.disabled) return;
+  if (confirmRaiseButton.disabled) {return;}
   raiseMode = false;
   confirm();
 });
@@ -1605,7 +1628,7 @@ helpButton.addEventListener('click', () => {
 });
 closeHelpButton.addEventListener('click', closeButtonHelp);
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !buttonHelp.hidden) closeButtonHelp();
+  if (event.key === 'Escape' && !buttonHelp.hidden) {closeButtonHelp();}
 });
 undoButton.addEventListener('click', () => undoLastTurn());
 showdownUndoButton.addEventListener('click', () => undoLastTurn(true));

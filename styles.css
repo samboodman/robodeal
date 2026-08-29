@@ -246,6 +246,20 @@ body {
   transform: scale(0.75);
   transform-origin: center;
 }
+.game-phase-label {
+  position: absolute;
+  z-index: 1;
+  top: 7px;
+  left: 50%;
+  margin: 0;
+  color: #557066;
+  font-size: clamp(0.72rem, 2.6vw, 0.9rem);
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-transform: uppercase;
+  transform: translateX(-50%);
+}
 .action-panel {
   min-width: 0;
   padding: 16px;

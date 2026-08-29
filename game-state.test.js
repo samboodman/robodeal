@@ -449,3 +449,188 @@ test('fixed-limit uses the configured bet before and on the flop, then doubles i
     maxAdditionalChips: 30,
   });
 });
+
+test('a short all-in does not reopen raising for a player who already acted', () => {
+  let state = start(game({ chips: [250, 250, 75] }));
+  state = completeRoundWithCalls(state);
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+
+  state = action(state, Transition.BET, { additionalChips: 50 });
+  state = action(state, Transition.ALL_IN); // Raises from 50 to only 70.
+  state = action(state, Transition.CALL);
+
+  assert.equal(state.actionPlayerId, 2);
+  assert.deepEqual(getAvailableActions(state), [
+    { type: Transition.FOLD },
+    { type: Transition.CALL, additionalChips: 20 },
+  ]);
+  assert.throws(() => action(state, Transition.BET, { additionalChips: 70 }), /not reopened/);
+  assert.throws(() => action(state, Transition.ALL_IN), /not reopened/);
+});
+
+test('heads-up gives the dealer the small blind and first preflop action', () => {
+  const state = start(createGameState({
+    players: [{ id: 1, chips: 100 }, { id: 2, chips: 100 }],
+    smallBlind: 5,
+    dealerId: 1,
+    useBigBlind: true,
+  }));
+
+  assert.equal(state.smallBlindPlayerId, 1);
+  assert.equal(state.bigBlindPlayerId, 2);
+  assert.equal(state.actionPlayerId, 1);
+});
+
+test('heads-up gives the big blind first action after the flop', () => {
+  let state = start(createGameState({
+    players: [{ id: 1, chips: 100 }, { id: 2, chips: 100 }],
+    smallBlind: 5,
+    dealerId: 1,
+    useBigBlind: true,
+  }));
+  state = action(state, Transition.CALL);
+  state = action(state, Transition.CHECK);
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+
+  assert.equal(state.actionPlayerId, state.bigBlindPlayerId);
+});
+
+test('heads-up can start with the big blind disabled', () => {
+  const state = start(createGameState({
+    players: [{ id: 1, chips: 100 }, { id: 2, chips: 100 }],
+    smallBlind: 5,
+    dealerId: 1,
+    useBigBlind: false,
+  }));
+
+  assert.equal(state.smallBlindPlayerId, 2);
+  assert.equal(state.bigBlindPlayerId, null);
+  assert.deepEqual(state.players.map((player) => player.chips), [100, 95]);
+  assert.equal(state.actionPlayerId, 1);
+});
+
+test('the engine posts an ante from every active player before posting blinds', () => {
+  const state = executeTransition(createGameState({
+    players: [{ id: 1, chips: 100 }, { id: 2, chips: 100 }, { id: 3, chips: 100 }],
+    smallBlind: 5,
+    ante: 5,
+    dealerId: 1,
+  }), { type: Transition.START_HAND });
+
+  assert.deepEqual(state.players.map((player) => player.chips), [95, 90, 95]);
+  assert.deepEqual(state.players.map((player) => player.handContribution), [5, 10, 5]);
+  assert.equal(state.pots.reduce((total, pot) => total + pot.amount, 0), 20);
+});
+
+test('a short blind pays the ante before using their remaining chips for the blind', () => {
+  const state = executeTransition(createGameState({
+    players: [{ id: 1, chips: 100 }, { id: 2, chips: 7 }, { id: 3, chips: 100 }],
+    smallBlind: 5,
+    ante: 5,
+    dealerId: 1,
+  }), { type: Transition.START_HAND });
+  const smallBlind = state.players.find((player) => player.id === 2);
+
+  assert.equal(smallBlind.chips, 0);
+  assert.equal(smallBlind.handContribution, 7);
+  assert.equal(smallBlind.roundBet, 2);
+});
+
+test('an ante puts a short player all-in without making their chips negative', () => {
+  const state = executeTransition(createGameState({
+    players: [{ id: 1, chips: 3 }, { id: 2, chips: 100 }, { id: 3, chips: 100 }],
+    smallBlind: 5,
+    ante: 5,
+    dealerId: 2,
+  }), { type: Transition.START_HAND });
+
+  assert.equal(state.players.find((player) => player.id === 1).chips, 0);
+  assert.equal(state.players.find((player) => player.id === 1).handContribution, 3);
+  assert.ok(state.players.every((player) => player.chips >= 0));
+});
+
+test('eliminated players do not pay an ante on the next hand', () => {
+  const state = createGameState({
+    players: [{ id: 1, chips: 0 }, { id: 2, chips: 100 }, { id: 3, chips: 100 }],
+    smallBlind: 5,
+    ante: 5,
+    dealerId: 2,
+  });
+  state.phase = GamePhase.HAND_COMPLETE;
+  state.players[0].eliminated = true;
+  state.players[0].folded = true;
+
+  const next = executeTransition(state, { type: Transition.START_NEXT_HAND });
+
+  assert.equal(next.players[0].chips, 0);
+  assert.equal(next.players[0].handContribution, 0);
+});
+
+test('antes create a pot even when the configured small blind is zero', () => {
+  const state = executeTransition(createGameState({
+    players: [{ id: 1, chips: 100 }, { id: 2, chips: 100 }, { id: 3, chips: 100 }],
+    smallBlind: 0,
+    ante: 5,
+    dealerId: 1,
+  }), { type: Transition.START_HAND });
+
+  assert.equal(state.pots.reduce((total, pot) => total + pot.amount, 0), 15);
+});
+
+test('fixed-limit stops raising after one bet and three raises', () => {
+  let state = start(game({
+    chips: [500, 500, 500],
+    useBigBlind: true,
+    bettingLimit: BettingLimit.FIXED_LIMIT,
+    fixedLimitBet: 10,
+  }));
+  state = action(state, Transition.CALL);
+  state = action(state, Transition.CALL);
+  state = action(state, Transition.CHECK);
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+
+  state = action(state, Transition.BET, { additionalChips: 10 });
+  state = action(state, Transition.BET, { additionalChips: 20 });
+  state = action(state, Transition.BET, { additionalChips: 30 });
+  state = action(state, Transition.BET, { additionalChips: 30 });
+
+  const actions = getAvailableActions(state);
+  assert.equal(actions.some(({ type }) => type === Transition.BET), false);
+  assert.ok(actions.some(({ type }) => type === Transition.CALL));
+  assert.throws(
+    () => action(state, Transition.BET, { additionalChips: 30 }),
+    /fixed-limit raise cap/,
+  );
+});
+
+test('an odd split-pot chip goes to the first tied winner left of the dealer', () => {
+  const state = createDebugGameState(game({ chips: [100, 100, 100] }), 'showdown');
+  state.pots[0].amount = 11;
+  const before = state.players.map((player) => player.chips);
+
+  const next = executeTransition(state, {
+    type: Transition.SPLIT_POT,
+    potIndex: 0,
+    winnerIds: [3, 2], // Deliberately supplied in reverse table order.
+  });
+
+  assert.equal(next.players[1].chips - before[1], 6);
+  assert.equal(next.players[2].chips - before[2], 5);
+});
+
+test('blind increases continue after the original dealer is eliminated', () => {
+  let state = game();
+  state.phase = GamePhase.HAND_COMPLETE;
+  state.dealerId = 3;
+  state.players[0].chips = 0;
+  state.players[0].folded = true;
+  state.players[0].eliminated = true;
+
+  state = executeTransition(state, { type: Transition.START_NEXT_HAND });
+  assert.equal(state.dealerId, 2);
+  state.phase = GamePhase.HAND_COMPLETE;
+  state = executeTransition(state, { type: Transition.START_NEXT_HAND });
+
+  assert.equal(state.dealerId, 3);
+  assert.equal(state.smallBlind, 10);
+});
