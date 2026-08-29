@@ -10,7 +10,7 @@ export default async function handler(request, response) {
     const result = await handleVoiceApi(request.body || {}, process.env.OPENAI_API_KEY);
     response.status(result.status);
     response.setHeader('Content-Type', result.contentType);
-    response.send(result.body);
+    response.send(result.body instanceof Uint8Array ? Buffer.from(result.body) : result.body);
   } catch (error) {
     console.error('Voice request failed:', error);
     response.status(500).json({ error: 'The voice server failed.' });

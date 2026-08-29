@@ -6,7 +6,7 @@ The project is a learning project for Sam. The game is intentionally one small s
 
 ## What it does now
 
-- Set up two to eight players, player names, starting chips, dealer, small blind, optional double-sized big blind, No Limit/Pot Limit/Fixed Limit betting, a configurable fixed-limit bet, and the scheduled blind increase.
+- Set up two to eight players, player names, starting chips, dealer, small blind, optional double-sized big blind, optional ante, No Limit/Pot Limit/Fixed Limit betting, a configurable fixed-limit bet, and the scheduled blind increase.
 - Play a hand on one shared phone with physical cards.
 - Drag the labeled player seats freely before the first deal. Seats magnetically snap within 5 degrees of a regular table position or one of the four common square angles, and the locked clockwise order controls turns for the entire game.
 - Track bets, calls, checks, folds, all-ins, main pots, side pots, player elimination, and the dealer moving each hand.
@@ -14,7 +14,9 @@ The project is a learning project for Sam. The game is intentionally one small s
 - Show whose turn it is around the table and rotate the controls toward that player.
 - Keep the phone screen awake during an active game when the browser supports it.
 - Remember the latest setup in that browser, including players and chip settings.
-- Connect a small OpenAI Realtime voice agent when a game starts. It can answer short poker questions; perform check, call, bet, raise, fold, all-in, cards-dealt, and undo actions; manage all-in confirmation or cancellation; and silently ignore unrelated speech. The recording button controls only the microphone, and the voice customization page selects the output voice, accent, and speaking pace.
+- Keep a continuous transcription-only OpenAI connection running while the microphone is on. Completed speech is sent as text to a reasoning model, which can answer poker questions or use game functions, and its response is converted back into speech.
+- Control the complete game flow by voice after setup: check, call, bet, raise, fold, go all in, confirm or cancel an action, acknowledge dealt cards, undo, choose or split a pot winner, and start the next hand. The agent also narrates dealing instructions, showdown questions, hand winners, and the game winner, and it silently ignores unrelated speech.
+- Use the recording button to control only the microphone. The voice customization page selects the output voice, accent, and speaking pace.
 - Input audio files for debugging on localhost after enabling both debug features and audio-file input.
 
 ## How it is built
@@ -23,7 +25,9 @@ The project is a learning project for Sam. The game is intentionally one small s
 - `game-state.js` is the authoritative poker transition engine. It exports `GamePhase`, `Transition`, `BettingLimit`, `createGameState`, `getBettingBounds`, `createDebugGameState`, `getAvailableActions(state)`, and `executeTransition(state, action)`. The interface and voice agent consume its state and legal-action list rather than deciding poker rules independently.
 - `pot-logic.js` calculates contribution-based main and side pots and decides when betting rounds are complete. `pot-logic.test.js` tests that logic.
 - Vite runs the local development server and builds the site for deployment.
-- `voice-agent.js` owns the WebRTC voice connection, while `api/realtime-call.js` keeps the OpenAI API key on the server.
+- `voice-agent.js` coordinates live transcription, text reasoning and function calls, and speech playback. The continuous microphone uses a transcription-only WebRTC session with `gpt-live-transcribe`; localhost audio-file tests use `gpt-transcribe`.
+- `api/realtime-call.js` mints a short-lived transcription key so the standard OpenAI API key stays on the server. `realtime-transcription.js` defines that transcription-only session.
+- `api/voice.js` and `voice-api-handler.js` send completed text to `gpt-5.6-sol` for reasoning and function selection, and convert responses to audio with `tts-1`.
 - The app does not use React or a large UI framework.
 
 ## Poker transition engine

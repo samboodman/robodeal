@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { fillPrompt, microphoneAudioConstraints, VoiceAgent } from './voice-agent.js';
 import { handleVoiceApi } from './voice-api-handler.js';
+import { createRealtimeTranscriptionClientSecret } from './realtime-transcription.js';
 
 const prompts = {
   transcription: { prompt: 'Poker commands at a noisy table.' },
@@ -51,6 +52,100 @@ function installAudioPlayer() {
   };
 }
 
+function installRealtimeMicrophone() {
+  const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const originalPeerConnection = globalThis.RTCPeerConnection;
+  const track = {
+    enabled: true,
+    stopped: false,
+    stop() {this.stopped = true;},
+  };
+  const stream = {
+    getAudioTracks: () => [track],
+    getTracks: () => [track],
+  };
+
+  class FakeDataChannel {
+    constructor() {
+      this.listeners = new Map();
+      this.closed = false;
+      this.readyState = 'open';
+      this.sent = [];
+    }
+
+    addEventListener(type, listener) {
+      const listeners = this.listeners.get(type) || [];
+      listeners.push(listener);
+      this.listeners.set(type, listeners);
+    }
+
+    emit(type, value = {}) {
+      for (const listener of this.listeners.get(type) || []) {listener(value);}
+    }
+
+    close() {
+      this.closed = true;
+      this.readyState = 'closed';
+      this.emit('close');
+    }
+
+    send(message) {this.sent.push(message);}
+  }
+
+  class FakePeerConnection {
+    constructor() {
+      this.dataChannel = new FakeDataChannel();
+      this.connectionState = 'connected';
+      this.closed = false;
+      this.listeners = new Map();
+      FakePeerConnection.instances.push(this);
+    }
+
+    createDataChannel() {return this.dataChannel;}
+
+    addEventListener(type, listener) {this.listeners.set(type, listener);}
+
+    addTrack(addedTrack, addedStream) {
+      this.addedTrack = addedTrack;
+      this.addedStream = addedStream;
+    }
+
+    async createOffer() {return { type: 'offer', sdp: 'microphone-offer' };}
+
+    async setLocalDescription(description) {this.localDescription = description;}
+
+    async setRemoteDescription(description) {this.remoteDescription = description;}
+
+    close() {this.closed = true;}
+  }
+  FakePeerConnection.instances = [];
+
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: {
+      mediaDevices: {
+        getSupportedConstraints: () => ({ voiceIsolation: true }),
+        getUserMedia: async () => stream,
+      },
+    },
+  });
+  globalThis.RTCPeerConnection = FakePeerConnection;
+
+  return {
+    stream,
+    track,
+    peers: FakePeerConnection.instances,
+    restore() {
+      if (originalNavigatorDescriptor) {
+        Object.defineProperty(globalThis, 'navigator', originalNavigatorDescriptor);
+      } else {
+        delete globalThis.navigator;
+      }
+      globalThis.RTCPeerConnection = originalPeerConnection;
+    },
+  };
+}
+
 function makeAgent(options = {}) {
   return new VoiceAgent({
     getInstructions: () => 'Current poker state.',
@@ -86,6 +181,103 @@ test('connect selects a TTS voice without opening a Realtime connection', async 
   assert.equal(agent.connected, true);
   assert.equal(agent.voice, 'coral');
   assert.deepEqual(statuses, ['AI connected.']);
+});
+
+test('microphone continuously streams, acknowledges speech, and processes VAD turns', async () => {
+  const originalFetch = globalThis.fetch;
+  const microphone = installRealtimeMicrophone();
+  const requestBodies = [];
+  const statuses = [];
+  const transcripts = [];
+  const toolCalls = [];
+  globalThis.fetch = async (url, options) => {
+    requestBodies.push({ url, options });
+    if (url === '/api/realtime-call') {
+      return jsonResponse({ value: 'temporary-key' });
+    }
+    if (url === 'https://api.openai.com/v1/realtime/calls') {
+      return new Response('microphone-answer', { status: 200, headers: { 'Content-Type': 'application/sdp' } });
+    }
+    return jsonResponse({
+      id: 'response-1',
+      output: [{ type: 'function_call', name: 'call', arguments: '{}', call_id: 'call-1' }],
+    });
+  };
+  const agent = makeAgent({
+    executeTool: async (name, args) => {
+      toolCalls.push({ name, args });
+      return { ok: true, silent: true };
+    },
+    onStatus: (status) => statuses.push(status),
+    onTranscript: (transcript) => transcripts.push(transcript),
+  });
+  await agent.connect('coral');
+
+  try {
+    await agent.startMicrophone();
+    const dataChannel = microphone.peers[0].dataChannel;
+    dataChannel.emit('message', { data: JSON.stringify({ type: 'input_audio_buffer.speech_started' }) });
+    dataChannel.emit('message', { data: JSON.stringify({
+      type: 'conversation.item.input_audio_transcription.delta',
+      item_id: 'turn-1',
+      delta: 'I ',
+    }) });
+    dataChannel.emit('message', { data: JSON.stringify({
+      type: 'conversation.item.input_audio_transcription.delta',
+      item_id: 'turn-1',
+      delta: 'call.',
+    }) });
+    dataChannel.emit('message', { data: JSON.stringify({ type: 'input_audio_buffer.speech_stopped' }) });
+    dataChannel.emit('message', { data: JSON.stringify({
+      type: 'conversation.item.input_audio_transcription.completed',
+      item_id: 'turn-1',
+      transcript: 'I call.',
+    }) });
+    await agent.transcriptQueue;
+
+    assert.equal(agent.recording, true);
+    assert.equal(microphone.track.enabled, true);
+    assert.equal(microphone.peers[0].addedTrack, microphone.track);
+    assert.deepEqual(microphone.peers[0].remoteDescription, {
+      type: 'answer',
+      sdp: 'microphone-answer',
+    });
+    assert.deepEqual(requestBodies.map(({ url }) => url), [
+      '/api/realtime-call',
+      'https://api.openai.com/v1/realtime/calls',
+      '/api/voice',
+    ]);
+    assert.equal(requestBodies[1].options.body, 'microphone-offer');
+    assert.equal(requestBodies[1].options.headers.Authorization, 'Bearer temporary-key');
+    assert.equal(requestBodies[1].options.headers['Content-Type'], 'application/sdp');
+    const responseRequest = JSON.parse(requestBodies[2].options.body);
+    assert.equal(responseRequest.action, 'respond');
+    assert.equal(responseRequest.input, 'I call.');
+    assert.deepEqual(toolCalls, [{ name: 'call', args: {} }]);
+    assert.ok(statuses.includes('Hearing speech…'));
+    assert.ok(statuses.includes('Transcribing…'));
+    assert.equal(statuses.at(-1), 'Listening');
+    assert.ok(transcripts.some((text) => text.includes('I call.')));
+    let inputLevel = 0.03;
+    agent.vadSamples = new Float32Array(4);
+    agent.vadAnalyser = {
+      getFloatTimeDomainData(samples) {samples.fill(inputLevel);},
+    };
+    agent.sampleVoiceActivity(1000);
+    agent.sampleVoiceActivity(1300);
+    inputLevel = 0;
+    agent.sampleVoiceActivity(2100);
+    assert.deepEqual(JSON.parse(dataChannel.sent.at(-1)), { type: 'input_audio_buffer.commit' });
+
+    await agent.stopMicrophone();
+    assert.equal(agent.recording, false);
+    assert.equal(microphone.track.stopped, true);
+    assert.equal(microphone.peers[0].closed, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    microphone.restore();
+    agent.disconnect();
+  }
 });
 
 test('speak sends exact text to TTS and plays the returned audio', async () => {
@@ -246,6 +438,30 @@ test('server transcription always uses gpt-transcribe', async () => {
 
   assert.equal(request.url, 'https://api.openai.com/v1/audio/transcriptions');
   assert.equal(request.options.body.get('model'), 'gpt-transcribe');
+});
+
+test('live microphone mints a transcription-only temporary key for browser VAD', async () => {
+  const originalFetch = globalThis.fetch;
+  let request;
+  globalThis.fetch = async (url, options) => {
+    request = { url, options };
+    return jsonResponse({ value: 'temporary-key' });
+  };
+
+  try {
+    const result = await createRealtimeTranscriptionClientSecret('test-key');
+    assert.equal(result.status, 200);
+    assert.deepEqual(JSON.parse(result.body), { value: 'temporary-key' });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(request.url, 'https://api.openai.com/v1/realtime/client_secrets');
+  assert.equal(request.options.headers.Authorization, 'Bearer test-key');
+  const { session } = JSON.parse(request.options.body);
+  assert.equal(session.type, 'transcription');
+  assert.equal(session.audio.input.transcription.model, 'gpt-live-transcribe');
+  assert.equal(session.audio.input.turn_detection, null);
 });
 
 test('server thinking always uses gpt-5.6-sol with function tools', async () => {

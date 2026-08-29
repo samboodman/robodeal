@@ -60,8 +60,20 @@ export class VoiceAgent {
     this.voice = 'alloy';
     this.isConnected = false;
     this.microphoneStream = null;
-    this.mediaRecorder = null;
-    this.recordedChunks = [];
+    this.peerConnection = null;
+    this.dataChannel = null;
+    this.vadAudioContext = null;
+    this.vadSource = null;
+    this.vadAnalyser = null;
+    this.vadSamples = null;
+    this.vadTimer = null;
+    this.vadSpeaking = false;
+    this.vadSpeechStartedAt = 0;
+    this.vadLastVoiceAt = 0;
+    this.microphoneMuted = false;
+    this.transcriptDeltas = new Map();
+    this.transcriptQueue = Promise.resolve();
+    this.processingTranscript = false;
     this.audio = null;
     this.audioUrl = null;
     this.activeRequest = null;
@@ -74,7 +86,7 @@ export class VoiceAgent {
   }
 
   get recording() {
-    return this.mediaRecorder?.state === 'recording';
+    return Boolean(this.microphoneStream);
   }
 
   async connect(voice = 'alloy') {
@@ -92,6 +104,9 @@ export class VoiceAgent {
     this.pendingResponseCount = 1;
     this.onStatus('Thinking…');
     this.activeRequest = new AbortController();
+    const restoreMicrophone = this.recording && !this.microphoneMuted;
+    if (restoreMicrophone) {this.setMicrophoneMuted(true);}
+    let failed = false;
     try {
       const response = await fetch('/api/voice', {
         method: 'POST',
@@ -109,11 +124,13 @@ export class VoiceAgent {
       this.onStatus('Speaking…');
       await this.playBlob(audioBlob);
     } catch (error) {
-      if (error.name !== 'AbortError') {this.onStatus(`AI error: ${error.message}`);}
+      failed = error.name !== 'AbortError';
+      if (failed) {this.onStatus(`AI error: ${error.message}`);}
     } finally {
       this.activeRequest = null;
       this.pendingResponseCount = 0;
-      if (this.connected) {this.onStatus(this.idleStatus());}
+      if (restoreMicrophone && this.connected && this.recording) {this.setMicrophoneMuted(false);}
+      if (this.connected && !failed) {this.onStatus(this.idleStatus());}
     }
   }
 
@@ -122,31 +139,214 @@ export class VoiceAgent {
     if (this.recording) {return;}
     const supported = navigator.mediaDevices.getSupportedConstraints?.() || {};
     this.onStatus('Starting microphone…');
-    this.microphoneStream = await navigator.mediaDevices.getUserMedia({
-      audio: microphoneAudioConstraints(supported),
-    });
-    this.recordedChunks = [];
-    this.mediaRecorder = new MediaRecorder(this.microphoneStream);
-    this.mediaRecorder.addEventListener('dataavailable', (event) => {
-      if (event.data.size > 0) {this.recordedChunks.push(event.data);}
-    });
-    this.mediaRecorder.start();
-    this.onStatus('Listening');
+    try {
+      this.microphoneStream = await navigator.mediaDevices.getUserMedia({
+        audio: microphoneAudioConstraints(supported),
+      });
+      this.peerConnection = new RTCPeerConnection();
+      this.dataChannel = this.peerConnection.createDataChannel('oai-events');
+      this.dataChannel.addEventListener('message', (event) => this.handleRealtimeEvent(event));
+      this.dataChannel.addEventListener('open', () => this.startClientVad());
+      this.dataChannel.addEventListener('close', () => {
+        if (this.connected && this.recording) {this.onStatus('Voice unavailable: transcription connection closed.');}
+      });
+      this.startClientVad();
+      this.peerConnection.addEventListener?.('connectionstatechange', () => {
+        if (this.peerConnection?.connectionState === 'failed') {
+          this.onStatus('Voice unavailable: transcription connection failed.');
+        }
+      });
+      const microphoneTrack = this.microphoneStream.getAudioTracks?.()[0]
+        || this.microphoneStream.getTracks()[0];
+      this.peerConnection.addTrack(microphoneTrack, this.microphoneStream);
+
+      const offer = await this.peerConnection.createOffer();
+      await this.peerConnection.setLocalDescription(offer);
+      const tokenResponse = await fetch('/api/realtime-call', {
+        method: 'POST',
+      });
+      const tokenData = await tokenResponse.json().catch(() => ({}));
+      if (!tokenResponse.ok || !tokenData.value) {
+        throw new Error(tokenData.error || 'Could not create a live transcription key.');
+      }
+      const connectionController = new AbortController();
+      const connectionTimeout = setTimeout(() => connectionController.abort(), 12000);
+      let response;
+      try {
+        response = await fetch('https://api.openai.com/v1/realtime/calls', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${tokenData.value}`,
+            'Content-Type': 'application/sdp',
+          },
+          body: offer.sdp,
+          signal: connectionController.signal,
+        });
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          throw new Error('OpenAI took too long to connect. Please try again.');
+        }
+        throw error;
+      } finally {
+        clearTimeout(connectionTimeout);
+      }
+      const answer = await response.text();
+      if (!response.ok) {
+        let message = 'The live transcription connection failed.';
+        try {message = JSON.parse(answer).error?.message || JSON.parse(answer).error || message;} catch {}
+        throw new Error(message);
+      }
+      await this.peerConnection.setRemoteDescription({ type: 'answer', sdp: answer });
+      if (this.dataChannel.readyState === 'open') {this.startClientVad();}
+      this.onStatus('Listening');
+    } catch (error) {
+      this.closeMicrophoneConnection();
+      throw error;
+    }
   }
 
   async stopMicrophone() {
-    if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {return;}
-    const recorder = this.mediaRecorder;
-    const completed = new Promise((resolve) => recorder.addEventListener('stop', resolve, { once: true }));
-    recorder.stop();
-    await completed;
-    this.microphoneStream?.getTracks().forEach((track) => track.stop());
+    if (!this.recording) {return;}
+    this.closeMicrophoneConnection();
+    this.onStatus('Microphone off');
+  }
+
+  handleRealtimeEvent(messageEvent) {
+    let event;
+    try {event = JSON.parse(messageEvent.data);} catch {return;}
+
+    if (event.type === 'input_audio_buffer.speech_started') {
+      if (!this.microphoneMuted) {this.onStatus('Hearing speech…');}
+      return;
+    }
+    if (event.type === 'input_audio_buffer.speech_stopped') {
+      if (!this.microphoneMuted) {this.onStatus('Transcribing…');}
+      return;
+    }
+    if (event.type === 'conversation.item.input_audio_transcription.delta') {
+      const itemId = event.item_id || 'current';
+      const transcript = `${this.transcriptDeltas.get(itemId) || ''}${event.delta || ''}`;
+      this.transcriptDeltas.set(itemId, transcript);
+      if (transcript.trim()) {this.onTranscript(`Hearing: “${transcript.trim()}”`);}
+      return;
+    }
+    if (event.type === 'conversation.item.input_audio_transcription.completed') {
+      const itemId = event.item_id || 'current';
+      this.transcriptDeltas.delete(itemId);
+      const transcript = String(event.transcript || '').trim();
+      if (!transcript) {
+        if (this.connected && this.recording) {this.onStatus(this.idleStatus());}
+        return;
+      }
+      this.onTranscript(`Heard: “${transcript}”`);
+      this.transcriptQueue = this.transcriptQueue
+        .then(() => this.processLiveTranscript(transcript))
+        .catch((error) => {
+          this.onStatus(`AI error: ${error.message}`);
+        });
+      return;
+    }
+    if (event.type === 'error') {
+      this.onStatus(`AI error: ${event.error?.message || 'Live transcription failed.'}`);
+    }
+  }
+
+  async processLiveTranscript(transcript) {
+    if (!this.connected || !this.recording) {return;}
+    this.cancelResponse();
+    this.processingTranscript = true;
+    this.pendingResponseCount = 1;
+    this.activeRequest = new AbortController();
+    this.setMicrophoneMuted(true);
+    let failed = false;
+    try {
+      await this.processText(transcript, this.activeRequest.signal);
+    } catch (error) {
+      failed = error.name !== 'AbortError';
+      if (failed) {this.onStatus(`AI error: ${error.message}`);}
+    } finally {
+      this.activeRequest = null;
+      this.pendingResponseCount = 0;
+      this.processingTranscript = false;
+      if (this.connected && this.recording) {
+        this.setMicrophoneMuted(false);
+        if (!failed) {this.onStatus('Listening');}
+      }
+    }
+  }
+
+  setMicrophoneMuted(muted) {
+    this.microphoneMuted = muted;
+    this.microphoneStream?.getTracks().forEach((track) => {track.enabled = !muted;});
+  }
+
+  startClientVad() {
+    if (this.vadTimer || !this.microphoneStream) {return;}
+    const AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext;
+    if (!AudioContextClass) {
+      this.onStatus('Voice unavailable: this browser cannot detect when speech ends.');
+      return;
+    }
+    this.vadAudioContext = new AudioContextClass();
+    this.vadAudioContext.resume?.().catch(() => {});
+    this.vadSource = this.vadAudioContext.createMediaStreamSource(this.microphoneStream);
+    this.vadAnalyser = this.vadAudioContext.createAnalyser();
+    this.vadAnalyser.fftSize = 1024;
+    this.vadSamples = new Float32Array(this.vadAnalyser.fftSize);
+    this.vadSource.connect(this.vadAnalyser);
+    this.vadTimer = setInterval(() => this.sampleVoiceActivity(), 50);
+  }
+
+  sampleVoiceActivity(now = Date.now()) {
+    if (!this.vadAnalyser || !this.vadSamples || this.microphoneMuted) {return;}
+    this.vadAnalyser.getFloatTimeDomainData(this.vadSamples);
+    const sumOfSquares = this.vadSamples.reduce((sum, sample) => sum + (sample * sample), 0);
+    const volume = Math.sqrt(sumOfSquares / this.vadSamples.length);
+    if (volume >= 0.018) {
+      if (!this.vadSpeaking) {
+        this.vadSpeaking = true;
+        this.vadSpeechStartedAt = now;
+        this.onStatus('Hearing speech…');
+      }
+      this.vadLastVoiceAt = now;
+      return;
+    }
+    if (this.vadSpeaking && now - this.vadLastVoiceAt >= 700) {
+      const speechDuration = this.vadLastVoiceAt - this.vadSpeechStartedAt;
+      this.vadSpeaking = false;
+      if (speechDuration >= 200) {this.commitDetectedSpeechTurn();}
+    }
+  }
+
+  commitDetectedSpeechTurn() {
+    if (this.dataChannel?.readyState !== 'open') {return;}
+    this.onStatus('Transcribing…');
+    this.dataChannel.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+  }
+
+  closeMicrophoneConnection() {
+    const microphoneStream = this.microphoneStream;
+    const dataChannel = this.dataChannel;
+    const peerConnection = this.peerConnection;
     this.microphoneStream = null;
-    this.mediaRecorder = null;
-    const audio = new Blob(this.recordedChunks, { type: recorder.mimeType || 'audio/webm' });
-    this.recordedChunks = [];
-    if (audio.size > 0) {await this.processAudio(audio, 'microphone.webm');}
-    else {this.onStatus('Microphone off');}
+    this.dataChannel = null;
+    this.peerConnection = null;
+    this.microphoneMuted = false;
+    this.transcriptDeltas.clear();
+    if (this.vadTimer) {clearInterval(this.vadTimer);}
+    this.vadTimer = null;
+    this.vadSpeaking = false;
+    this.vadSpeechStartedAt = 0;
+    this.vadLastVoiceAt = 0;
+    this.vadSource?.disconnect();
+    this.vadAudioContext?.close().catch(() => {});
+    this.vadSource = null;
+    this.vadAnalyser = null;
+    this.vadSamples = null;
+    this.vadAudioContext = null;
+    microphoneStream?.getTracks().forEach((track) => track.stop());
+    dataChannel?.close();
+    peerConnection?.close();
   }
 
   async playAudioFile(file) {
@@ -165,6 +365,9 @@ export class VoiceAgent {
     this.cancelResponse();
     this.pendingResponseCount = 1;
     this.activeRequest = new AbortController();
+    const restoreMicrophone = this.recording && !this.microphoneMuted;
+    if (restoreMicrophone) {this.setMicrophoneMuted(true);}
+    let failed = false;
     try {
       this.onStatus('Transcribing…');
       const transcription = await apiJson({
@@ -179,11 +382,13 @@ export class VoiceAgent {
       this.onTranscript(`Heard: “${transcript}”`);
       await this.processText(transcript, this.activeRequest.signal);
     } catch (error) {
-      if (error.name !== 'AbortError') {this.onStatus(`AI error: ${error.message}`);}
+      failed = error.name !== 'AbortError';
+      if (failed) {this.onStatus(`AI error: ${error.message}`);}
     } finally {
       this.activeRequest = null;
       this.pendingResponseCount = 0;
-      if (this.connected) {this.onStatus(this.idleStatus());}
+      if (restoreMicrophone && this.connected && this.recording) {this.setMicrophoneMuted(false);}
+      if (this.connected && !failed) {this.onStatus(this.idleStatus());}
     }
   }
 
@@ -270,11 +475,7 @@ export class VoiceAgent {
 
   disconnect() {
     this.cancelResponse();
-    if (this.mediaRecorder?.state === 'recording') {this.mediaRecorder.stop();}
-    this.microphoneStream?.getTracks().forEach((track) => track.stop());
-    this.microphoneStream = null;
-    this.mediaRecorder = null;
-    this.recordedChunks = [];
+    this.closeMicrophoneConnection();
     this.isConnected = false;
   }
 

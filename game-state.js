@@ -348,6 +348,7 @@ export function createDebugGameState(gameState, presetName) {
   if (gameState.players.length !== preset.chips.length) {throw new Error(`${presetName} requires ${preset.chips.length} players.`);}
 
   const state = clone(gameState);
+  const activePlayerCount = state.players.filter((player) => !player.eliminated).length;
   state.phase = preset.phase;
   state.handNumber = 1;
   state.round = preset.round;
@@ -420,12 +421,34 @@ export function getAvailableActions(state) {
 export function executeTransition(gameState, action) {
   if (!action?.type) {throw new Error('A transition type is required.');}
   const state = clone(gameState);
+  const activePlayerCount = state.players.filter(
+  (player) => !player.eliminated,
+  ).length;
 
   if (action.type === Transition.START_HAND || action.type === Transition.START_NEXT_HAND) {
     const expected = action.type === Transition.START_HAND ? GamePhase.SETUP : GamePhase.HAND_COMPLETE;
     if (state.phase !== expected) {throw new Error(`${action.type} is not allowed during ${state.phase}.`);}
     if (action.type === Transition.START_NEXT_HAND) {
-      state.dealerId = playerToDealersLeft(state, state.dealerId);
+      if (activePlayerCount === 2) {
+          state.newDealerIndex = state.players.findIndex((player) => player.id === state.dealerId) - 1
+          if (state.newDealerIndex <= -1) {
+            const activePlayers = state.players.filter((player) => !player.eliminated);
+            const newDealerIndex = state.players.findIndex(
+              (player) => player.id === activePlayers[activePlayers.length - 1].id,
+            );
+            while (true) {
+              state.newDealerId = state.players[newDealerIndex].id;
+              if (playerById(state, state.newDealerId).eliminated) {
+                newDealerIndex--;
+              } else {
+                break;
+              }
+            }
+          }
+        state.dealerId = state.players[state.newDealerIndex].id
+        } else {
+        state.dealerId = playerToDealersLeft(state, state.dealerId);
+      }
       if (playerById(state, state.firstDealerId).eliminated) {
         state.ActiveFirstDealerId = playerToDealersLeft(state, state.firstDealerId)
       } else {
@@ -451,7 +474,6 @@ export function executeTransition(gameState, action) {
       player.hasActedThisRound = false;
       player.lastActionBetLevel = null;
     });
-    const activePlayerCount = state.players.filter((player) => !player.eliminated).length;
     if (activePlayerCount === 2 && state.useBigBlind) {
       state.smallBlindPlayerId = state.dealerId;
       state.bigBlindPlayerId = playerToDealersLeft(state, state.dealerId);

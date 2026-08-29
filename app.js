@@ -105,6 +105,7 @@ let voicePreviewAgent = null;
 let voiceConnectionPromise = null;
 let startMicrophoneAfterSpeech = false;
 let pendingVoiceAction = null;
+let suppressAutomaticNarration = false;
 let raiseMode = false;
 let seatingMode = false;
 let seatAngles = {};
@@ -508,6 +509,11 @@ function setVoiceStatus(text) {
   voiceStatus.dataset.state = state;
 }
 
+function narrate(text) {
+  const message = String(text || '').trim();
+  if (message && !suppressAutomaticNarration) {voiceAgent?.speak(message);}
+}
+
 function updateRecordingButton() {
   const recording = Boolean(voiceAgent?.recording);
   recordingButton.setAttribute('aria-pressed', String(recording));
@@ -519,6 +525,7 @@ function getVoiceSnapshot() {
   const player = viewPlayer(currentPlayerNumber) || null;
   const maximumBet = bettingBoundsForView(player).maxAdditionalChips;
   const undoFromShowdown = !winnerPicker.hidden;
+  const showdown = currentShowdownPot();
   return {
     phase: gameState?.phase || (gameScreen.hidden ? 'setup' : !dealPrompt.hidden ? 'waiting for cards' : !winnerPicker.hidden ? 'choosing winner' : 'betting'),
     round: ['preflop', 'flop', 'turn', 'river'][viewRoundNumber() - 1] || 'between hands',
@@ -547,6 +554,15 @@ function getVoiceSnapshot() {
     pot: totalPotAmount(),
     availableActions: currentGameActions(),
     dealInstruction: dealPrompt.hidden ? null : dealMessage.textContent,
+    showdown: showdown ? {
+      potIndex: showdown.potIndex,
+      potAmount: showdown.pot.amount,
+      question: winnerQuestion.textContent,
+      eligiblePlayers: showdown.eligiblePlayers.map((candidate) => ({
+        number: candidate.id,
+        name: candidate.name,
+      })),
+    } : null,
     players: viewPlayers().map((candidate) => ({
       number: viewPlayerNumber(candidate),
       name: candidate.name,
@@ -579,7 +595,33 @@ const voiceTools = [
   { type: 'function', name: 'cancelAction', description: prompts.toolDescriptions.cancelAction, parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'cardsDealt', description: prompts.toolDescriptions.cardsDealt, parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'undo', description: 'Restore the most recently confirmed poker turn when the player asks to undo it.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'chooseWinner', description: 'Award the current showdown pot to one eligible player after someone states who has the best cards or wins the pot.', parameters: { type: 'object', properties: { playerNumber: { type: 'integer', description: 'The exact player number from the current game state.' } }, required: ['playerNumber'], additionalProperties: false } },
+  { type: 'function', name: 'splitPot', description: 'Split the current showdown pot between two or more eligible tied players.', parameters: { type: 'object', properties: { playerNumbers: { type: 'array', items: { type: 'integer' }, minItems: 2, uniqueItems: true, description: 'The exact player numbers of all tied players.' } }, required: ['playerNumbers'], additionalProperties: false } },
+  { type: 'function', name: 'nextHand', description: 'Start the next poker hand when the completed-hand screen is waiting for the players to continue.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
 ];
+
+function currentShowdownPot() {
+  if (gameState?.phase !== GamePhase.SHOWDOWN) {return null;}
+  const potIndex = gameState.potAwardIndex;
+  const pot = gameState.pots[potIndex];
+  if (!pot || pot.amount <= 0) {return null;}
+  const eligiblePlayers = pot.eligiblePlayerNumbers
+    .map((playerId) => viewPlayer(playerId))
+    .filter((player) => player && !player.folded && !player.eliminated);
+  return { potIndex, pot, eligiblePlayers };
+}
+
+function voiceWinnerResultMessage(selectedPlayers) {
+  if ([GamePhase.HAND_COMPLETE, GamePhase.GAME_COMPLETE].includes(gameState.phase)) {
+    const winners = gameState.handWinnerIds.map((id) => viewPlayer(id)).filter(Boolean);
+    const winnerNames = formatNameList(winners.map((winner) => winner.name));
+    return gameState.phase === GamePhase.GAME_COMPLETE
+      ? `${winnerNames} won the hand and the game.`
+      : `${winnerNames} won the hand.`;
+  }
+  const winnerNames = formatNameList(selectedPlayers.map((player) => player.name));
+  return `${winnerNames} won that pot. ${winnerQuestion.textContent}`;
+}
 
 function executeVoiceTool(name, args) {
   if (name === 'ignoreSpeech') {return { ok: true, silent: true };}
@@ -603,6 +645,53 @@ function executeVoiceTool(name, args) {
   if (name === 'cardsDealt') {
     if (!cardsAreDealt()) {return { ok: false, message: 'The game is not waiting for cards.' };}
     return { ok: true, message: 'Cards confirmed.' };
+  }
+
+  if (name === 'nextHand') {
+    if (gameState?.phase !== GamePhase.HAND_COMPLETE) {
+      return { ok: false, message: 'The current hand is not complete yet.' };
+    }
+    suppressAutomaticNarration = true;
+    try {
+      startNewHand();
+    } finally {
+      suppressAutomaticNarration = false;
+    }
+    return { ok: true, message: dealMessage.textContent };
+  }
+
+  if (name === 'chooseWinner' || name === 'splitPot') {
+    const showdown = currentShowdownPot();
+    if (!showdown) {return { ok: false, message: 'There is no showdown pot waiting for a winner.' };}
+
+    const requestedPlayerNumbers = name === 'chooseWinner'
+      ? [Number(args.playerNumber)]
+      : [...new Set((Array.isArray(args.playerNumbers) ? args.playerNumbers : []).map(Number))];
+    if (name === 'splitPot' && requestedPlayerNumbers.length < 2) {
+      return { ok: false, message: 'A split pot needs at least two different players.' };
+    }
+
+    const eligiblePlayerNumbers = new Set(showdown.eligiblePlayers.map((player) => player.id));
+    const selectionIsValid = requestedPlayerNumbers.length > 0
+      && requestedPlayerNumbers.every((playerNumber) => Number.isInteger(playerNumber) && eligiblePlayerNumbers.has(playerNumber));
+    if (!selectionIsValid) {
+      const eligibleNames = formatNameList(showdown.eligiblePlayers.map((player) => player.name));
+      return { ok: false, message: `The winner must be one of the eligible players: ${eligibleNames}.` };
+    }
+
+    const selectedPlayers = requestedPlayerNumbers
+      .map((playerNumber) => showdown.eligiblePlayers.find((player) => player.id === playerNumber));
+    suppressAutomaticNarration = true;
+    try {
+      if (name === 'chooseWinner') {
+        awardPot(showdown.potIndex, requestedPlayerNumbers[0]);
+      } else {
+        awardSplitPot(showdown.potIndex, requestedPlayerNumbers);
+      }
+    } finally {
+      suppressAutomaticNarration = false;
+    }
+    return { ok: true, message: voiceWinnerResultMessage(selectedPlayers) };
   }
 
   const currentPlayerNumber = viewActionPlayerNumber();
@@ -746,16 +835,24 @@ async function connectVoiceAgent() {
 
 async function toggleRecording() {
   startMicrophoneAfterSpeech = false;
+  let connecting = false;
   try {
     const agent = await connectVoiceAgent();
     if (agent.recording) {await agent.stopMicrophone();}
-    else {await agent.startMicrophone();}
+    else {
+      connecting = true;
+      recordingButton.disabled = true;
+      recordingButton.textContent = 'Connecting…';
+      await agent.startMicrophone();
+    }
   } catch (error) {
     const errorMessage = `Voice unavailable: ${error.message}`;
     setVoiceStatus(errorMessage);
     setVoiceTranscript(errorMessage);
+  } finally {
+    if (connecting) {recordingButton.disabled = false;}
+    updateRecordingButton();
   }
-  updateRecordingButton();
 }
 
 async function previewVoice() {
@@ -1183,6 +1280,7 @@ function showHandCompleteFromGameState() {
   const winners = gameState.handWinnerIds.map((id) => viewPlayer(id)).filter(Boolean);
   const winnerNames = formatNameList(winners.map((winner) => winner.name));
   winnerQuestion.textContent = `${winnerNames} ${winners.length === 1 ? 'wins' : 'win'} the hand!`;
+  narrate(`${winnerNames} won the hand.`);
   winnerOptions.replaceChildren();
   const nextHandButton = document.createElement('button');
   nextHandButton.type = 'button';
@@ -1226,7 +1324,7 @@ function renderGameState() {
     dealMessage.textContent = `Game is ${bettingLimit} Texas Hold'em.${fixedLimit} Small blind is ${gameState.smallBlind}. ${blindPlayers} ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK or say "cards are dealt" when done.`;
     dealPrompt.hidden = false;
     drawPlayerSeats();
-    voiceAgent?.speak(dealMessage.textContent);
+    narrate(dealMessage.textContent);
     return;
   }
 
@@ -1236,9 +1334,10 @@ function renderGameState() {
       [GamePhase.DEAL_TURN]: 'Burn one card, then deal the turn',
       [GamePhase.DEAL_RIVER]: 'Burn one card, then deal the river',
     }[phase];
-    dealMessage.textContent = `${instruction}. Press OK to continue.`;
+    dealMessage.textContent = `${instruction}. Press OK or say "cards are dealt" to continue.`;
     dealPrompt.hidden = false;
     drawPlayerSeats();
+    narrate(dealMessage.textContent);
     return;
   }
 
@@ -1249,6 +1348,7 @@ function renderGameState() {
     dealMessage.textContent = dealMessage.textContent[0].toUpperCase() + dealMessage.textContent.slice(1);
     dealPrompt.hidden = false;
     drawPlayerSeats();
+    narrate(dealMessage.textContent);
     return;
   }
 
@@ -1306,6 +1406,7 @@ function showGameStatePotWinnerPicker() {
 function showPotWinnerPicker(question, players, awardFunction, splitFunction = null) {
   turnIndicator.hidden = true;
   winnerQuestion.textContent = question;
+  narrate(question);
   winnerOptions.replaceChildren();
   let splitMode = false;
   const selectedWinnerNumbers = new Set();
@@ -1358,6 +1459,7 @@ function showPotWinnerPicker(question, players, awardFunction, splitFunction = n
         button.setAttribute('aria-pressed', 'false');
       });
       winnerQuestion.textContent = splitMode ? 'Who tied for this pot?' : question;
+      narrate(winnerQuestion.textContent);
       splitButton.textContent = splitMode ? 'Cancel split' : 'Split pot';
       confirmSplitButton.hidden = !splitMode;
       confirmSplitButton.disabled = true;
@@ -1386,6 +1488,7 @@ function showGameWinner(winner) {
   allowScreenToSleep();
   gameScreen.hidden = true;
   gameWinnerMessage.textContent = `${winner.name} wins!`;
+  narrate(`${winner.name} won the hand and the game!`);
   gameWinnerScreen.hidden = false;
 }
 
