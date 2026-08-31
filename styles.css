@@ -44,7 +44,7 @@ body {
   position: fixed;
   z-index: 4;
   left: 50%;
-  top: max(12px, env(safe-area-inset-top));
+  top: 0;
   display: grid;
   justify-items: center;
   gap: 8px;
@@ -73,7 +73,36 @@ body {
     0 0 0 4px #ffb5a5aa,
     0 3px 0 #66141a;
 }
+.seat-order-button {
+  width: 210px;
+  min-height: 40px;
+  margin: 0;
+  padding: 0 14px;
+  border: 2px solid #fffdf6;
+  border-radius: 999px;
+  background: #6b4f3b;
+  color: #fffdf6;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  box-shadow: 0 3px 0 #3d2b1f;
+}
+.seat-order-button:active {
+  transform: translateY(2px);
+}
+.seat-order-button[aria-pressed="true"] {
+  background: #2875c7;
+  box-shadow: 0 3px 0 #174f91;
+}
+.seat-order-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
 .voice-status {
+  position: fixed;
+  z-index: 4;
+  left: 50%;
+  bottom: max(12px, env(safe-area-inset-bottom));
   display: flex;
   width: max-content;
   max-width: 190px;
@@ -91,6 +120,7 @@ body {
   line-height: 1.1;
   text-align: center;
   box-shadow: 0 3px 10px #04160f66;
+  transform: translateX(-50%);
 }
 .voice-status::before {
   width: 8px;
@@ -136,9 +166,9 @@ body {
 }
 .voice-transcript {
   position: fixed;
-  z-index: 2;
+  z-index: 4;
   left: 50%;
-  top: 48px;
+  bottom: calc(max(12px, env(safe-area-inset-bottom)) + 46px);
   width: min(90%, 340px);
   margin: 0;
   color: #fffdf6;
@@ -820,6 +850,13 @@ button:active {
 }
 .voice-customization-back {
   margin-top: 32px;
+}
+.resume-game-button {
+  min-height: 50px;
+  margin-top: 22px;
+  background: #2875c7;
+  box-shadow: 0 4px 0 #174f91;
+  font-size: 1rem;
 }
 .chip-denominations-screen {
   min-height: min(85svh, 620px);

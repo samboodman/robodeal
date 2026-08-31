@@ -1,3 +1,5 @@
+import { matchVoiceCommandViaApi } from './voice-command-matcher.js';
+
 export function fillPrompt(template, values) {
   return template.replace(/\{\{([A-Z_]+)\}\}/g, (placeholder, key) => (
     Object.hasOwn(values, key) ? String(values[key]) : placeholder
@@ -36,6 +38,8 @@ function responseText(response) {
     .join('\n')
     .trim();
 }
+
+const silentAudioUrl = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAACAgICA';
 
 async function apiJson(body, signal) {
   const response = await fetch('/api/voice', {
@@ -76,6 +80,7 @@ export class VoiceAgent {
     this.processingTranscript = false;
     this.audio = null;
     this.audioUrl = null;
+    this.audioUnlocked = false;
     this.activeRequest = null;
     this.audioTestRunning = false;
     this.pendingResponseCount = 0;
@@ -97,6 +102,16 @@ export class VoiceAgent {
   }
 
   updateContext() {}
+
+  unlockAudioPlayback() {
+    if (typeof Audio === 'undefined' || this.audioUnlocked) {return;}
+    this.audio ||= new Audio();
+    this.audioUnlocked = true;
+    this.audio.src = silentAudioUrl;
+    Promise.resolve(this.audio.play()).catch(() => {
+      this.audioUnlocked = false;
+    });
+  }
 
   async speak(text) {
     if (!this.connected || !text) {return;}
@@ -393,6 +408,21 @@ export class VoiceAgent {
   }
 
   async processText(transcript, signal) {
+    const directCommand = await matchVoiceCommandViaApi(transcript);
+    if (directCommand && typeof this.executeTool === 'function') {
+      this.onStatus('Applying action…');
+      let result;
+      try {
+        result = await this.executeTool(directCommand.name, directCommand.args);
+      } catch (error) {
+        result = { ok: false, message: error.message };
+      }
+      if (result?.silent) {return;}
+      const message = String(result?.message || '').trim();
+      if (message) {await this.speakWithoutCancelling(message, signal);}
+      return;
+    }
+
     this.onStatus('Thinking…');
     let response = await apiJson({
       action: 'respond',
@@ -455,7 +485,8 @@ export class VoiceAgent {
   playBlob(blob) {
     if (this.audioUrl) {URL.revokeObjectURL(this.audioUrl);}
     this.audioUrl = URL.createObjectURL(blob);
-    this.audio = new Audio(this.audioUrl);
+    this.audio ||= new Audio();
+    this.audio.src = this.audioUrl;
     return new Promise((resolve, reject) => {
       this.audio.addEventListener('ended', resolve, { once: true });
       this.audio.addEventListener('error', () => reject(new Error('The generated speech could not play.')), { once: true });
@@ -467,7 +498,6 @@ export class VoiceAgent {
     this.activeRequest?.abort();
     this.activeRequest = null;
     this.audio?.pause();
-    this.audio = null;
     if (this.audioUrl) {URL.revokeObjectURL(this.audioUrl);}
     this.audioUrl = null;
     this.pendingResponseCount = 0;

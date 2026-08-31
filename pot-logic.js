@@ -58,6 +58,16 @@ export function calculatePots(players) {
       .sort((first, second) => first - second);
     const previousPot = pots.at(-1);
 
+    // Chips from players who later fold are still dead money. If nobody in a
+    // contribution layer remains eligible, add that layer to the preceding
+    // contested pot instead of creating a pot that can never be awarded.
+    if (eligiblePlayerNumbers.length === 0 && previousPot) {
+      previousPot.amount += amount;
+      previousPot.contributionCap = level;
+      previousLevel = level;
+      return;
+    }
+
     // Folded chips can create contribution levels without changing who may
     // win them. Merge those levels so players are not asked to award two pots
     // that have exactly the same eligible winners.

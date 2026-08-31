@@ -6,7 +6,7 @@
     "languages": ["en"]
   },
   "voicePreviewInstructions": "Speak exactly as requested and say nothing else.",
-  "voicePreviewText": "Welcome to RoboDeal. Place your bets.",
+  "voicePreviewText": "Game is no limit texas hold'em.",
   "sayExactly": "Say exactly this: {{TEXT}}",
   "toolDescriptions": {
     "ignoreSpeech": "Choose this only when the utterance is clearly unrelated to poker and the current game. It produces no spoken response and no game action.",

@@ -83,6 +83,18 @@ function nextPlayerFrom(state, playerId) {
   return null;
 }
 
+function nextPlayerNeedingActionFrom(state, playerId) {
+  const index = state.players.findIndex((player) => player.id === playerId);
+  if (index < 0) {return null;}
+
+  for (let step = 1; step <= state.players.length; step += 1) {
+    const player = state.players[(index + step) % state.players.length];
+    const stillNeedsAction = !player.hasActedThisRound || player.roundBet !== state.highestRoundBet;
+    if (!player.folded && !player.eliminated && player.chips > 0 && stillNeedsAction) {return player.id;}
+  }
+  return null;
+}
+
 function playerToDealersLeft(state, dealerId) {
   const index = state.players.findIndex((player) => player.id === dealerId);
   if (index < 0) {throw new Error('The dealer must be seated at the table.');}
@@ -167,6 +179,15 @@ function phaseAfterBetting(state) {
   return playersWhoCanAct(state).length <= 1 ? GamePhase.ALL_IN_RUNOUT : nextPhase;
 }
 
+function ensureShowdownPot(state) {
+  if (state.phase !== GamePhase.SHOWDOWN || state.pots.length > 0) {return;}
+  state.pots = [{
+    amount: 0,
+    contributionCap: 0,
+    eligiblePlayerNumbers: nonFoldedPlayers(state).map((player) => player.id),
+  }];
+}
+
 function finishHand(state, winnerIds) {
   state.handWinnerIds = [...new Set(winnerIds)];
   state.players.forEach((player) => {
@@ -192,13 +213,22 @@ function resolveBetting(state) {
     return;
   }
 
-  if (hasBettingRoundFinished(state.players, state.highestRoundBet)) {
+  const actingPlayers = playersWhoCanAct(state);
+  if (actingPlayers.length === 0 || (actingPlayers.length === 1 && amountToCall(state, actingPlayers[0]) === 0)) {
     state.actionPlayerId = null;
     state.phase = phaseAfterBetting(state);
+    ensureShowdownPot(state);
     return;
   }
 
-  state.actionPlayerId = nextPlayerFrom(state, state.actionPlayerId);
+  if (hasBettingRoundFinished(state.players, state.highestRoundBet)) {
+    state.actionPlayerId = null;
+    state.phase = phaseAfterBetting(state);
+    ensureShowdownPot(state);
+    return;
+  }
+
+  state.actionPlayerId = nextPlayerNeedingActionFrom(state, state.actionPlayerId);
 }
 
 function assertBettingTurn(state, action) {
@@ -429,26 +459,7 @@ export function executeTransition(gameState, action) {
     const expected = action.type === Transition.START_HAND ? GamePhase.SETUP : GamePhase.HAND_COMPLETE;
     if (state.phase !== expected) {throw new Error(`${action.type} is not allowed during ${state.phase}.`);}
     if (action.type === Transition.START_NEXT_HAND) {
-      if (activePlayerCount === 2) {
-          state.newDealerIndex = state.players.findIndex((player) => player.id === state.dealerId) - 1
-          if (state.newDealerIndex <= -1) {
-            const activePlayers = state.players.filter((player) => !player.eliminated);
-            let newDealerIndex = state.players.findIndex(
-              (player) => player.id === activePlayers[activePlayers.length - 1].id,
-            );
-            while (true) {
-              state.newDealerId = state.players[newDealerIndex].id;
-              if (playerById(state, state.newDealerId).eliminated) {
-                newDealerIndex--;
-              } else {
-                break;
-              }
-            }
-          }
-        state.dealerId = state.players[state.newDealerIndex].id
-        } else {
-        state.dealerId = playerToDealersLeft(state, state.dealerId);
-      }
+      state.dealerId = playerToDealersLeft(state, state.dealerId);
       if (playerById(state, state.firstDealerId).eliminated) {
         state.ActiveFirstDealerId = playerToDealersLeft(state, state.firstDealerId)
       } else {
@@ -493,12 +504,19 @@ export function executeTransition(gameState, action) {
     if (state.phase === GamePhase.ALL_IN_RUNOUT) {
       state.phase = GamePhase.SHOWDOWN;
       state.potAwardIndex = 0;
+      ensureShowdownPot(state);
       return state;
     }
     const nextBettingPhase = bettingPhaseFor[state.phase];
     if (!nextBettingPhase) {throw new Error(`CARDS_DEALT is not allowed during ${state.phase}.`);}
     state.phase = nextBettingPhase;
-    if (state.phase !== GamePhase.BETTING_PREFLOP) {
+    if (state.phase === GamePhase.BETTING_PREFLOP) {
+      const actingPlayers = playersWhoCanAct(state);
+      if (actingPlayers.length === 0 || (actingPlayers.length === 1 && amountToCall(state, actingPlayers[0]) === 0)) {
+        state.actionPlayerId = null;
+        state.phase = GamePhase.ALL_IN_RUNOUT;
+      }
+    } else {
       state.round += 1;
       prepareNextBettingRound(state);
     }
@@ -509,7 +527,7 @@ export function executeTransition(gameState, action) {
     if (state.phase !== GamePhase.SHOWDOWN) {throw new Error(`A pot cannot be awarded during ${state.phase}.`);}
     if (action.potIndex !== state.potAwardIndex) {throw new Error('That pot is not ready to be awarded.');}
     const pot = state.pots[state.potAwardIndex];
-    if (!pot || pot.amount <= 0) {throw new Error('There is no pot to award.');}
+    if (!pot || pot.amount < 0) {throw new Error('There is no pot to award.');}
 
     const winnerIds = action.type === Transition.AWARD_POT ? [action.winnerId] : action.winnerIds;
     if (!Array.isArray(winnerIds) || winnerIds.length === 0 || !winnerIds.every((id) => pot.eligiblePlayerNumbers.includes(id))) {

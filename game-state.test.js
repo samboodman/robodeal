@@ -297,6 +297,27 @@ test('CARDS_DEALT traverses every named deal and betting phase through river sho
   assert.equal(state.phase, GamePhase.SHOWDOWN);
 });
 
+test('a zero-stakes checked-down hand can still choose a showdown winner', () => {
+  let state = start(createGameState({
+    players: [{ id: 1, chips: 100 }, { id: 2, chips: 100 }],
+    smallBlind: 0,
+    dealerId: 1,
+  }));
+
+  state = action(state, Transition.CHECK);
+  for (let street = 0; street < 3; street += 1) {
+    state = executeTransition(state, { type: Transition.CARDS_DEALT });
+    state = action(state, Transition.CHECK);
+    state = action(state, Transition.CHECK);
+  }
+
+  assert.equal(state.phase, GamePhase.SHOWDOWN);
+  assert.equal(state.pots[0].amount, 0);
+  state = executeTransition(state, { type: Transition.AWARD_POT, potIndex: 0, winnerId: 2 });
+  assert.equal(state.phase, GamePhase.HAND_COMPLETE);
+  assert.deepEqual(state.handWinnerIds, [2]);
+});
+
 test('CARDS_DEALT and betting actions are rejected from the wrong phases', () => {
   const setup = game();
   assert.throws(() => executeTransition(setup, { type: Transition.CARDS_DEALT }), /not allowed/);
@@ -509,6 +530,38 @@ test('heads-up can start with the big blind disabled', () => {
   assert.equal(state.actionPlayerId, 1);
 });
 
+test('forced blinds that put every player all-in advance directly to the runout', () => {
+  let state = createGameState({
+    players: [{ id: 1, chips: 15 }, { id: 2, chips: 4 }],
+    smallBlind: 10,
+    dealerId: 2,
+    useBigBlind: true,
+  });
+
+  state = executeTransition(state, { type: Transition.START_HAND });
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+
+  assert.equal(state.phase, GamePhase.ALL_IN_RUNOUT);
+  assert.equal(state.actionPlayerId, null);
+  assert.deepEqual(getAvailableActions(state), [{ type: Transition.CARDS_DEALT }]);
+});
+
+test('a sole player with chips still acts when they owe an all-in call', () => {
+  let state = createGameState({
+    players: [{ id: 1, chips: 100 }, { id: 2, chips: 4 }, { id: 3, chips: 15 }],
+    smallBlind: 10,
+    dealerId: 1,
+    useBigBlind: true,
+  });
+
+  state = executeTransition(state, { type: Transition.START_HAND });
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+
+  assert.equal(state.phase, GamePhase.BETTING_PREFLOP);
+  assert.equal(state.actionPlayerId, 1);
+  assert.ok(getAvailableActions(state).some(({ type }) => type === Transition.CALL));
+});
+
 test('the engine posts an ante from every active player before posting blinds', () => {
   const state = executeTransition(createGameState({
     players: [{ id: 1, chips: 100 }, { id: 2, chips: 100 }, { id: 3, chips: 100 }],
@@ -633,4 +686,32 @@ test('blind increases continue after the original dealer is eliminated', () => {
 
   assert.equal(state.dealerId, 3);
   assert.equal(state.smallBlind, 10);
+});
+
+test('heads-up dealer rotation wraps safely from the first seat', () => {
+  const state = createGameState({
+    players: [{ id: 1, chips: 100 }, { id: 2, chips: 100 }, { id: 3, chips: 0 }],
+    smallBlind: 5,
+    dealerId: 1,
+    useBigBlind: true,
+  });
+  state.phase = GamePhase.HAND_COMPLETE;
+  state.players[2].folded = true;
+  state.players[2].eliminated = true;
+
+  const next = executeTransition(state, { type: Transition.START_NEXT_HAND });
+
+  assert.equal(next.dealerId, 2);
+  assert.equal(next.smallBlindPlayerId, 2);
+  assert.equal(next.bigBlindPlayerId, 1);
+});
+
+test('reordering seats mid-round skips players whose matched action is complete', () => {
+  let state = start(game({ useBigBlind: true }));
+  state = action(state, Transition.CALL); // Player 1 acts; Player 2 is next.
+  state.players = [state.players[1], state.players[0], state.players[2]];
+
+  state = action(state, Transition.CALL); // Player 2 acts after the seat correction.
+
+  assert.equal(state.actionPlayerId, 3);
 });

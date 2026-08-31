@@ -70,6 +70,7 @@ const dealPrompt = document.querySelector('#deal-prompt');
 const dealMessage = document.querySelector('#deal-message');
 const dealOkButton = document.querySelector('#deal-ok-button');
 const recordingButton = document.querySelector('#recording-button');
+const seatOrderButton = document.querySelector('#seat-order-button');
 const voiceStatus = document.querySelector('#voice-status');
 const voiceTranscript = document.querySelector('#voice-transcript');
 const startMicrophoneAutomaticallyCheckbox = document.querySelector('#start-microphone-automatically');
@@ -88,6 +89,7 @@ const voiceAudioTestStatus = document.querySelector('#voice-audio-test-status');
 const chipDenominationsButton = document.querySelector('#chip-denominations-button');
 const chipDenominationsBack = document.querySelector('#chip-denominations-back');
 const chipDisplayModeButton = document.querySelector('#chip-display-mode');
+const resumeGameButton = document.querySelector('#resume-game-button');
 const chipDenominationInputs = [...document.querySelectorAll('[data-chip-color]')];
 const chipEnabledCheckboxes = [...document.querySelectorAll('[data-chip-enabled]')];
 let gameSettings = null;
@@ -110,6 +112,7 @@ let raiseMode = false;
 let seatingMode = false;
 let seatAngles = {};
 const lastGameSettingsKey = 'robodeal-last-game-settings';
+const currentGameKey = 'robodeal-current-game-v1';
 const isLocalDebugEnvironment = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 const bettingLimitLabels = Object.freeze({
   [BettingLimit.NO_LIMIT]: 'No-Limit',
@@ -349,7 +352,9 @@ function restoreLastGameSettings() {
   updateChipDisplayModeButton();
   restoreChipDenominations(settings.chipDenominations);
   if (settings.voice) {
-    voiceChoice.value = settings.voice.name || voiceChoice.value;
+    if ([...voiceChoice.options].some((option) => option.value === settings.voice.name)) {
+      voiceChoice.value = settings.voice.name;
+    }
     voiceAccent.value = settings.voice.accent || voiceAccent.value;
     voicePace.value = settings.voice.pace || voicePace.value;
   }
@@ -361,6 +366,97 @@ function saveLastGameSettings() {
   try {
     localStorage.setItem(lastGameSettingsKey, JSON.stringify({ settings: gameSettings }));
   } catch {}
+}
+
+function getSavedCurrentGame() {
+  try {
+    const savedGame = JSON.parse(localStorage.getItem(currentGameKey));
+    const savedState = savedGame?.gameState;
+    const validPlayers = Array.isArray(savedState?.players)
+      && savedState.players.length >= 2
+      && savedState.players.length <= 8
+      && savedState.players.every((player) => Number.isInteger(player.id) && Number.isFinite(player.chips));
+    if (
+      savedGame?.version !== 1
+      || !savedGame.gameSettings
+      || !validPlayers
+      || !Object.values(GamePhase).includes(savedState.phase)
+    ) {return null;}
+    return savedGame;
+  } catch {
+    return null;
+  }
+}
+
+function updateResumeGameButton() {
+  const savedGame = getSavedCurrentGame();
+  resumeGameButton.hidden = !savedGame;
+  if (savedGame) {
+    const handNumber = Math.max(1, Number(savedGame.gameState.handNumber) || 1);
+    resumeGameButton.textContent = `Resume saved game — hand ${handNumber}`;
+  }
+}
+
+function saveCurrentGame() {
+  if (!gameSettings || !gameState) {return;}
+  try {
+    localStorage.setItem(currentGameKey, JSON.stringify({
+      version: 1,
+      savedAt: new Date().toISOString(),
+      gameSettings,
+      gameState,
+      seatAngles,
+      lastTurnState,
+      lastTurnEndedHandByFold,
+    }));
+  } catch {}
+}
+
+function clearSavedCurrentGame() {
+  try {localStorage.removeItem(currentGameKey);} catch {}
+  updateResumeGameButton();
+}
+
+function resumeSavedGame() {
+  const savedGame = getSavedCurrentGame();
+  if (!savedGame) {
+    updateResumeGameButton();
+    message.textContent = 'That saved game is no longer available.';
+    return;
+  }
+
+  gameSettings = savedGame.gameSettings;
+  gameState = savedGame.gameState;
+  lastTurnState = savedGame.lastTurnState || null;
+  lastTurnEndedHandByFold = savedGame.lastTurnEndedHandByFold === true;
+  seatAngles = savedGame.seatAngles && typeof savedGame.seatAngles === 'object'
+    ? savedGame.seatAngles
+    : {};
+  if (!gameState.players.every((player) => Number.isFinite(Number(seatAngles[player.id])))) {
+    initializeSeatAngles();
+  }
+  chipDisplayMode = gameSettings.chipDisplayMode === 'pile' ? 'pile' : 'value';
+  pendingBet = 0;
+  pendingFold = false;
+  pendingVoiceAction = null;
+  raiseMode = false;
+  seatingMode = false;
+  setupScreen.hidden = true;
+  voiceCustomizationScreen.hidden = true;
+  chipDenominationsScreen.hidden = true;
+  gameScreen.hidden = false;
+  gameWinnerScreen.hidden = true;
+  winnerPicker.hidden = true;
+  dealPrompt.hidden = true;
+  lockSeatsButton.hidden = true;
+  turnControl.hidden = false;
+  gameScreen.classList.remove('seating-mode');
+  voiceTranscript.hidden = !gameSettings.showVoiceTranscript;
+  updateChipDisplayModeButton();
+  updateDebugFeatures();
+  keepScreenAwake();
+  renderGameState();
+  if (gameState.phase !== GamePhase.GAME_COMPLETE) {connectVoiceForCurrentGame();}
 }
 
 async function keepScreenAwake() {
@@ -625,6 +721,7 @@ function voiceWinnerResultMessage(selectedPlayers) {
 
 function executeVoiceTool(name, args) {
   if (name === 'ignoreSpeech') {return { ok: true, silent: true };}
+  if (seatingMode) {return { ok: false, message: 'Lock the seats before continuing the game.' };}
 
   if (name === 'undo') {
     const fromShowdown = !winnerPicker.hidden;
@@ -803,7 +900,10 @@ function executeVoiceTool(name, args) {
 }
 
 async function connectVoiceAgent() {
-  if (voiceAgent?.connected) {return voiceAgent;}
+  if (voiceAgent?.connected) {
+    voiceAgent.unlockAudioPlayback();
+    return voiceAgent;
+  }
   if (voiceConnectionPromise) {return voiceConnectionPromise;}
 
   voiceAgent?.disconnect();
@@ -827,6 +927,7 @@ async function connectVoiceAgent() {
         });
     },
   });
+  voiceAgent.unlockAudioPlayback();
   voiceConnectionPromise = voiceAgent.connect(gameSettings?.voice?.name || voiceChoice.value)
     .then(() => voiceAgent)
     .finally(() => { voiceConnectionPromise = null; });
@@ -837,7 +938,9 @@ async function toggleRecording() {
   startMicrophoneAfterSpeech = false;
   let connecting = false;
   try {
-    const agent = await connectVoiceAgent();
+    const connection = connectVoiceAgent();
+    voiceAgent?.unlockAudioPlayback();
+    const agent = await connection;
     if (agent.recording) {await agent.stopMicrophone();}
     else {
       connecting = true;
@@ -864,6 +967,7 @@ async function previewVoice() {
     prompts,
     onStatus: (status) => { voicePreviewStatus.textContent = status; },
   });
+  voicePreviewAgent.unlockAudioPlayback();
   try {
     await voicePreviewAgent.connect(voiceChoice.value);
     voicePreviewAgent.speak(prompts.voicePreviewText);
@@ -1090,6 +1194,57 @@ function lockClockwiseSeatOrder() {
   });
 }
 
+function reorderStatePlayersClockwise(state) {
+  if (!state) {return;}
+  const playersById = new Map(state.players.map((player) => [player.id, player]));
+  state.players = clockwisePlayerIds(state.players, seatAngles)
+    .map((playerId) => playersById.get(playerId));
+}
+
+function updateSeatOrderButton() {
+  const bettingPhase = gameState && [
+    GamePhase.BETTING_PREFLOP,
+    GamePhase.BETTING_FLOP,
+    GamePhase.BETTING_TURN,
+    GamePhase.BETTING_RIVER,
+  ].includes(gameState.phase);
+  seatOrderButton.hidden = !gameState || gameScreen.hidden || lockSeatsButton.hidden === false;
+  seatOrderButton.disabled = !seatingMode && !bettingPhase;
+  seatOrderButton.setAttribute('aria-pressed', String(seatingMode));
+  seatOrderButton.textContent = seatingMode
+    ? 'Lock seats and reset seating order'
+    : 'Move seats';
+}
+
+function beginInGameSeatPositioning() {
+  if (seatingMode || !gameState) {return;}
+  seatingMode = true;
+  raiseMode = false;
+  pendingFold = false;
+  pendingVoiceAction = null;
+  closeButtonHelp();
+  gameScreen.classList.add('seating-mode');
+  turnControl.hidden = true;
+  updateSeatOrderButton();
+  drawPlayerSeats();
+}
+
+function lockInGameSeats() {
+  if (!seatingMode || !gameState) {return;}
+  reorderStatePlayersClockwise(gameState);
+  reorderStatePlayersClockwise(lastTurnState);
+  seatingMode = false;
+  gameScreen.classList.remove('seating-mode');
+  turnControl.hidden = false;
+  updateSeatOrderButton();
+  renderGameState();
+}
+
+function toggleInGameSeatPositioning() {
+  if (seatingMode) {lockInGameSeats();}
+  else {beginInGameSeatPositioning();}
+}
+
 function drawPlayerSeats() {
   playerSeats.replaceChildren();
   const players = viewPlayers();
@@ -1294,6 +1449,9 @@ function showHandCompleteFromGameState() {
 
 function renderGameState() {
   if (!gameState) {return;}
+  if (gameState.phase === GamePhase.GAME_COMPLETE) {clearSavedCurrentGame();}
+  else {saveCurrentGame();}
+  updateSeatOrderButton();
   const phase = gameState.phase;
   gamePhaseLabel.textContent = gamePhaseLabels[phase] || '';
   const betting = [GamePhase.BETTING_PREFLOP, GamePhase.BETTING_FLOP, GamePhase.BETTING_TURN, GamePhase.BETTING_RIVER].includes(phase);
@@ -1385,7 +1543,7 @@ function showWinnerPicker() {
 function showGameStatePotWinnerPicker() {
   const potIndex = gameState.potAwardIndex;
   const pot = gameState.pots[potIndex];
-  if (!pot || pot.amount <= 0) {return;}
+  if (!pot || pot.amount < 0) {return;}
   const eligiblePlayers = pot.eligiblePlayerNumbers
     .map((playerId) => viewPlayer(playerId))
     .filter((player) => player && !player.folded && !player.eliminated);
@@ -1541,6 +1699,7 @@ function beginSeatPositioning() {
   voiceTranscript.hidden = true;
   voiceAudioTest.hidden = true;
   lockSeatsButton.hidden = false;
+  updateSeatOrderButton();
   drawPlayerSeats();
 }
 
@@ -1551,6 +1710,7 @@ function lockSeatsAndStartGame() {
   gameScreen.classList.remove('seating-mode');
   lockSeatsButton.hidden = true;
   turnControl.hidden = false;
+  updateSeatOrderButton();
   updateDebugFeatures();
   if (gameSettings.debugPreset === 'normal') {
     startHand();
@@ -1737,9 +1897,12 @@ undoButton.addEventListener('click', () => undoLastTurn());
 showdownUndoButton.addEventListener('click', () => undoLastTurn(true));
 dealOkButton.addEventListener('click', cardsAreDealt);
 recordingButton.addEventListener('click', toggleRecording);
+seatOrderButton.addEventListener('click', toggleInGameSeatPositioning);
 lockSeatsButton.addEventListener('click', lockSeatsAndStartGame);
+resumeGameButton.addEventListener('click', resumeSavedGame);
 form.addEventListener('submit', (event) => {
   event.preventDefault();
+  clearSavedCurrentGame();
   gameSettings = {
     playerCount: Number(playerCount.value),
     startingMoney: Number(document.querySelector('#starting-money').value),
@@ -1779,3 +1942,4 @@ restoreLastGameSettings();
 updateFixedLimitSetting();
 updateAnteSetting();
 updateDebugFeatures();
+updateResumeGameButton();

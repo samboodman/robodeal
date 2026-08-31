@@ -1,12 +1,7 @@
 const supportedVoices = new Set([
-  'alloy', 'ash', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer',
+  'alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'marin', 'nova', 'onyx',
+  'sage', 'shimmer', 'verse', 'cedar',
 ]);
-const replacementVoices = Object.freeze({
-  marin: 'coral',
-  cedar: 'onyx',
-  ballad: 'fable',
-  verse: 'echo',
-});
 
 function errorResult(status, message) {
   return {
@@ -49,8 +44,7 @@ export async function handleVoiceApi(body, apiKey) {
 
   if (body.action === 'respond') {
     const requestBody = {
-      model: 'gpt-5.6-sol',
-      reasoning: { effort: 'medium' },
+      model: 'gpt-4o-mini',
       instructions: String(body.instructions || '').slice(0, 100_000),
       input: body.input,
       tools: Array.isArray(body.tools) ? body.tools : [],
@@ -78,14 +72,14 @@ export async function handleVoiceApi(body, apiKey) {
     if (!text) {return errorResult(400, 'Text is required for speech.');}
     const voice = supportedVoices.has(body.voice)
       ? body.voice
-      : replacementVoices[body.voice] || 'alloy';
+      : 'alloy';
     const openAIResponse = await fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ model: 'tts-1', voice, input: text.slice(0, 4_000), response_format: 'mp3' }),
+      body: JSON.stringify({ model: 'gpt-4o-mini-tts', voice, input: text.slice(0, 4_000), response_format: 'mp3' }),
     });
     if (!openAIResponse.ok) {return errorResult(openAIResponse.status, await openAIError(openAIResponse));}
     return {

@@ -245,14 +245,10 @@ test('microphone continuously streams, acknowledges speech, and processes VAD tu
     assert.deepEqual(requestBodies.map(({ url }) => url), [
       '/api/realtime-call',
       'https://api.openai.com/v1/realtime/calls',
-      '/api/voice',
     ]);
     assert.equal(requestBodies[1].options.body, 'microphone-offer');
     assert.equal(requestBodies[1].options.headers.Authorization, 'Bearer temporary-key');
     assert.equal(requestBodies[1].options.headers['Content-Type'], 'application/sdp');
-    const responseRequest = JSON.parse(requestBodies[2].options.body);
-    assert.equal(responseRequest.action, 'respond');
-    assert.equal(responseRequest.input, 'I call.');
     assert.deepEqual(toolCalls, [{ name: 'call', args: {} }]);
     assert.ok(statuses.includes('Hearing speech…'));
     assert.ok(statuses.includes('Transcribing…'));
@@ -308,20 +304,12 @@ test('speak sends exact text to TTS and plays the returned audio', async () => {
   assert.match(transcripts.at(-1), /Deal two cards/);
 });
 
-test('audio runs through transcription, GPT tools, tool output, and TTS', async () => {
+test('recognized audio runs through transcription, one local tool, and TTS', async () => {
   const originalFetch = globalThis.fetch;
   const audio = installAudioPlayer();
   const requestBodies = [];
   const responses = [
     jsonResponse({ text: 'I call.' }),
-    jsonResponse({
-      id: 'response-1',
-      output: [{ type: 'function_call', name: 'call', arguments: '{}', call_id: 'call-1' }],
-    }),
-    jsonResponse({
-      id: 'response-2',
-      output: [{ type: 'message', content: [{ type: 'output_text', text: 'Sam calls 5.' }] }],
-    }),
     audioResponse(),
   ];
   globalThis.fetch = async (_url, options) => {
@@ -351,16 +339,8 @@ test('audio runs through transcription, GPT tools, tool output, and TTS', async 
   assert.deepEqual(toolCalls, [{ name: 'call', args: {} }]);
   assert.deepEqual(requestBodies.map(({ action }) => action), [
     'transcribe',
-    'respond',
-    'respond',
     'speech',
   ]);
-  assert.equal(requestBodies[2].previousResponseId, 'response-1');
-  assert.deepEqual(requestBodies[2].input, [{
-    type: 'function_call_output',
-    call_id: 'call-1',
-    output: JSON.stringify({ ok: true, message: 'Sam calls 5.' }),
-  }]);
   assert.match(transcripts[0], /I call/);
   assert.match(transcripts[1], /Sam calls 5/);
   assert.equal(audio.played.length, 1);
@@ -464,7 +444,7 @@ test('live microphone mints a transcription-only temporary key for browser VAD',
   assert.equal(session.audio.input.turn_detection, null);
 });
 
-test('server thinking always uses gpt-5.6-sol with function tools', async () => {
+test('server thinking uses low-latency gpt-4o-mini with function tools', async () => {
   const originalFetch = globalThis.fetch;
   let requestBody;
   globalThis.fetch = async (_url, options) => {
@@ -485,13 +465,13 @@ test('server thinking always uses gpt-5.6-sol with function tools', async () => 
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestBody.model, 'gpt-5.6-sol');
-  assert.deepEqual(requestBody.reasoning, { effort: 'medium' });
+  assert.equal(requestBody.model, 'gpt-4o-mini');
+  assert.equal(requestBody.reasoning, undefined);
   assert.deepEqual(requestBody.tools, tools);
   assert.equal(requestBody.tool_choice, 'auto');
 });
 
-test('server speech uses tts-1 and replaces unsupported Realtime voices', async () => {
+test('server speech uses gpt-4o-mini-tts and preserves supported voices', async () => {
   const originalFetch = globalThis.fetch;
   let requestBody;
   globalThis.fetch = async (_url, options) => {
@@ -511,7 +491,8 @@ test('server speech uses tts-1 and replaces unsupported Realtime voices', async 
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestBody.model, 'tts-1');
-  assert.equal(requestBody.voice, 'coral');
+  assert.equal(requestBody.model, 'gpt-4o-mini-tts');
+  assert.equal(requestBody.voice, 'marin');
   assert.equal(requestBody.input, 'Sam calls 5.');
+  assert.equal(requestBody.response_format, 'mp3');
 });

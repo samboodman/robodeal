@@ -99,6 +99,18 @@ test('counts folded chips but removes the folded player from eligibility', () =>
   ]);
 });
 
+test('merges a folded-only contribution layer into the preceding eligible pot', () => {
+  assert.deepEqual(calculatePots([
+    player(1, 3),
+    player(2, 13),
+    player(3, 23, { chips: 10, folded: true }),
+    player(4, 23, { chips: 10, folded: true }),
+  ]), [
+    { amount: 12, contributionCap: 3, eligiblePlayerNumbers: [1, 2] },
+    { amount: 50, contributionCap: 23, eligiblePlayerNumbers: [2] },
+  ]);
+});
+
 test('preserves every chip across all distinct contribution levels', () => {
   const players = Array.from({ length: 8 }, (_, index) => player(index + 1, index + 1));
   const pots = calculatePots(players);

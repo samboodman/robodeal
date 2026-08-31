@@ -25,9 +25,9 @@ The project is a learning project for Sam. The game is intentionally one small s
 - `game-state.js` is the authoritative poker transition engine. It exports `GamePhase`, `Transition`, `BettingLimit`, `createGameState`, `getBettingBounds`, `createDebugGameState`, `getAvailableActions(state)`, and `executeTransition(state, action)`. The interface and voice agent consume its state and legal-action list rather than deciding poker rules independently.
 - `pot-logic.js` calculates contribution-based main and side pots and decides when betting rounds are complete. `pot-logic.test.js` tests that logic.
 - Vite runs the local development server and builds the site for deployment.
-- `voice-agent.js` coordinates live transcription, text reasoning and function calls, and speech playback. The continuous microphone uses a transcription-only WebRTC session with `gpt-live-transcribe`; localhost audio-file tests use `gpt-transcribe`.
+- `voice-agent.js` coordinates live transcription, deterministic command matching, fallback text reasoning, function calls, and speech playback. `voice-command-matcher.js` maps high-confidence poker phrases to exactly one prioritized action; spoken bet and raise amounts use the first-party `/api/words-to-number` endpoint with an offline local fallback. Unmatched or ambiguous speech falls back to the model. The continuous microphone uses a transcription-only WebRTC session with `gpt-live-transcribe`; localhost audio-file tests use `gpt-transcribe`.
 - `api/realtime-call.js` mints a short-lived transcription key so the standard OpenAI API key stays on the server. `realtime-transcription.js` defines that transcription-only session.
-- `api/voice.js` and `voice-api-handler.js` send completed text to `gpt-5.6-sol` for reasoning and function selection, and convert responses to audio with `tts-1`.
+- `api/voice.js` and `voice-api-handler.js` send completed text to low-latency `gpt-4o-mini` for function selection, and convert responses to audio with `gpt-4o-mini-tts`.
 - The app does not use React or a large UI framework.
 
 ## Poker transition engine

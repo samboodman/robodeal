@@ -9,8 +9,36 @@ const stylesSource = readFileSync(new URL('./styles.css', import.meta.url), 'utf
 test('microphone controls stay outside the rotating turn control', () => {
   assert.match(indexSource, /id="recording-button"[\s\S]*?<div id="turn-control"/);
   assert.doesNotMatch(indexSource, /<div id="turn-control"[\s\S]*?id="recording-button"[\s\S]*?id="turn-indicator"/);
-  assert.match(indexSource, /class="voice-controls"[\s\S]*?id="voice-status"[\s\S]*?id="recording-button"/);
+  assert.match(indexSource, /id="voice-status"[\s\S]*?class="voice-controls"[\s\S]*?id="recording-button"/);
   assert.match(stylesSource, /\.voice-controls \{[\s\S]*?position: fixed;[\s\S]*?left: 50%;[\s\S]*?justify-items: center;[\s\S]*?transform: translateX\(-50%\)/);
+});
+
+test('voice controls touch the top while transcript and AI status sit at the bottom', () => {
+  assert.match(stylesSource, /\.voice-controls \{[\s\S]*?top: 0;/);
+  assert.match(stylesSource, /\.voice-status \{[\s\S]*?position: fixed;[\s\S]*?bottom: max\(12px, env\(safe-area-inset-bottom\)\)/);
+  assert.match(stylesSource, /\.voice-transcript \{[\s\S]*?bottom: calc\(max\(12px, env\(safe-area-inset-bottom\)\) \+ 46px\)/);
+});
+
+test('voice selection excludes Marin and defaults to Cedar', () => {
+  assert.doesNotMatch(indexSource, /<option value="marin"/);
+  assert.match(indexSource, /<option value="cedar" selected>Cedar<\/option>/);
+  assert.match(appSource, /voiceChoice\.options[\s\S]*?option\.value === settings\.voice\.name/);
+});
+
+test('in-game seat controls hide play controls and preserve the current game while reordering seats', () => {
+  assert.match(indexSource, /id="recording-button"[\s\S]*?id="seat-order-button"/);
+  assert.match(appSource, /function beginInGameSeatPositioning\(\)[\s\S]*?turnControl\.hidden = true;[\s\S]*?drawPlayerSeats\(\)/);
+  assert.match(appSource, /function reorderStatePlayersClockwise\(state\)[\s\S]*?state\.players = clockwisePlayerIds/);
+  assert.match(appSource, /function lockInGameSeats\(\)[\s\S]*?reorderStatePlayersClockwise\(gameState\)[\s\S]*?renderGameState\(\)/);
+});
+
+test('live games are saved and can be resumed from setup', () => {
+  assert.match(indexSource, /id="resume-game-button"[^>]*hidden>Resume saved game/);
+  assert.match(appSource, /const currentGameKey = 'robodeal-current-game-v1'/);
+  assert.match(appSource, /function saveCurrentGame\(\)[\s\S]*?gameSettings,[\s\S]*?gameState,[\s\S]*?seatAngles,[\s\S]*?lastTurnState/);
+  assert.match(appSource, /function renderGameState\(\)[\s\S]*?GamePhase\.GAME_COMPLETE\) \{clearSavedCurrentGame\(\);\}[\s\S]*?saveCurrentGame\(\)/);
+  assert.match(appSource, /function resumeSavedGame\(\)[\s\S]*?gameState = savedGame\.gameState[\s\S]*?renderGameState\(\)/);
+  assert.match(appSource, /resumeGameButton\.addEventListener\('click', resumeSavedGame\)/);
 });
 
 test('community-card instructions tell the dealer to burn a card first', () => {
