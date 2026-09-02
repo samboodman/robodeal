@@ -9,30 +9,54 @@ import { handleWordsToNumberApi } from './word-to-number-handler.js';
 import { wordsToNumber } from './word-to-number.js';
 
 test('command priorities put all-in and raise above call', () => {
-  assert.ok(voiceCommandPriorities.indexOf('allIn') < voiceCommandPriorities.indexOf('raise'));
-  assert.ok(voiceCommandPriorities.indexOf('raise') < voiceCommandPriorities.indexOf('call'));
+  assert.ok(
+    voiceCommandPriorities.indexOf('allIn') <
+      voiceCommandPriorities.indexOf('raise'),
+  );
+  assert.ok(
+    voiceCommandPriorities.indexOf('raise') <
+      voiceCommandPriorities.indexOf('call'),
+  );
 });
 
 test('maps common call phrases without model thinking', () => {
-  for (const phrase of ['call', "I'll call", "I'll see ya", "I'll match it", 'match that']) {
+  for (const phrase of [
+    'call',
+    "I'll call",
+    "I'll see ya",
+    "I'll match it",
+    'match that',
+  ]) {
     assert.deepEqual(matchVoiceCommand(phrase), { name: 'call', args: {} });
   }
 });
 
 test('call then raise is one raise for the current player', () => {
-  assert.deepEqual(matchVoiceCommand("I'll call your 15 and raise you another 15"), {
-    name: 'raise',
-    args: { amount: 15 },
-  });
+  assert.deepEqual(
+    matchVoiceCommand("I'll call your 15 and raise you another 15"),
+    {
+      name: 'raise',
+      args: { amount: 15 },
+    },
+  );
 });
 
 test('all-in outranks raise and call words', () => {
-  assert.deepEqual(matchVoiceCommand("I'll call and raise all in"), { name: 'allIn', args: {} });
+  assert.deepEqual(matchVoiceCommand("I'll call and raise all in"), {
+    name: 'allIn',
+    args: {},
+  });
 });
 
 test('maps numeric and spoken wager amounts', () => {
-  assert.deepEqual(matchVoiceCommand('bet twenty five'), { name: 'bet', args: { total: 25 } });
-  assert.deepEqual(matchVoiceCommand('raise another $15'), { name: 'raise', args: { amount: 15 } });
+  assert.deepEqual(matchVoiceCommand('bet twenty five'), {
+    name: 'bet',
+    args: { total: 25 },
+  });
+  assert.deepEqual(matchVoiceCommand('raise another $15'), {
+    name: 'raise',
+    args: { amount: 15 },
+  });
 });
 
 test('falls back for ambiguous raises and unrelated speech', () => {
@@ -67,18 +91,25 @@ test('spoken wager amounts use the first-party API', async () => {
     requests.push({ url, body: JSON.parse(options.body) });
     return new Response(JSON.stringify({ number: 75 }), { status: 200 });
   };
-  assert.deepEqual(await matchVoiceCommandViaApi('raise another seventy five', fetchImpl), {
-    name: 'raise',
-    args: { amount: 75 },
-  });
-  assert.deepEqual(requests, [{
-    url: '/api/words-to-number',
-    body: { words: 'another seventy five' },
-  }]);
+  assert.deepEqual(
+    await matchVoiceCommandViaApi('raise another seventy five', fetchImpl),
+    {
+      name: 'raise',
+      args: { amount: 75 },
+    },
+  );
+  assert.deepEqual(requests, [
+    {
+      url: '/api/words-to-number',
+      body: { words: 'another seventy five' },
+    },
+  ]);
 });
 
 test('word amount API failures fall back to local conversion', async () => {
-  const fetchImpl = async () => {throw new Error('offline');};
+  const fetchImpl = async () => {
+    throw new Error('offline');
+  };
   assert.deepEqual(await matchVoiceCommandViaApi('bet thirty', fetchImpl), {
     name: 'bet',
     args: { total: 30 },

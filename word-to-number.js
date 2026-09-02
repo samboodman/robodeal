@@ -38,17 +38,26 @@ export function wordsToNumber(input) {
     .replace(/\s+/g, ' ')
     .trim();
   const digitAmount = text.match(/(?:^|\s)\$?(\d+(?:\.\d{1,2})?)(?=\s|$)/);
-  if (digitAmount) {return Number(digitAmount[1]);}
+  if (digitAmount) {
+    return Number(digitAmount[1]);
+  }
 
   const tokens = text.split(' ');
   for (let start = 0; start < tokens.length; start += 1) {
-    if (!(tokens[start] in smallNumbers) && !['hundred', 'thousand', 'million'].includes(tokens[start])) {continue;}
+    if (
+      !(tokens[start] in smallNumbers) &&
+      !['hundred', 'thousand', 'million'].includes(tokens[start])
+    ) {
+      continue;
+    }
     let total = 0;
     let current = 0;
     let found = false;
     for (let index = start; index < tokens.length; index += 1) {
       const token = tokens[index];
-      if (token === 'and' && found) {continue;}
+      if (token === 'and' && found) {
+        continue;
+      }
       if (token in smallNumbers) {
         current += smallNumbers[token];
         found = true;
@@ -64,7 +73,9 @@ export function wordsToNumber(input) {
         break;
       }
     }
-    if (found) {return total + current;}
+    if (found) {
+      return total + current;
+    }
   }
   return null;
 }

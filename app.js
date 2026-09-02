@@ -1,18 +1,28 @@
 import { potsForBettingDisplay } from './pot-logic.js';
 import {
   BettingLimit,
+  clearLog,
   createDebugGameState,
   createGameState,
   executeTransition,
+  gameStartedAt,
   GamePhase,
   getAvailableActions,
   getBettingBounds,
+  setGameStartedAt,
   Transition,
+  log,
 } from './game-state.js';
 import { fillPrompt, VoiceAgent } from './voice-agent.js';
 import { restoredPlayerName } from './game-settings.js';
-import { clockwisePlayerIds, normalizeSeatAngle, snapSeatAngle } from './seat-order.js';
+import {
+  clockwisePlayerIds,
+  normalizeSeatAngle,
+  snapSeatAngle,
+} from './seat-order.js';
 import promptsText from './Prompts.json?raw';
+
+export { gameStartedAt };
 
 const prompts = JSON.parse(promptsText);
 const playerCount = document.querySelector('#player-count');
@@ -24,7 +34,9 @@ const debugFeaturesSetting = document.querySelector('#debug-features-setting');
 const debugFeaturesCheckbox = document.querySelector('#debug-features');
 const debugOptions = document.querySelector('#debug-options');
 const debugPresetSelect = document.querySelector('#debug-preset');
-const enableAudioFileInputCheckbox = document.querySelector('#enable-audio-file-input');
+const enableAudioFileInputCheckbox = document.querySelector(
+  '#enable-audio-file-input',
+);
 const useBigBlindCheckbox = document.querySelector('#use-big-blind');
 const useAnteCheckbox = document.querySelector('#use-ante');
 const anteSetting = document.querySelector('#ante-setting');
@@ -33,8 +45,12 @@ const bettingLimitSelect = document.querySelector('#betting-limit');
 const fixedLimitSetting = document.querySelector('#fixed-limit-setting');
 const fixedLimitBetInput = document.querySelector('#fixed-limit-bet');
 const setupScreen = document.querySelector('#setup-screen');
-const voiceCustomizationScreen = document.querySelector('#voice-customization-screen');
-const chipDenominationsScreen = document.querySelector('#chip-denominations-screen');
+const voiceCustomizationScreen = document.querySelector(
+  '#voice-customization-screen',
+);
+const chipDenominationsScreen = document.querySelector(
+  '#chip-denominations-screen',
+);
 const gameScreen = document.querySelector('#game-screen');
 const gameWinnerScreen = document.querySelector('#game-winner-screen');
 const gameWinnerMessage = document.querySelector('#game-winner-message');
@@ -54,7 +70,9 @@ const raisePanel = document.querySelector('#raise-panel');
 const raiseDecreaseButton = document.querySelector('#raise-decrease-button');
 const raiseIncreaseButton = document.querySelector('#raise-increase-button');
 const raiseTotalValue = document.querySelector('#raise-total-value');
-const raiseShortcutButtons = [...document.querySelectorAll('[data-raise-adjustment]')];
+const raiseShortcutButtons = [
+  ...document.querySelectorAll('[data-raise-adjustment]'),
+];
 const confirmRaiseButton = document.querySelector('#confirm-raise-button');
 const cancelRaiseButton = document.querySelector('#cancel-raise-button');
 const helpButton = document.querySelector('#help-button');
@@ -73,10 +91,18 @@ const recordingButton = document.querySelector('#recording-button');
 const seatOrderButton = document.querySelector('#seat-order-button');
 const voiceStatus = document.querySelector('#voice-status');
 const voiceTranscript = document.querySelector('#voice-transcript');
-const startMicrophoneAutomaticallyCheckbox = document.querySelector('#start-microphone-automatically');
-const showVoiceTranscriptCheckbox = document.querySelector('#show-voice-transcript');
-const voiceCustomizationButton = document.querySelector('#voice-customization-button');
-const voiceCustomizationBack = document.querySelector('#voice-customization-back');
+const startMicrophoneAutomaticallyCheckbox = document.querySelector(
+  '#start-microphone-automatically',
+);
+const showVoiceTranscriptCheckbox = document.querySelector(
+  '#show-voice-transcript',
+);
+const voiceCustomizationButton = document.querySelector(
+  '#voice-customization-button',
+);
+const voiceCustomizationBack = document.querySelector(
+  '#voice-customization-back',
+);
 const testVoiceButton = document.querySelector('#test-voice-button');
 const voiceChoice = document.querySelector('#voice-choice');
 const voiceAccent = document.querySelector('#voice-accent');
@@ -86,12 +112,20 @@ const voiceAudioTest = document.querySelector('#voice-audio-test');
 const voiceAudioFile = document.querySelector('#voice-audio-file');
 const voiceAudioTestButton = document.querySelector('#voice-audio-test-button');
 const voiceAudioTestStatus = document.querySelector('#voice-audio-test-status');
-const chipDenominationsButton = document.querySelector('#chip-denominations-button');
-const chipDenominationsBack = document.querySelector('#chip-denominations-back');
+const chipDenominationsButton = document.querySelector(
+  '#chip-denominations-button',
+);
+const chipDenominationsBack = document.querySelector(
+  '#chip-denominations-back',
+);
 const chipDisplayModeButton = document.querySelector('#chip-display-mode');
 const resumeGameButton = document.querySelector('#resume-game-button');
-const chipDenominationInputs = [...document.querySelectorAll('[data-chip-color]')];
-const chipEnabledCheckboxes = [...document.querySelectorAll('[data-chip-enabled]')];
+const chipDenominationInputs = [
+  ...document.querySelectorAll('[data-chip-color]'),
+];
+const chipEnabledCheckboxes = [
+  ...document.querySelectorAll('[data-chip-enabled]'),
+];
 let gameSettings = null;
 let gameState = null;
 let pendingBet = 0;
@@ -113,7 +147,9 @@ let seatingMode = false;
 let seatAngles = {};
 const lastGameSettingsKey = 'robodeal-last-game-settings';
 const currentGameKey = 'robodeal-current-game-v1';
-const isLocalDebugEnvironment = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const isLocalDebugEnvironment = ['localhost', '127.0.0.1'].includes(
+  window.location.hostname,
+);
 const bettingLimitLabels = Object.freeze({
   [BettingLimit.NO_LIMIT]: 'No-Limit',
   [BettingLimit.POT_LIMIT]: 'Pot-Limit',
@@ -136,7 +172,8 @@ const gamePhaseLabels = Object.freeze({
 const seatSnapDistance = Math.PI / 36;
 
 function updateFixedLimitSetting() {
-  fixedLimitSetting.hidden = bettingLimitSelect.value !== BettingLimit.FIXED_LIMIT;
+  fixedLimitSetting.hidden =
+    bettingLimitSelect.value !== BettingLimit.FIXED_LIMIT;
 }
 
 function updateAnteSetting() {
@@ -145,10 +182,13 @@ function updateAnteSetting() {
 }
 
 function updateDebugFeatures() {
-  const debugFeaturesEnabled = isLocalDebugEnvironment && debugFeaturesCheckbox.checked;
+  const debugFeaturesEnabled =
+    isLocalDebugEnvironment && debugFeaturesCheckbox.checked;
   debugFeaturesSetting.hidden = !isLocalDebugEnvironment;
   debugOptions.hidden = !debugFeaturesEnabled;
-  voiceAudioTest.hidden = !(debugFeaturesEnabled && enableAudioFileInputCheckbox.checked);
+  voiceAudioTest.hidden = !(
+    debugFeaturesEnabled && enableAudioFileInputCheckbox.checked
+  );
 
   if (!debugFeaturesEnabled) {
     debugPresetSelect.value = 'normal';
@@ -171,16 +211,24 @@ const debugPresetPlayerCounts = Object.freeze({
 
 function selectDebugPreset() {
   const requiredPlayerCount = debugPresetPlayerCounts[debugPresetSelect.value];
-  if (!requiredPlayerCount) {return;}
+  if (!requiredPlayerCount) {
+    return;
+  }
   playerCount.value = String(requiredPlayerCount);
   drawPlayerNames();
   useBigBlindCheckbox.checked = requiredPlayerCount >= 6;
 }
 
 function roundNumberFromGamePhase(phase) {
-  if ([GamePhase.BETTING_PREFLOP, GamePhase.DEAL_FLOP].includes(phase)) {return 1;}
-  if ([GamePhase.BETTING_FLOP, GamePhase.DEAL_TURN].includes(phase)) {return 2;}
-  if ([GamePhase.BETTING_TURN, GamePhase.DEAL_RIVER].includes(phase)) {return 3;}
+  if ([GamePhase.BETTING_PREFLOP, GamePhase.DEAL_FLOP].includes(phase)) {
+    return 1;
+  }
+  if ([GamePhase.BETTING_FLOP, GamePhase.DEAL_TURN].includes(phase)) {
+    return 2;
+  }
+  if ([GamePhase.BETTING_TURN, GamePhase.DEAL_RIVER].includes(phase)) {
+    return 3;
+  }
   return 4;
 }
 
@@ -201,7 +249,9 @@ function viewActionPlayerNumber() {
 }
 
 function viewRoundNumber() {
-  return gameState ? gameState.round || roundNumberFromGamePhase(gameState.phase) : 1;
+  return gameState
+    ? gameState.round || roundNumberFromGamePhase(gameState.phase)
+    : 1;
 }
 
 function viewHighestRoundBet() {
@@ -210,21 +260,31 @@ function viewHighestRoundBet() {
 
 function viewPots() {
   const pots = gameState?.pots || [];
-  const betting = gameState && [
-    GamePhase.BETTING_PREFLOP,
-    GamePhase.BETTING_FLOP,
-    GamePhase.BETTING_TURN,
-    GamePhase.BETTING_RIVER,
-  ].includes(gameState.phase);
+  const betting =
+    gameState &&
+    [
+      GamePhase.BETTING_PREFLOP,
+      GamePhase.BETTING_FLOP,
+      GamePhase.BETTING_TURN,
+      GamePhase.BETTING_RIVER,
+    ].includes(gameState.phase);
   return betting ? potsForBettingDisplay(pots) : pots;
 }
 
 function viewIsGameWon() {
-  return Boolean(gameState && [GamePhase.HAND_COMPLETE, GamePhase.GAME_COMPLETE].includes(gameState.phase));
+  return Boolean(
+    gameState &&
+    [GamePhase.HAND_COMPLETE, GamePhase.GAME_COMPLETE].includes(
+      gameState.phase,
+    ),
+  );
 }
 
 function amountToCallForView(player) {
-  return Math.min(Math.max(0, viewHighestRoundBet() - player.roundBet), player.chips);
+  return Math.min(
+    Math.max(0, viewHighestRoundBet() - player.roundBet),
+    player.chips,
+  );
 }
 
 function bettingBoundsForView(player) {
@@ -235,19 +295,28 @@ function bettingBoundsForView(player) {
 
 function isLegalPendingBet(player, amount) {
   const callAmount = amountToCallForView(player);
-  if (amount === callAmount) {return true;}
+  if (amount === callAmount) {
+    return true;
+  }
   const actions = currentGameActions();
-  if (amount === player.chips && actions.some(({ type }) => type === Transition.ALL_IN)) {return true;}
+  if (
+    amount === player.chips &&
+    actions.some(({ type }) => type === Transition.ALL_IN)
+  ) {
+    return true;
+  }
   const betAction = actions.find(({ type }) => type === Transition.BET);
   return Boolean(
-    betAction
-    && amount >= betAction.minAdditionalChips
-    && amount <= betAction.maxAdditionalChips,
+    betAction &&
+    amount >= betAction.minAdditionalChips &&
+    amount <= betAction.maxAdditionalChips,
   );
 }
 
 function invokeGame(action) {
-  if (!gameState) {throw new Error('The game state has not been initialized.');}
+  if (!gameState) {
+    throw new Error('The game state has not been initialized.');
+  }
   gameState = executeTransition(gameState, action);
   return gameState;
 }
@@ -271,12 +340,16 @@ function updateChipDisplayModeButton() {
 }
 
 function selectedChipDenominations() {
-  return Object.fromEntries(chipDenominationInputs.map((input) => [
-    input.dataset.chipColor,
-    chipEnabledCheckboxes.find((checkbox) => checkbox.dataset.chipEnabled === input.dataset.chipColor)?.checked
-      ? Math.max(1, Number(input.value) || 1)
-      : null,
-  ]));
+  return Object.fromEntries(
+    chipDenominationInputs.map((input) => [
+      input.dataset.chipColor,
+      chipEnabledCheckboxes.find(
+        (checkbox) => checkbox.dataset.chipEnabled === input.dataset.chipColor,
+      )?.checked
+        ? Math.max(1, Number(input.value) || 1)
+        : null,
+    ]),
+  );
 }
 
 function updateChipDenominationAvailability(checkbox) {
@@ -289,15 +362,24 @@ function updateChipDenominationAvailability(checkbox) {
 }
 
 function restoreChipDenominations(savedDenominations) {
-  if (!savedDenominations || typeof savedDenominations !== 'object') {return;}
+  if (!savedDenominations || typeof savedDenominations !== 'object') {
+    return;
+  }
   chipDenominationInputs.forEach((input) => {
     const color = input.dataset.chipColor;
-    if (!Object.hasOwn(savedDenominations, color)) {return;}
+    if (!Object.hasOwn(savedDenominations, color)) {
+      return;
+    }
     const savedDenomination = savedDenominations[color];
-    const checkbox = chipEnabledCheckboxes.find((candidate) => candidate.dataset.chipEnabled === color);
-    checkbox.checked = savedDenomination !== null && savedDenomination !== false;
+    const checkbox = chipEnabledCheckboxes.find(
+      (candidate) => candidate.dataset.chipEnabled === color,
+    );
+    checkbox.checked =
+      savedDenomination !== null && savedDenomination !== false;
     const savedValue = Number(savedDenomination);
-    if (Number.isFinite(savedValue) && savedValue >= 1) {input.value = savedValue;}
+    if (Number.isFinite(savedValue) && savedValue >= 1) {
+      input.value = savedValue;
+    }
     updateChipDenominationAvailability(checkbox);
   });
 }
@@ -305,7 +387,9 @@ function restoreChipDenominations(savedDenominations) {
 function getLastGameSettings() {
   try {
     const savedGame = JSON.parse(localStorage.getItem(lastGameSettingsKey));
-    if (!savedGame || typeof savedGame !== 'object' || !savedGame.settings) {return null;}
+    if (!savedGame || typeof savedGame !== 'object' || !savedGame.settings) {
+      return null;
+    }
     return savedGame;
   } catch {
     return null;
@@ -315,31 +399,49 @@ function getLastGameSettings() {
 function restoreLastGameSettings() {
   const savedGame = getLastGameSettings();
   const settings = savedGame?.settings;
-  if (!settings || !Number.isInteger(settings.playerCount) || settings.playerCount < 2 || settings.playerCount > 8) {return;}
+  if (
+    !settings ||
+    !Number.isInteger(settings.playerCount) ||
+    settings.playerCount < 2 ||
+    settings.playerCount > 8
+  ) {
+    return;
+  }
 
   const smallBlindInput = document.querySelector('#small-blind');
-  const smallBlindIncreaseInput = document.querySelector('#small-blind-increase');
-  const smallBlind = Number.isInteger(settings.smallBlind) && settings.smallBlind >= 0
-    ? settings.smallBlind
-    : Number(smallBlindInput.value);
-  const smallBlindIncrease = Number.isInteger(settings.smallBlindIncrease) && settings.smallBlindIncrease >= 0
-    ? settings.smallBlindIncrease
-    : Number(smallBlindIncreaseInput.value);
+  const smallBlindIncreaseInput = document.querySelector(
+    '#small-blind-increase',
+  );
+  const smallBlind =
+    Number.isInteger(settings.smallBlind) && settings.smallBlind >= 0
+      ? settings.smallBlind
+      : Number(smallBlindInput.value);
+  const smallBlindIncrease =
+    Number.isInteger(settings.smallBlindIncrease) &&
+    settings.smallBlindIncrease >= 0
+      ? settings.smallBlindIncrease
+      : Number(smallBlindIncreaseInput.value);
 
   playerCount.value = settings.playerCount;
   document.querySelector('#starting-money').value = settings.startingMoney;
   smallBlindInput.value = smallBlind;
   smallBlindIncreaseInput.value = smallBlindIncrease;
-  useBigBlindCheckbox.checked = settings.useBigBlind ?? settings.playerCount >= 6;
+  useBigBlindCheckbox.checked =
+    settings.useBigBlind ?? settings.playerCount >= 6;
   useAnteCheckbox.checked = settings.useAnte === true;
-  if (Number.isInteger(settings.ante) && settings.ante > 0) {anteInput.value = settings.ante;}
+  if (Number.isInteger(settings.ante) && settings.ante > 0) {
+    anteInput.value = settings.ante;
+  }
   updateAnteSetting();
-  bettingLimitSelect.value = Object.values(BettingLimit).includes(settings.bettingLimit)
+  bettingLimitSelect.value = Object.values(BettingLimit).includes(
+    settings.bettingLimit,
+  )
     ? settings.bettingLimit
     : BettingLimit.NO_LIMIT;
-  fixedLimitBetInput.value = Number.isInteger(settings.fixedLimitBet) && settings.fixedLimitBet > 0
-    ? settings.fixedLimitBet
-    : Math.max(1, smallBlind * 2 || 1);
+  fixedLimitBetInput.value =
+    Number.isInteger(settings.fixedLimitBet) && settings.fixedLimitBet > 0
+      ? settings.fixedLimitBet
+      : Math.max(1, smallBlind * 2 || 1);
   updateFixedLimitSetting();
   drawPlayerNames();
 
@@ -352,7 +454,11 @@ function restoreLastGameSettings() {
   updateChipDisplayModeButton();
   restoreChipDenominations(settings.chipDenominations);
   if (settings.voice) {
-    if ([...voiceChoice.options].some((option) => option.value === settings.voice.name)) {
+    if (
+      [...voiceChoice.options].some(
+        (option) => option.value === settings.voice.name,
+      )
+    ) {
       voiceChoice.value = settings.voice.name;
     }
     voiceAccent.value = settings.voice.accent || voiceAccent.value;
@@ -364,7 +470,10 @@ function restoreLastGameSettings() {
 
 function saveLastGameSettings() {
   try {
-    localStorage.setItem(lastGameSettingsKey, JSON.stringify({ settings: gameSettings }));
+    localStorage.setItem(
+      lastGameSettingsKey,
+      JSON.stringify({ settings: gameSettings }),
+    );
   } catch {}
 }
 
@@ -372,16 +481,22 @@ function getSavedCurrentGame() {
   try {
     const savedGame = JSON.parse(localStorage.getItem(currentGameKey));
     const savedState = savedGame?.gameState;
-    const validPlayers = Array.isArray(savedState?.players)
-      && savedState.players.length >= 2
-      && savedState.players.length <= 8
-      && savedState.players.every((player) => Number.isInteger(player.id) && Number.isFinite(player.chips));
+    const validPlayers =
+      Array.isArray(savedState?.players) &&
+      savedState.players.length >= 2 &&
+      savedState.players.length <= 8 &&
+      savedState.players.every(
+        (player) =>
+          Number.isInteger(player.id) && Number.isFinite(player.chips),
+      );
     if (
-      savedGame?.version !== 1
-      || !savedGame.gameSettings
-      || !validPlayers
-      || !Object.values(GamePhase).includes(savedState.phase)
-    ) {return null;}
+      savedGame?.version !== 1 ||
+      !savedGame.gameSettings ||
+      !validPlayers ||
+      !Object.values(GamePhase).includes(savedState.phase)
+    ) {
+      return null;
+    }
     return savedGame;
   } catch {
     return null;
@@ -398,22 +513,29 @@ function updateResumeGameButton() {
 }
 
 function saveCurrentGame() {
-  if (!gameSettings || !gameState) {return;}
+  if (!gameSettings || !gameState) {
+    return;
+  }
   try {
-    localStorage.setItem(currentGameKey, JSON.stringify({
-      version: 1,
-      savedAt: new Date().toISOString(),
-      gameSettings,
-      gameState,
-      seatAngles,
-      lastTurnState,
-      lastTurnEndedHandByFold,
-    }));
+    localStorage.setItem(
+      currentGameKey,
+      JSON.stringify({
+        version: 1,
+        savedAt: new Date().toISOString(),
+        gameSettings,
+        gameState,
+        seatAngles,
+        lastTurnState,
+        lastTurnEndedHandByFold,
+      }),
+    );
   } catch {}
 }
 
 function clearSavedCurrentGame() {
-  try {localStorage.removeItem(currentGameKey);} catch {}
+  try {
+    localStorage.removeItem(currentGameKey);
+  } catch {}
   updateResumeGameButton();
 }
 
@@ -429,10 +551,15 @@ function resumeSavedGame() {
   gameState = savedGame.gameState;
   lastTurnState = savedGame.lastTurnState || null;
   lastTurnEndedHandByFold = savedGame.lastTurnEndedHandByFold === true;
-  seatAngles = savedGame.seatAngles && typeof savedGame.seatAngles === 'object'
-    ? savedGame.seatAngles
-    : {};
-  if (!gameState.players.every((player) => Number.isFinite(Number(seatAngles[player.id])))) {
+  seatAngles =
+    savedGame.seatAngles && typeof savedGame.seatAngles === 'object'
+      ? savedGame.seatAngles
+      : {};
+  if (
+    !gameState.players.every((player) =>
+      Number.isFinite(Number(seatAngles[player.id])),
+    )
+  ) {
     initializeSeatAngles();
   }
   chipDisplayMode = gameSettings.chipDisplayMode === 'pile' ? 'pile' : 'value';
@@ -456,17 +583,25 @@ function resumeSavedGame() {
   updateDebugFeatures();
   keepScreenAwake();
   renderGameState();
-  if (gameState.phase !== GamePhase.GAME_COMPLETE) {connectVoiceForCurrentGame();}
+  if (gameState.phase !== GamePhase.GAME_COMPLETE) {
+    connectVoiceForCurrentGame();
+  }
 }
 
 async function keepScreenAwake() {
-  if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') {return;}
+  if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') {
+    return;
+  }
 
   try {
     screenWakeLock = await navigator.wakeLock.request('screen');
-    screenWakeLock.addEventListener('release', () => {
-      screenWakeLock = null;
-    }, { once: true });
+    screenWakeLock.addEventListener(
+      'release',
+      () => {
+        screenWakeLock = null;
+      },
+      { once: true },
+    );
   } catch (error) {
     console.info('Screen wake lock was not available:', error.message);
   }
@@ -493,7 +628,10 @@ function drawPotLayers(layerCount, animateNewLayer = false) {
     .map((_, index) => index)
     .reverse();
   const existingArchivedLayers = new Map(
-    [...sidePotValue.children].map((element) => [Number(element.dataset.layerIndex), element]),
+    [...sidePotValue.children].map((element) => [
+      Number(element.dataset.layerIndex),
+      element,
+    ]),
   );
 
   archivedLayerIndexes.forEach((layerIndex, stackIndex) => {
@@ -506,14 +644,23 @@ function drawPotLayers(layerCount, animateNewLayer = false) {
     }
 
     amount.textContent = visibleLayers[layerIndex].amount;
-    amount.setAttribute('aria-label', `${potLayerName(layerIndex)}: ${visibleLayers[layerIndex].amount}`);
+    amount.setAttribute(
+      'aria-label',
+      `${potLayerName(layerIndex)}: ${visibleLayers[layerIndex].amount}`,
+    );
     amount.style.setProperty('--stack-index', stackIndex);
     existingArchivedLayers.delete(layerIndex);
 
-    if (animateNewLayer && isNewArchivedLayer && layerIndex === activeLayerIndex - 1) {
+    if (
+      animateNewLayer &&
+      isNewArchivedLayer &&
+      layerIndex === activeLayerIndex - 1
+    ) {
       amount.classList.add('pot-layer-archiving');
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => amount.classList.remove('pot-layer-archiving'));
+        requestAnimationFrame(() =>
+          amount.classList.remove('pot-layer-archiving'),
+        );
       });
     }
   });
@@ -535,7 +682,10 @@ function drawPotLayers(layerCount, animateNewLayer = false) {
   }
 
   potValue.textContent = animateNewLayer ? 0 : activeLayer.amount;
-  potValue.setAttribute('aria-label', `${potLayerName(activeLayerIndex)}: ${activeLayer.amount}`);
+  potValue.setAttribute(
+    'aria-label',
+    `${potLayerName(activeLayerIndex)}: ${activeLayer.amount}`,
+  );
   if (animateNewLayer) {
     potValue.classList.remove('pot-value-entering');
     void potValue.offsetWidth;
@@ -579,7 +729,10 @@ function updatePotDisplay() {
 
   if (targetLayerCount > renderedPotLayerCount && potAnimationTimer === null) {
     potAnimationTimer = setTimeout(continuePotLayerAnimation, 120);
-  } else if (targetLayerCount === renderedPotLayerCount && potAnimationTimer === null) {
+  } else if (
+    targetLayerCount === renderedPotLayerCount &&
+    potAnimationTimer === null
+  ) {
     drawPotLayers(renderedPotLayerCount);
   }
 }
@@ -593,13 +746,31 @@ function setVoiceTranscript(text) {
 function setVoiceStatus(text) {
   const normalizedText = String(text || '').toLowerCase();
   let state = 'connected';
-  if (normalizedText.includes('thinking')) {state = 'thinking';}
-  else if (normalizedText.includes('applying') || normalizedText.includes('action')) {state = 'acting';}
-  else if (normalizedText.includes('speaking')) {state = 'speaking';}
-  else if (normalizedText.includes('listening')) {state = 'listening';}
-  else if (normalizedText.includes('error') || normalizedText.includes('could not') || normalizedText.includes('unavailable')) {state = 'error';}
-  else if (normalizedText.includes('disconnect') || normalizedText.includes('ended')) {state = 'disconnected';}
-  else if (normalizedText.includes('off')) {state = 'off';}
+  if (normalizedText.includes('thinking')) {
+    state = 'thinking';
+  } else if (
+    normalizedText.includes('applying') ||
+    normalizedText.includes('action')
+  ) {
+    state = 'acting';
+  } else if (normalizedText.includes('speaking')) {
+    state = 'speaking';
+  } else if (normalizedText.includes('listening')) {
+    state = 'listening';
+  } else if (
+    normalizedText.includes('error') ||
+    normalizedText.includes('could not') ||
+    normalizedText.includes('unavailable')
+  ) {
+    state = 'error';
+  } else if (
+    normalizedText.includes('disconnect') ||
+    normalizedText.includes('ended')
+  ) {
+    state = 'disconnected';
+  } else if (normalizedText.includes('off')) {
+    state = 'off';
+  }
 
   voiceStatus.textContent = text;
   voiceStatus.dataset.state = state;
@@ -607,13 +778,17 @@ function setVoiceStatus(text) {
 
 function narrate(text) {
   const message = String(text || '').trim();
-  if (message && !suppressAutomaticNarration) {voiceAgent?.speak(message);}
+  if (message && !suppressAutomaticNarration) {
+    voiceAgent?.speak(message);
+  }
 }
 
 function updateRecordingButton() {
   const recording = Boolean(voiceAgent?.recording);
   recordingButton.setAttribute('aria-pressed', String(recording));
-  recordingButton.textContent = recording ? 'Stop recording' : 'Start recording';
+  recordingButton.textContent = recording
+    ? 'Stop recording'
+    : 'Start recording';
 }
 
 function getVoiceSnapshot() {
@@ -623,42 +798,61 @@ function getVoiceSnapshot() {
   const undoFromShowdown = !winnerPicker.hidden;
   const showdown = currentShowdownPot();
   return {
-    phase: gameState?.phase || (gameScreen.hidden ? 'setup' : !dealPrompt.hidden ? 'waiting for cards' : !winnerPicker.hidden ? 'choosing winner' : 'betting'),
-    round: ['preflop', 'flop', 'turn', 'river'][viewRoundNumber() - 1] || 'between hands',
-    bettingLimit: gameState?.bettingLimit || gameSettings?.bettingLimit || BettingLimit.NO_LIMIT,
-    fixedLimitBet: gameState?.bettingLimit === BettingLimit.FIXED_LIMIT
-      ? gameState.fixedLimitBet
-      : null,
+    phase:
+      gameState?.phase ||
+      (gameScreen.hidden
+        ? 'setup'
+        : !dealPrompt.hidden
+          ? 'waiting for cards'
+          : !winnerPicker.hidden
+            ? 'choosing winner'
+            : 'betting'),
+    round:
+      ['preflop', 'flop', 'turn', 'river'][viewRoundNumber() - 1] ||
+      'between hands',
+    bettingLimit:
+      gameState?.bettingLimit ||
+      gameSettings?.bettingLimit ||
+      BettingLimit.NO_LIMIT,
+    fixedLimitBet:
+      gameState?.bettingLimit === BettingLimit.FIXED_LIMIT
+        ? gameState.fixedLimitBet
+        : null,
     currentPlayerNumber,
-    currentPlayer: player ? {
-      name: player.name,
-      chips: player.chips,
-      roundBet: player.roundBet,
-      amountToCall: amountToCallForView(player),
-      maximumAdditionalBet: maximumBet,
-      canGoAllIn: maximumBet === player.chips,
-    } : null,
+    currentPlayer: player
+      ? {
+          name: player.name,
+          chips: player.chips,
+          roundBet: player.roundBet,
+          amountToCall: amountToCallForView(player),
+          maximumAdditionalBet: maximumBet,
+          canGoAllIn: maximumBet === player.chips,
+        }
+      : null,
     highestRoundBet: viewHighestRoundBet(),
     pendingBet,
     pendingFold,
     pendingVoiceAction,
-    canUndo: !gameScreen.hidden
-      && dealPrompt.hidden
-      && gameWinnerScreen.hidden
-      && !viewIsGameWon()
-      && canUndoLastTurn(undoFromShowdown),
+    canUndo:
+      !gameScreen.hidden &&
+      dealPrompt.hidden &&
+      gameWinnerScreen.hidden &&
+      !viewIsGameWon() &&
+      canUndoLastTurn(undoFromShowdown),
     pot: totalPotAmount(),
     availableActions: currentGameActions(),
     dealInstruction: dealPrompt.hidden ? null : dealMessage.textContent,
-    showdown: showdown ? {
-      potIndex: showdown.potIndex,
-      potAmount: showdown.pot.amount,
-      question: winnerQuestion.textContent,
-      eligiblePlayers: showdown.eligiblePlayers.map((candidate) => ({
-        number: candidate.id,
-        name: candidate.name,
-      })),
-    } : null,
+    showdown: showdown
+      ? {
+          potIndex: showdown.potIndex,
+          potAmount: showdown.pot.amount,
+          question: winnerQuestion.textContent,
+          eligiblePlayers: showdown.eligiblePlayers.map((candidate) => ({
+            number: candidate.id,
+            name: candidate.name,
+          })),
+        }
+      : null,
     players: viewPlayers().map((candidate) => ({
       number: viewPlayerNumber(candidate),
       name: candidate.name,
@@ -680,27 +874,148 @@ function getVoiceInstructions() {
 }
 
 const voiceTools = [
-  { type: 'function', name: 'ignoreSpeech', description: prompts.toolDescriptions.ignoreSpeech, parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'check', description: prompts.toolDescriptions.check, parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'call', description: prompts.toolDescriptions.call, parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'bet', description: prompts.toolDescriptions.bet, parameters: { type: 'object', properties: { total: { type: 'number', description: prompts.toolDescriptions.betTotal } }, required: ['total'], additionalProperties: false } },
-  { type: 'function', name: 'raise', description: prompts.toolDescriptions.raise, parameters: { type: 'object', properties: { amount: { type: 'number', description: prompts.toolDescriptions.raiseAmount } }, required: ['amount'], additionalProperties: false } },
-  { type: 'function', name: 'fold', description: prompts.toolDescriptions.fold, parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'allIn', description: prompts.toolDescriptions.allIn, parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'confirmAction', description: prompts.toolDescriptions.confirmAction, parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'cancelAction', description: prompts.toolDescriptions.cancelAction, parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'cardsDealt', description: prompts.toolDescriptions.cardsDealt, parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'undo', description: 'Restore the most recently confirmed poker turn when the player asks to undo it.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'chooseWinner', description: 'Award the current showdown pot to one eligible player after someone states who has the best cards or wins the pot.', parameters: { type: 'object', properties: { playerNumber: { type: 'integer', description: 'The exact player number from the current game state.' } }, required: ['playerNumber'], additionalProperties: false } },
-  { type: 'function', name: 'splitPot', description: 'Split the current showdown pot between two or more eligible tied players.', parameters: { type: 'object', properties: { playerNumbers: { type: 'array', items: { type: 'integer' }, minItems: 2, uniqueItems: true, description: 'The exact player numbers of all tied players.' } }, required: ['playerNumbers'], additionalProperties: false } },
-  { type: 'function', name: 'nextHand', description: 'Start the next poker hand when the completed-hand screen is waiting for the players to continue.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  {
+    type: 'function',
+    name: 'ignoreSpeech',
+    description: prompts.toolDescriptions.ignoreSpeech,
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    type: 'function',
+    name: 'check',
+    description: prompts.toolDescriptions.check,
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    type: 'function',
+    name: 'call',
+    description: prompts.toolDescriptions.call,
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    type: 'function',
+    name: 'bet',
+    description: prompts.toolDescriptions.bet,
+    parameters: {
+      type: 'object',
+      properties: {
+        total: {
+          type: 'number',
+          description: prompts.toolDescriptions.betTotal,
+        },
+      },
+      required: ['total'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'raise',
+    description: prompts.toolDescriptions.raise,
+    parameters: {
+      type: 'object',
+      properties: {
+        amount: {
+          type: 'number',
+          description: prompts.toolDescriptions.raiseAmount,
+        },
+      },
+      required: ['amount'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'fold',
+    description: prompts.toolDescriptions.fold,
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    type: 'function',
+    name: 'allIn',
+    description: prompts.toolDescriptions.allIn,
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    type: 'function',
+    name: 'confirmAction',
+    description: prompts.toolDescriptions.confirmAction,
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    type: 'function',
+    name: 'cancelAction',
+    description: prompts.toolDescriptions.cancelAction,
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    type: 'function',
+    name: 'cardsDealt',
+    description: prompts.toolDescriptions.cardsDealt,
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    type: 'function',
+    name: 'undo',
+    description:
+      'Restore the most recently confirmed poker turn when the player asks to undo it.',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    type: 'function',
+    name: 'chooseWinner',
+    description:
+      'Award the current showdown pot to one eligible player after someone states who has the best cards or wins the pot.',
+    parameters: {
+      type: 'object',
+      properties: {
+        playerNumber: {
+          type: 'integer',
+          description: 'The exact player number from the current game state.',
+        },
+      },
+      required: ['playerNumber'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'splitPot',
+    description:
+      'Split the current showdown pot between two or more eligible tied players.',
+    parameters: {
+      type: 'object',
+      properties: {
+        playerNumbers: {
+          type: 'array',
+          items: { type: 'integer' },
+          minItems: 2,
+          uniqueItems: true,
+          description: 'The exact player numbers of all tied players.',
+        },
+      },
+      required: ['playerNumbers'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'nextHand',
+    description:
+      'Start the next poker hand when the completed-hand screen is waiting for the players to continue.',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
 ];
 
 function currentShowdownPot() {
-  if (gameState?.phase !== GamePhase.SHOWDOWN) {return null;}
+  if (gameState?.phase !== GamePhase.SHOWDOWN) {
+    return null;
+  }
   const potIndex = gameState.potAwardIndex;
   const pot = gameState.pots[potIndex];
-  if (!pot || pot.amount <= 0) {return null;}
+  if (!pot || pot.amount <= 0) {
+    return null;
+  }
   const eligiblePlayers = pot.eligiblePlayerNumbers
     .map((playerId) => viewPlayer(playerId))
     .filter((player) => player && !player.folded && !player.eliminated);
@@ -708,28 +1023,45 @@ function currentShowdownPot() {
 }
 
 function voiceWinnerResultMessage(selectedPlayers) {
-  if ([GamePhase.HAND_COMPLETE, GamePhase.GAME_COMPLETE].includes(gameState.phase)) {
-    const winners = gameState.handWinnerIds.map((id) => viewPlayer(id)).filter(Boolean);
+  if (
+    [GamePhase.HAND_COMPLETE, GamePhase.GAME_COMPLETE].includes(gameState.phase)
+  ) {
+    const winners = gameState.handWinnerIds
+      .map((id) => viewPlayer(id))
+      .filter(Boolean);
     const winnerNames = formatNameList(winners.map((winner) => winner.name));
     return gameState.phase === GamePhase.GAME_COMPLETE
       ? `${winnerNames} won the hand and the game.`
       : `${winnerNames} won the hand.`;
   }
-  const winnerNames = formatNameList(selectedPlayers.map((player) => player.name));
+  const winnerNames = formatNameList(
+    selectedPlayers.map((player) => player.name),
+  );
   return `${winnerNames} won that pot. ${winnerQuestion.textContent}`;
 }
 
 function executeVoiceTool(name, args) {
-  if (name === 'ignoreSpeech') {return { ok: true, silent: true };}
-  if (seatingMode) {return { ok: false, message: 'Lock the seats before continuing the game.' };}
+  if (name === 'ignoreSpeech') {
+    return { ok: true, silent: true };
+  }
+  if (seatingMode) {
+    return { ok: false, message: 'Lock the seats before continuing the game.' };
+  }
 
   if (name === 'undo') {
     const fromShowdown = !winnerPicker.hidden;
-    if (gameScreen.hidden || !dealPrompt.hidden || !gameWinnerScreen.hidden || viewIsGameWon() || !canUndoLastTurn(fromShowdown)) {
+    if (
+      gameScreen.hidden ||
+      !dealPrompt.hidden ||
+      !gameWinnerScreen.hidden ||
+      viewIsGameWon() ||
+      !canUndoLastTurn(fromShowdown)
+    ) {
       return { ok: false, message: 'There is no turn available to undo.' };
     }
-    const restoredPlayerName = lastTurnState.players
-      .find((player) => player.id === lastTurnState.actionPlayerId)?.name;
+    const restoredPlayerName = lastTurnState.players.find(
+      (player) => player.id === lastTurnState.actionPlayerId,
+    )?.name;
     undoLastTurn(fromShowdown);
     return {
       ok: true,
@@ -740,7 +1072,9 @@ function executeVoiceTool(name, args) {
   }
 
   if (name === 'cardsDealt') {
-    if (!cardsAreDealt()) {return { ok: false, message: 'The game is not waiting for cards.' };}
+    if (!cardsAreDealt()) {
+      return { ok: false, message: 'The game is not waiting for cards.' };
+    }
     return { ok: true, message: 'Cards confirmed.' };
   }
 
@@ -759,25 +1093,53 @@ function executeVoiceTool(name, args) {
 
   if (name === 'chooseWinner' || name === 'splitPot') {
     const showdown = currentShowdownPot();
-    if (!showdown) {return { ok: false, message: 'There is no showdown pot waiting for a winner.' };}
+    if (!showdown) {
+      return {
+        ok: false,
+        message: 'There is no showdown pot waiting for a winner.',
+      };
+    }
 
-    const requestedPlayerNumbers = name === 'chooseWinner'
-      ? [Number(args.playerNumber)]
-      : [...new Set((Array.isArray(args.playerNumbers) ? args.playerNumbers : []).map(Number))];
+    const requestedPlayerNumbers =
+      name === 'chooseWinner'
+        ? [Number(args.playerNumber)]
+        : [
+            ...new Set(
+              (Array.isArray(args.playerNumbers) ? args.playerNumbers : []).map(
+                Number,
+              ),
+            ),
+          ];
     if (name === 'splitPot' && requestedPlayerNumbers.length < 2) {
-      return { ok: false, message: 'A split pot needs at least two different players.' };
+      return {
+        ok: false,
+        message: 'A split pot needs at least two different players.',
+      };
     }
 
-    const eligiblePlayerNumbers = new Set(showdown.eligiblePlayers.map((player) => player.id));
-    const selectionIsValid = requestedPlayerNumbers.length > 0
-      && requestedPlayerNumbers.every((playerNumber) => Number.isInteger(playerNumber) && eligiblePlayerNumbers.has(playerNumber));
+    const eligiblePlayerNumbers = new Set(
+      showdown.eligiblePlayers.map((player) => player.id),
+    );
+    const selectionIsValid =
+      requestedPlayerNumbers.length > 0 &&
+      requestedPlayerNumbers.every(
+        (playerNumber) =>
+          Number.isInteger(playerNumber) &&
+          eligiblePlayerNumbers.has(playerNumber),
+      );
     if (!selectionIsValid) {
-      const eligibleNames = formatNameList(showdown.eligiblePlayers.map((player) => player.name));
-      return { ok: false, message: `The winner must be one of the eligible players: ${eligibleNames}.` };
+      const eligibleNames = formatNameList(
+        showdown.eligiblePlayers.map((player) => player.name),
+      );
+      return {
+        ok: false,
+        message: `The winner must be one of the eligible players: ${eligibleNames}.`,
+      };
     }
 
-    const selectedPlayers = requestedPlayerNumbers
-      .map((playerNumber) => showdown.eligiblePlayers.find((player) => player.id === playerNumber));
+    const selectedPlayers = requestedPlayerNumbers.map((playerNumber) =>
+      showdown.eligiblePlayers.find((player) => player.id === playerNumber),
+    );
     suppressAutomaticNarration = true;
     try {
       if (name === 'chooseWinner') {
@@ -793,28 +1155,59 @@ function executeVoiceTool(name, args) {
 
   const currentPlayerNumber = viewActionPlayerNumber();
   const player = viewPlayer(currentPlayerNumber);
-  if (!player) {return { ok: false, message: 'There is no active player.' };}
+  if (!player) {
+    return { ok: false, message: 'There is no active player.' };
+  }
 
   if (name === 'cancelAction') {
-    if (!pendingFold && !pendingVoiceAction) {return { ok: false, message: 'There is no action waiting for confirmation.' };}
+    if (!pendingFold && !pendingVoiceAction) {
+      return {
+        ok: false,
+        message: 'There is no action waiting for confirmation.',
+      };
+    }
     const cancelledFold = pendingFold;
     pendingFold = false;
     pendingVoiceAction = null;
     updateBetControls();
-    return { ok: true, message: cancelledFold ? 'The pending fold was cancelled.' : 'The pending action was cancelled.' };
+    return {
+      ok: true,
+      message: cancelledFold
+        ? 'The pending fold was cancelled.'
+        : 'The pending action was cancelled.',
+    };
   }
 
   if (name === 'confirmAction') {
-    if (!pendingFold && !pendingVoiceAction) {return { ok: false, message: 'There is no action waiting for confirmation.' };}
-    if (gameScreen.hidden || !dealPrompt.hidden || !winnerPicker.hidden || !gameWinnerScreen.hidden) {
-      pendingFold = false;
-      pendingVoiceAction = null;
-      return { ok: false, message: 'That confirmation is no longer available.' };
+    if (!pendingFold && !pendingVoiceAction) {
+      return {
+        ok: false,
+        message: 'There is no action waiting for confirmation.',
+      };
     }
-    if (pendingVoiceAction && pendingVoiceAction.playerNumber !== currentPlayerNumber) {
+    if (
+      gameScreen.hidden ||
+      !dealPrompt.hidden ||
+      !winnerPicker.hidden ||
+      !gameWinnerScreen.hidden
+    ) {
       pendingFold = false;
       pendingVoiceAction = null;
-      return { ok: false, message: 'That confirmation is no longer available.' };
+      return {
+        ok: false,
+        message: 'That confirmation is no longer available.',
+      };
+    }
+    if (
+      pendingVoiceAction &&
+      pendingVoiceAction.playerNumber !== currentPlayerNumber
+    ) {
+      pendingFold = false;
+      pendingVoiceAction = null;
+      return {
+        ok: false,
+        message: 'That confirmation is no longer available.',
+      };
     }
 
     const pendingAction = pendingVoiceAction;
@@ -833,14 +1226,24 @@ function executeVoiceTool(name, args) {
     return { ok: false, message: 'Unknown pending action.' };
   }
 
-  if (gameScreen.hidden || !dealPrompt.hidden || !winnerPicker.hidden || !gameWinnerScreen.hidden) {
-    return { ok: false, message: 'A betting action is not available right now.' };
+  if (
+    gameScreen.hidden ||
+    !dealPrompt.hidden ||
+    !winnerPicker.hidden ||
+    !gameWinnerScreen.hidden
+  ) {
+    return {
+      ok: false,
+      message: 'A betting action is not available right now.',
+    };
   }
 
   const amountToCall = amountToCallForView(player);
   const maximumBet = bettingBoundsForView(player).maxAdditionalChips;
   const legalActions = currentGameActions();
-  if (name !== 'fold' && name !== 'allIn') {pendingVoiceAction = null;}
+  if (name !== 'fold' && name !== 'allIn') {
+    pendingVoiceAction = null;
+  }
   if (name === 'fold') {
     pendingVoiceAction = null;
     foldCurrentPlayer();
@@ -848,7 +1251,12 @@ function executeVoiceTool(name, args) {
     return { ok: true, message: `${player.name} folds.` };
   }
   if (name === 'check') {
-    if (amountToCall > 0) {return { ok: false, message: `${player.name} must call ${amountToCall} or fold.` };}
+    if (amountToCall > 0) {
+      return {
+        ok: false,
+        message: `${player.name} must call ${amountToCall} or fold.`,
+      };
+    }
     betCurrentPlayer(0);
     confirm();
     return { ok: true, message: `${player.name} checks.` };
@@ -860,22 +1268,44 @@ function executeVoiceTool(name, args) {
   }
   if (name === 'allIn') {
     if (!legalActions.some(({ type }) => type === Transition.ALL_IN)) {
-      return { ok: false, message: `${player.name} cannot go all in under the current ${bettingLimitLabels[gameState.bettingLimit]} betting limit; the maximum additional bet is ${maximumBet}.` };
+      return {
+        ok: false,
+        message: `${player.name} cannot go all in under the current ${bettingLimitLabels[gameState.bettingLimit]} betting limit; the maximum additional bet is ${maximumBet}.`,
+      };
     }
     pendingFold = false;
     updateBetControls();
-    pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber, amount: player.chips };
-    return { ok: true, confirmationRequired: true, message: `Ask ${player.name} to confirm going all in for ${player.chips}.` };
+    pendingVoiceAction = {
+      type: 'all-in',
+      playerNumber: currentPlayerNumber,
+      amount: player.chips,
+    };
+    return {
+      ok: true,
+      confirmationRequired: true,
+      message: `Ask ${player.name} to confirm going all in for ${player.chips}.`,
+    };
   }
   if (name === 'bet') {
     const total = Number(args.total);
     const amount = total - player.roundBet;
     if (!Number.isFinite(total) || !isLegalPendingBet(player, amount)) {
-      return { ok: false, message: `That total is not legal in ${bettingLimitLabels[gameState.bettingLimit]} Hold'em. The maximum total is ${player.roundBet + maximumBet}.` };
+      return {
+        ok: false,
+        message: `That total is not legal in ${bettingLimitLabels[gameState.bettingLimit]} Hold'em. The maximum total is ${player.roundBet + maximumBet}.`,
+      };
     }
     if (amount === player.chips) {
-      pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber, amount };
-      return { ok: true, confirmationRequired: true, message: `That bet is all in. Ask ${player.name} to confirm going all in for ${player.chips}.` };
+      pendingVoiceAction = {
+        type: 'all-in',
+        playerNumber: currentPlayerNumber,
+        amount,
+      };
+      return {
+        ok: true,
+        confirmationRequired: true,
+        message: `That bet is all in. Ask ${player.name} to confirm going all in for ${player.chips}.`,
+      };
     }
     betCurrentPlayer(amount);
     confirm();
@@ -884,17 +1314,35 @@ function executeVoiceTool(name, args) {
   if (name === 'raise') {
     const raiseAmount = Number(args.amount);
     const amount = amountToCall + raiseAmount;
-    if (!Number.isFinite(raiseAmount) || raiseAmount < 0 || !isLegalPendingBet(player, amount)) {
-      return { ok: false, message: `That raise is not legal in ${bettingLimitLabels[gameState.bettingLimit]} Hold'em. The maximum raise is ${Math.max(0, maximumBet - amountToCall)}.` };
+    if (
+      !Number.isFinite(raiseAmount) ||
+      raiseAmount < 0 ||
+      !isLegalPendingBet(player, amount)
+    ) {
+      return {
+        ok: false,
+        message: `That raise is not legal in ${bettingLimitLabels[gameState.bettingLimit]} Hold'em. The maximum raise is ${Math.max(0, maximumBet - amountToCall)}.`,
+      };
     }
     if (amount === player.chips) {
-      pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber, amount };
-      return { ok: true, confirmationRequired: true, message: `That raise is all in. Ask ${player.name} to confirm going all in for ${player.chips}.` };
+      pendingVoiceAction = {
+        type: 'all-in',
+        playerNumber: currentPlayerNumber,
+        amount,
+      };
+      return {
+        ok: true,
+        confirmationRequired: true,
+        message: `That raise is all in. Ask ${player.name} to confirm going all in for ${player.chips}.`,
+      };
     }
     const total = player.roundBet + amount;
     betCurrentPlayer(amount);
     confirm();
-    return { ok: true, message: `${player.name} raises ${raiseAmount} to ${total}.` };
+    return {
+      ok: true,
+      message: `${player.name} raises ${raiseAmount} to ${total}.`,
+    };
   }
   return { ok: false, message: 'Unknown poker action.' };
 }
@@ -904,7 +1352,9 @@ async function connectVoiceAgent() {
     voiceAgent.unlockAudioPlayback();
     return voiceAgent;
   }
-  if (voiceConnectionPromise) {return voiceConnectionPromise;}
+  if (voiceConnectionPromise) {
+    return voiceConnectionPromise;
+  }
 
   voiceAgent?.disconnect();
   voiceAgent = new VoiceAgent({
@@ -913,12 +1363,20 @@ async function connectVoiceAgent() {
     tools: voiceTools,
     executeTool: executeVoiceTool,
     onTranscript: setVoiceTranscript,
+    onLatency: (latency) => {
+      window.dispatchEvent(
+        new CustomEvent('robodeal:voice-latency', { detail: latency }),
+      );
+    },
     onStatus: (status) => {
       setVoiceStatus(status);
-      if (!startMicrophoneAfterSpeech || status !== 'Microphone off') {return;}
+      if (!startMicrophoneAfterSpeech || status !== 'Microphone off') {
+        return;
+      }
 
       startMicrophoneAfterSpeech = false;
-      voiceAgent.startMicrophone()
+      voiceAgent
+        .startMicrophone()
         .then(updateRecordingButton)
         .catch((error) => {
           const errorMessage = `Voice unavailable: ${error.message}`;
@@ -928,9 +1386,12 @@ async function connectVoiceAgent() {
     },
   });
   voiceAgent.unlockAudioPlayback();
-  voiceConnectionPromise = voiceAgent.connect(gameSettings?.voice?.name || voiceChoice.value)
+  voiceConnectionPromise = voiceAgent
+    .connect(gameSettings?.voice?.name || voiceChoice.value)
     .then(() => voiceAgent)
-    .finally(() => { voiceConnectionPromise = null; });
+    .finally(() => {
+      voiceConnectionPromise = null;
+    });
   return voiceConnectionPromise;
 }
 
@@ -941,8 +1402,9 @@ async function toggleRecording() {
     const connection = connectVoiceAgent();
     voiceAgent?.unlockAudioPlayback();
     const agent = await connection;
-    if (agent.recording) {await agent.stopMicrophone();}
-    else {
+    if (agent.recording) {
+      await agent.stopMicrophone();
+    } else {
       connecting = true;
       recordingButton.disabled = true;
       recordingButton.textContent = 'Connecting…';
@@ -953,7 +1415,9 @@ async function toggleRecording() {
     setVoiceStatus(errorMessage);
     setVoiceTranscript(errorMessage);
   } finally {
-    if (connecting) {recordingButton.disabled = false;}
+    if (connecting) {
+      recordingButton.disabled = false;
+    }
     updateRecordingButton();
   }
 }
@@ -965,7 +1429,9 @@ async function previewVoice() {
   voicePreviewAgent = new VoiceAgent({
     getInstructions: () => prompts.voicePreviewInstructions,
     prompts,
-    onStatus: (status) => { voicePreviewStatus.textContent = status; },
+    onStatus: (status) => {
+      voicePreviewStatus.textContent = status;
+    },
   });
   voicePreviewAgent.unlockAudioPlayback();
   try {
@@ -984,7 +1450,9 @@ async function previewVoice() {
 
 async function testVoiceWithAudioFile() {
   const file = voiceAudioFile.files[0];
-  if (!file) {return;}
+  if (!file) {
+    return;
+  }
   voiceAudioTestButton.disabled = true;
   voiceAudioTestStatus.textContent = 'Sending audio…';
   try {
@@ -999,7 +1467,9 @@ async function testVoiceWithAudioFile() {
 }
 
 function drawPlayerNames() {
-  const existingNames = [...playerNames.querySelectorAll('input')].map((input) => input.value);
+  const existingNames = [...playerNames.querySelectorAll('input')].map(
+    (input) => input.value,
+  );
   const selectedDealer = dealerSelect.value || '1';
   playerNames.replaceChildren();
 
@@ -1061,9 +1531,16 @@ function makePlayerChipPiles(amount) {
   const container = document.createElement('div');
   container.className = 'player-chip-piles';
   container.setAttribute('aria-hidden', 'true');
-  const allowedColors = new Set(chipDenominationInputs.map((input) => input.dataset.chipColor));
+  const allowedColors = new Set(
+    chipDenominationInputs.map((input) => input.dataset.chipColor),
+  );
   const denominations = Object.entries(gameSettings.chipDenominations || {})
-    .filter(([color, value]) => allowedColors.has(color) && Number.isFinite(Number(value)) && Number(value) > 0)
+    .filter(
+      ([color, value]) =>
+        allowedColors.has(color) &&
+        Number.isFinite(Number(value)) &&
+        Number(value) > 0,
+    )
     .map(([color, value]) => ({ color, value: Number(value) }))
     .sort((first, second) => second.value - first.value);
   let remaining = Math.max(0, Math.floor(amount));
@@ -1071,7 +1548,9 @@ function makePlayerChipPiles(amount) {
   denominations.forEach(({ color, value }) => {
     const chipCount = Math.floor(remaining / value);
     remaining %= value;
-    if (chipCount === 0) {return;}
+    if (chipCount === 0) {
+      return;
+    }
     const visibleChipCount = Math.min(chipCount, 100);
     for (let firstChip = 0; firstChip < visibleChipCount; firstChip += 10) {
       const stack = document.createElement('span');
@@ -1089,7 +1568,8 @@ function makePlayerChipPiles(amount) {
   if (remaining > 0 || denominations.length === 0) {
     const remainder = document.createElement('span');
     remainder.className = 'player-chip-remainder';
-    remainder.textContent = denominations.length === 0 ? amount : `+${remaining}`;
+    remainder.textContent =
+      denominations.length === 0 ? amount : `+${remaining}`;
     container.append(remainder);
   }
 
@@ -1097,10 +1577,12 @@ function makePlayerChipPiles(amount) {
 }
 
 function initializeSeatAngles() {
-  seatAngles = Object.fromEntries(viewPlayers().map((player, index, players) => [
-    player.id,
-    (index / players.length) * Math.PI * 2 + Math.PI / 2,
-  ]));
+  seatAngles = Object.fromEntries(
+    viewPlayers().map((player, index, players) => [
+      player.id,
+      (index / players.length) * Math.PI * 2 + Math.PI / 2,
+    ]),
+  );
 }
 
 function positionSeatElement(seat, playerId) {
@@ -1112,8 +1594,12 @@ function positionSeatElement(seat, playerId) {
 
 function pointerSeatAngle(event) {
   const bounds = gameScreen.getBoundingClientRect();
-  const horizontal = (event.clientX - (bounds.left + bounds.width / 2)) / Math.max(1, bounds.width);
-  const vertical = (event.clientY - (bounds.top + bounds.height / 2)) / Math.max(1, bounds.height);
+  const horizontal =
+    (event.clientX - (bounds.left + bounds.width / 2)) /
+    Math.max(1, bounds.width);
+  const vertical =
+    (event.clientY - (bounds.top + bounds.height / 2)) /
+    Math.max(1, bounds.height);
   return normalizeSeatAngle(Math.atan2(vertical, horizontal));
 }
 
@@ -1125,18 +1611,24 @@ function moveSeatToSnappedAngle(seat, playerId, requestedAngle) {
     Math.PI / 2,
     seatSnapDistance,
   );
-  if (Math.abs(normalizeSeatAngle(targetAngle - currentAngle)) < 0.0001) {return;}
+  if (Math.abs(normalizeSeatAngle(targetAngle - currentAngle)) < 0.0001) {
+    return;
+  }
 
-  const occupiedSeat = Object.entries(seatAngles).find(([candidateId, candidateAngle]) => (
-    String(candidateId) !== String(playerId)
-    && Math.abs(normalizeSeatAngle(targetAngle - candidateAngle)) < 0.0001
-  ));
+  const occupiedSeat = Object.entries(seatAngles).find(
+    ([candidateId, candidateAngle]) =>
+      String(candidateId) !== String(playerId) &&
+      Math.abs(normalizeSeatAngle(targetAngle - candidateAngle)) < 0.0001,
+  );
   if (occupiedSeat) {
     const [occupiedPlayerId] = occupiedSeat;
     seatAngles[occupiedPlayerId] = currentAngle;
-    const occupiedElement = [...playerSeats.children]
-      .find((candidate) => candidate.dataset.playerId === String(occupiedPlayerId));
-    if (occupiedElement) {positionSeatElement(occupiedElement, occupiedPlayerId);}
+    const occupiedElement = [...playerSeats.children].find(
+      (candidate) => candidate.dataset.playerId === String(occupiedPlayerId),
+    );
+    if (occupiedElement) {
+      positionSeatElement(occupiedElement, occupiedPlayerId);
+    }
   }
 
   seatAngles[playerId] = targetAngle;
@@ -1150,38 +1642,52 @@ function makeSeatDraggable(seat, playerId) {
   };
 
   seat.addEventListener('pointerdown', (event) => {
-    if (!seatingMode) {return;}
+    if (!seatingMode) {
+      return;
+    }
     dragging = true;
     seat.setPointerCapture(event.pointerId);
     seat.classList.add('dragging');
     moveSeat(event);
   });
   seat.addEventListener('pointermove', (event) => {
-    if (dragging) {moveSeat(event);}
+    if (dragging) {
+      moveSeat(event);
+    }
   });
   const stopDragging = (event) => {
-    if (!dragging) {return;}
+    if (!dragging) {
+      return;
+    }
     dragging = false;
-    if (seat.hasPointerCapture(event.pointerId)) {seat.releasePointerCapture(event.pointerId);}
+    if (seat.hasPointerCapture(event.pointerId)) {
+      seat.releasePointerCapture(event.pointerId);
+    }
     seat.classList.remove('dragging');
   };
   seat.addEventListener('pointerup', stopDragging);
   seat.addEventListener('pointercancel', stopDragging);
   seat.addEventListener('keydown', (event) => {
-    if (!seatingMode || !['ArrowLeft', 'ArrowRight'].includes(event.key)) {return;}
+    if (!seatingMode || !['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+      return;
+    }
     event.preventDefault();
     const direction = event.key === 'ArrowRight' ? 1 : -1;
     moveSeatToSnappedAngle(
       seat,
       playerId,
-      seatAngles[playerId] + direction * Math.PI * 2 / viewPlayers().length,
+      seatAngles[playerId] + (direction * Math.PI * 2) / viewPlayers().length,
     );
   });
 }
 
 function lockClockwiseSeatOrder() {
-  const playersById = new Map(viewPlayers().map((player) => [player.id, player]));
-  const players = clockwisePlayerIds(viewPlayers(), seatAngles).map((playerId) => playersById.get(playerId));
+  const playersById = new Map(
+    viewPlayers().map((player) => [player.id, player]),
+  );
+  const players = clockwisePlayerIds(viewPlayers(), seatAngles).map(
+    (playerId) => playersById.get(playerId),
+  );
   gameState = createGameState({
     players,
     smallBlind: gameSettings.smallBlind,
@@ -1195,20 +1701,28 @@ function lockClockwiseSeatOrder() {
 }
 
 function reorderStatePlayersClockwise(state) {
-  if (!state) {return;}
-  const playersById = new Map(state.players.map((player) => [player.id, player]));
-  state.players = clockwisePlayerIds(state.players, seatAngles)
-    .map((playerId) => playersById.get(playerId));
+  if (!state) {
+    return;
+  }
+  const playersById = new Map(
+    state.players.map((player) => [player.id, player]),
+  );
+  state.players = clockwisePlayerIds(state.players, seatAngles).map(
+    (playerId) => playersById.get(playerId),
+  );
 }
 
 function updateSeatOrderButton() {
-  const bettingPhase = gameState && [
-    GamePhase.BETTING_PREFLOP,
-    GamePhase.BETTING_FLOP,
-    GamePhase.BETTING_TURN,
-    GamePhase.BETTING_RIVER,
-  ].includes(gameState.phase);
-  seatOrderButton.hidden = !gameState || gameScreen.hidden || lockSeatsButton.hidden === false;
+  const bettingPhase =
+    gameState &&
+    [
+      GamePhase.BETTING_PREFLOP,
+      GamePhase.BETTING_FLOP,
+      GamePhase.BETTING_TURN,
+      GamePhase.BETTING_RIVER,
+    ].includes(gameState.phase);
+  seatOrderButton.hidden =
+    !gameState || gameScreen.hidden || lockSeatsButton.hidden === false;
   seatOrderButton.disabled = !seatingMode && !bettingPhase;
   seatOrderButton.setAttribute('aria-pressed', String(seatingMode));
   seatOrderButton.textContent = seatingMode
@@ -1217,7 +1731,9 @@ function updateSeatOrderButton() {
 }
 
 function beginInGameSeatPositioning() {
-  if (seatingMode || !gameState) {return;}
+  if (seatingMode || !gameState) {
+    return;
+  }
   seatingMode = true;
   raiseMode = false;
   pendingFold = false;
@@ -1230,7 +1746,9 @@ function beginInGameSeatPositioning() {
 }
 
 function lockInGameSeats() {
-  if (!seatingMode || !gameState) {return;}
+  if (!seatingMode || !gameState) {
+    return;
+  }
   reorderStatePlayersClockwise(gameState);
   reorderStatePlayersClockwise(lastTurnState);
   seatingMode = false;
@@ -1241,8 +1759,11 @@ function lockInGameSeats() {
 }
 
 function toggleInGameSeatPositioning() {
-  if (seatingMode) {lockInGameSeats();}
-  else {beginInGameSeatPositioning();}
+  if (seatingMode) {
+    lockInGameSeats();
+  } else {
+    beginInGameSeatPositioning();
+  }
 }
 
 function drawPlayerSeats() {
@@ -1256,10 +1777,18 @@ function drawPlayerSeats() {
     seat.dataset.playerId = String(player.id);
     const playerNumber = viewPlayerNumber(player);
     const isCurrentPlayer = playerNumber === currentPlayerNumber;
-    if (isCurrentPlayer) {seat.classList.add('current-player');}
-    if (!seatingMode && player.id === gameState.dealerId) {seat.classList.add('dealer');}
-    if (player.folded) {seat.classList.add('folded');}
-    if (player.eliminated) {seat.classList.add('eliminated');}
+    if (isCurrentPlayer) {
+      seat.classList.add('current-player');
+    }
+    if (!seatingMode && player.id === gameState.dealerId) {
+      seat.classList.add('dealer');
+    }
+    if (player.folded) {
+      seat.classList.add('folded');
+    }
+    if (player.eliminated) {
+      seat.classList.add('eliminated');
+    }
     positionSeatElement(seat, playerNumber);
     const name = document.createElement('span');
     name.className = 'player-seat-name';
@@ -1277,22 +1806,35 @@ function drawPlayerSeats() {
       }
     }
     const isDealer = player.id === gameState.dealerId;
-    seat.setAttribute('aria-label', seatingMode
-      ? `${player.name}, drag around the table to choose this seat`
-      : `${player.name}${player.eliminated ? ', out of the game' : `: ${player.chips} chips`}${isDealer ? ', dealer' : ''}${isCurrentPlayer ? ', current turn' : ''}${player.folded ? ', folded' : ''}`);
+    seat.setAttribute(
+      'aria-label',
+      seatingMode
+        ? `${player.name}, drag around the table to choose this seat`
+        : `${player.name}${player.eliminated ? ', out of the game' : `: ${player.chips} chips`}${isDealer ? ', dealer' : ''}${isCurrentPlayer ? ', current turn' : ''}${player.folded ? ', folded' : ''}`,
+    );
     seat.setAttribute('role', seatingMode ? 'button' : 'status');
     seat.tabIndex = seatingMode ? 0 : -1;
-    if (seatingMode) {makeSeatDraggable(seat, playerNumber);}
+    if (seatingMode) {
+      makeSeatDraggable(seat, playerNumber);
+    }
     playerSeats.append(seat);
   });
 
   const activeAngle = seatAngles[currentPlayerNumber];
   if (Number.isFinite(activeAngle)) {
-    turnControl.style.setProperty('--rotation', `${activeAngle - Math.PI / 2}rad`);
+    turnControl.style.setProperty(
+      '--rotation',
+      `${activeAngle - Math.PI / 2}rad`,
+    );
   }
-  if (seatingMode) {return;}
+  if (seatingMode) {
+    return;
+  }
   updatePotDisplay();
-  turnIndicator.setAttribute('aria-label', `Your bet: ${pendingBet}. Total pot: ${totalPotAmount()}`);
+  turnIndicator.setAttribute(
+    'aria-label',
+    `Your bet: ${pendingBet}. Total pot: ${totalPotAmount()}`,
+  );
   updateBetControls();
   voiceAgent?.updateContext();
 }
@@ -1300,22 +1842,29 @@ function drawPlayerSeats() {
 function updateBetControls() {
   const currentPlayerNumber = viewActionPlayerNumber();
   const player = viewPlayer(currentPlayerNumber);
-  if (!player) {return;}
+  if (!player) {
+    return;
+  }
   const minimumBet = amountToCallForView(player);
   const bounds = bettingBoundsForView(player);
   const maximumBet = bounds.maxAdditionalChips;
   const legalActions = currentGameActions();
   const betAction = legalActions.find(({ type }) => type === Transition.BET);
-  const allInAction = legalActions.find(({ type }) => type === Transition.ALL_IN);
+  const allInAction = legalActions.find(
+    ({ type }) => type === Transition.ALL_IN,
+  );
   const minimumAllowedBet = Math.min(minimumBet, maximumBet);
   const minimumRaiseBet = bounds.minRaiseAdditionalChips;
   const canRaise = Boolean(betAction);
-  const callIsAllIn = minimumAllowedBet > 0 && minimumAllowedBet === player.chips;
+  const callIsAllIn =
+    minimumAllowedBet > 0 && minimumAllowedBet === player.chips;
   const minimumPendingBet = raiseMode ? minimumRaiseBet : minimumAllowedBet;
   pendingBet = Math.max(minimumPendingBet, Math.min(pendingBet, maximumBet));
   callActionButton.textContent = callIsAllIn
     ? `Call ${minimumAllowedBet} (all in)`
-    : minimumAllowedBet > 0 ? `Call ${minimumAllowedBet}` : 'Call';
+    : minimumAllowedBet > 0
+      ? `Call ${minimumAllowedBet}`
+      : 'Call';
   callActionButton.disabled = minimumAllowedBet === 0;
   checkActionButton.disabled = minimumBet > 0;
   allInActionButton.disabled = callIsAllIn || !allInAction;
@@ -1332,7 +1881,8 @@ function updateBetControls() {
   raiseIncreaseButton.disabled = pendingBet >= maximumBet;
   raiseShortcutButtons.forEach((button) => {
     const adjustment = Number(button.dataset.raiseAdjustment);
-    button.disabled = adjustment < 0 ? pendingBet <= minimumRaiseBet : pendingBet >= maximumBet;
+    button.disabled =
+      adjustment < 0 ? pendingBet <= minimumRaiseBet : pendingBet >= maximumBet;
   });
   confirmRaiseButton.disabled = !isLegalPendingBet(player, pendingBet);
   actionMenu.hidden = raiseMode;
@@ -1344,11 +1894,15 @@ function updateBetControls() {
 function enterRaiseMode() {
   const currentPlayerNumber = viewActionPlayerNumber();
   const player = viewPlayer(currentPlayerNumber);
-  if (!player) {return;}
+  if (!player) {
+    return;
+  }
   const bounds = bettingBoundsForView(player);
   const maximumBet = bounds.maxAdditionalChips;
   const minimumRaiseBet = bounds.minRaiseAdditionalChips;
-  if (minimumRaiseBet > maximumBet) {return;}
+  if (minimumRaiseBet > maximumBet) {
+    return;
+  }
   raiseMode = true;
   pendingBet = minimumRaiseBet;
   updateBetControls();
@@ -1356,7 +1910,9 @@ function enterRaiseMode() {
 
 function cancelRaiseMode() {
   const player = viewPlayer(viewActionPlayerNumber());
-  if (!player) {return;}
+  if (!player) {
+    return;
+  }
   raiseMode = false;
   pendingBet = amountToCallForView(player);
   updateBetControls();
@@ -1365,7 +1921,9 @@ function cancelRaiseMode() {
 function setRaiseTotal(total) {
   const currentPlayerNumber = viewActionPlayerNumber();
   const player = viewPlayer(currentPlayerNumber);
-  if (!player) {return;}
+  if (!player) {
+    return;
+  }
   const bounds = bettingBoundsForView(player);
   const maximumBet = bounds.maxAdditionalChips;
   const minimumBet = amountToCallForView(player);
@@ -1381,8 +1939,13 @@ function setRaiseTotal(total) {
     minimumRaiseBet,
     Math.min(requestedTotal - player.roundBet, maximumBet),
   );
-  if (gameState.bettingLimit === BettingLimit.FIXED_LIMIT && requestedAdditional > minimumBet) {
-    const fixedBet = currentGameActions().find(({ type }) => type === Transition.BET);
+  if (
+    gameState.bettingLimit === BettingLimit.FIXED_LIMIT &&
+    requestedAdditional > minimumBet
+  ) {
+    const fixedBet = currentGameActions().find(
+      ({ type }) => type === Transition.BET,
+    );
     pendingBet = fixedBet?.maxAdditionalChips ?? minimumBet;
   } else {
     pendingBet = requestedAdditional;
@@ -1392,11 +1955,16 @@ function setRaiseTotal(total) {
 
 function adjustRaiseBy(amount) {
   const player = viewPlayer(viewActionPlayerNumber());
-  if (!player) {return;}
+  if (!player) {
+    return;
+  }
   if (gameState.bettingLimit === BettingLimit.FIXED_LIMIT) {
     const callAmount = amountToCallForView(player);
-    const fixedBet = currentGameActions().find(({ type }) => type === Transition.BET);
-    pendingBet = amount < 0 ? callAmount : fixedBet?.maxAdditionalChips ?? callAmount;
+    const fixedBet = currentGameActions().find(
+      ({ type }) => type === Transition.BET,
+    );
+    pendingBet =
+      amount < 0 ? callAmount : (fixedBet?.maxAdditionalChips ?? callAmount);
     updateBetControls();
     return;
   }
@@ -1412,11 +1980,16 @@ function captureTurnState() {
 }
 
 function canUndoLastTurn(fromShowdown = false) {
-  return lastTurnState !== null && (fromShowdown || gameState.actionPlayerId !== lastTurnState.actionPlayerId);
+  return (
+    lastTurnState !== null &&
+    (fromShowdown || gameState.actionPlayerId !== lastTurnState.actionPlayerId)
+  );
 }
 
 function undoLastTurn(fromShowdown = false) {
-  if (!canUndoLastTurn(fromShowdown)) {return;}
+  if (!canUndoLastTurn(fromShowdown)) {
+    return;
+  }
 
   raiseMode = false;
   gameState = structuredClone(lastTurnState);
@@ -1427,12 +2000,19 @@ function undoLastTurn(fromShowdown = false) {
   lastTurnState = null;
   lastTurnEndedHandByFold = false;
   renderGameState();
+  log.push({
+    PlayerId: gameState.actionPlayerId,
+    State: structuredClone(gameState),
+    Type: 'Undo',
+  });
 }
 
 function showHandCompleteFromGameState() {
   turnIndicator.hidden = true;
   winnerPicker.hidden = false;
-  const winners = gameState.handWinnerIds.map((id) => viewPlayer(id)).filter(Boolean);
+  const winners = gameState.handWinnerIds
+    .map((id) => viewPlayer(id))
+    .filter(Boolean);
   const winnerNames = formatNameList(winners.map((winner) => winner.name));
   winnerQuestion.textContent = `${winnerNames} ${winners.length === 1 ? 'wins' : 'win'} the hand!`;
   narrate(`${winnerNames} won the hand.`);
@@ -1442,19 +2022,30 @@ function showHandCompleteFromGameState() {
   nextHandButton.textContent = 'Next hand';
   nextHandButton.addEventListener('click', startNewHand);
   showdownUndoButton.hidden = false;
-  showdownUndoButton.disabled = !lastTurnEndedHandByFold || !canUndoLastTurn(true);
+  showdownUndoButton.disabled =
+    !lastTurnEndedHandByFold || !canUndoLastTurn(true);
   winnerOptions.append(nextHandButton, showdownUndoButton);
   drawPlayerSeats();
 }
 
 function renderGameState() {
-  if (!gameState) {return;}
-  if (gameState.phase === GamePhase.GAME_COMPLETE) {clearSavedCurrentGame();}
-  else {saveCurrentGame();}
+  if (!gameState) {
+    return;
+  }
+  if (gameState.phase === GamePhase.GAME_COMPLETE) {
+    clearSavedCurrentGame();
+  } else {
+    saveCurrentGame();
+  }
   updateSeatOrderButton();
   const phase = gameState.phase;
   gamePhaseLabel.textContent = gamePhaseLabels[phase] || '';
-  const betting = [GamePhase.BETTING_PREFLOP, GamePhase.BETTING_FLOP, GamePhase.BETTING_TURN, GamePhase.BETTING_RIVER].includes(phase);
+  const betting = [
+    GamePhase.BETTING_PREFLOP,
+    GamePhase.BETTING_FLOP,
+    GamePhase.BETTING_TURN,
+    GamePhase.BETTING_RIVER,
+  ].includes(phase);
 
   if (betting) {
     dealPrompt.hidden = true;
@@ -1473,9 +2064,10 @@ function renderGameState() {
     const smallBlindPlayer = viewPlayer(gameState.smallBlindPlayerId);
     const bigBlindPlayer = viewPlayer(gameState.bigBlindPlayerId);
     const bettingLimit = bettingLimitLabels[gameState.bettingLimit];
-    const fixedLimit = gameState.bettingLimit === BettingLimit.FIXED_LIMIT
-      ? ` Limits are ${gameState.fixedLimitBet}/${gameState.fixedLimitBet * 2}.`
-      : '';
+    const fixedLimit =
+      gameState.bettingLimit === BettingLimit.FIXED_LIMIT
+        ? ` Limits are ${gameState.fixedLimitBet}/${gameState.fixedLimitBet * 2}.`
+        : '';
     const blindPlayers = bigBlindPlayer
       ? `${smallBlindPlayer.name} is the small blind, and ${bigBlindPlayer.name} is the big blind.`
       : `${smallBlindPlayer.name} is the small blind.`;
@@ -1486,7 +2078,11 @@ function renderGameState() {
     return;
   }
 
-  if ([GamePhase.DEAL_FLOP, GamePhase.DEAL_TURN, GamePhase.DEAL_RIVER].includes(phase)) {
+  if (
+    [GamePhase.DEAL_FLOP, GamePhase.DEAL_TURN, GamePhase.DEAL_RIVER].includes(
+      phase,
+    )
+  ) {
     const instruction = {
       [GamePhase.DEAL_FLOP]: 'Burn one card, then deal the flop',
       [GamePhase.DEAL_TURN]: 'Burn one card, then deal the turn',
@@ -1501,9 +2097,13 @@ function renderGameState() {
 
   if (phase === GamePhase.ALL_IN_RUNOUT) {
     const cards = remainingCommunityCards();
-    const instructions = cards.map((card) => `burn one card, then deal ${card}`);
+    const instructions = cards.map(
+      (card) => `burn one card, then deal ${card}`,
+    );
     dealMessage.textContent = `${formatCardList(instructions)}. Press OK for showdown.`;
-    dealMessage.textContent = dealMessage.textContent[0].toUpperCase() + dealMessage.textContent.slice(1);
+    dealMessage.textContent =
+      dealMessage.textContent[0].toUpperCase() +
+      dealMessage.textContent.slice(1);
     dealPrompt.hidden = false;
     drawPlayerSeats();
     narrate(dealMessage.textContent);
@@ -1516,7 +2116,10 @@ function renderGameState() {
   } else if (phase === GamePhase.HAND_COMPLETE) {
     showHandCompleteFromGameState();
   } else if (phase === GamePhase.GAME_COMPLETE) {
-    showGameWinner(viewPlayer(gameState.handWinnerIds[0]) || gameState.players.find((player) => player.chips > 0));
+    showGameWinner(
+      viewPlayer(gameState.handWinnerIds[0]) ||
+        gameState.players.find((player) => player.chips > 0),
+    );
   }
 }
 
@@ -1525,25 +2128,37 @@ function remainingCommunityCards() {
 }
 
 function formatCardList(cards) {
-  if (cards.length <= 1) {return cards[0] || '';}
-  if (cards.length === 2) {return `${cards[0]} and ${cards[1]}`;}
+  if (cards.length <= 1) {
+    return cards[0] || '';
+  }
+  if (cards.length === 2) {
+    return `${cards[0]} and ${cards[1]}`;
+  }
   return `${cards.slice(0, -1).join(', ')}, and ${cards.at(-1)}`;
 }
 
 function formatNameList(names) {
-  if (names.length <= 1) {return names[0] || '';}
-  if (names.length === 2) {return `${names[0]} and ${names[1]}`;}
+  if (names.length <= 1) {
+    return names[0] || '';
+  }
+  if (names.length === 2) {
+    return `${names[0]} and ${names[1]}`;
+  }
   return `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}`;
 }
 
 function showWinnerPicker() {
-  if (gameState.phase === GamePhase.SHOWDOWN) {showGameStatePotWinnerPicker();}
+  if (gameState.phase === GamePhase.SHOWDOWN) {
+    showGameStatePotWinnerPicker();
+  }
 }
 
 function showGameStatePotWinnerPicker() {
   const potIndex = gameState.potAwardIndex;
   const pot = gameState.pots[potIndex];
-  if (!pot || pot.amount < 0) {return;}
+  if (!pot || pot.amount < 0) {
+    return;
+  }
   const eligiblePlayers = pot.eligiblePlayerNumbers
     .map((playerId) => viewPlayer(playerId))
     .filter((player) => player && !player.folded && !player.eliminated);
@@ -1554,14 +2169,21 @@ function showGameStatePotWinnerPicker() {
   }
 
   showPotWinnerPicker(
-    potIndex === 0 ? 'Who had the best cards?' : `Who wins side pot ${potIndex}?`,
+    potIndex === 0
+      ? 'Who had the best cards?'
+      : `Who wins side pot ${potIndex}?`,
     eligiblePlayers.map((player) => ({ ...player, number: player.id })),
     (winnerNumber) => awardPot(potIndex, winnerNumber),
     (winnerNumbers) => awardSplitPot(potIndex, winnerNumbers),
   );
 }
 
-function showPotWinnerPicker(question, players, awardFunction, splitFunction = null) {
+function showPotWinnerPicker(
+  question,
+  players,
+  awardFunction,
+  splitFunction = null,
+) {
   turnIndicator.hidden = true;
   winnerQuestion.textContent = question;
   narrate(question);
@@ -1590,7 +2212,9 @@ function showPotWinnerPicker(question, players, awardFunction, splitFunction = n
       const isSelected = selectedWinnerNumbers.has(player.number);
       winnerButton.classList.toggle('selected', isSelected);
       winnerButton.setAttribute('aria-pressed', String(isSelected));
-      if (confirmSplitButton) {confirmSplitButton.disabled = selectedWinnerNumbers.size < 2;}
+      if (confirmSplitButton) {
+        confirmSplitButton.disabled = selectedWinnerNumbers.size < 2;
+      }
     });
     playerButtons.push(winnerButton);
     winnerOptions.append(winnerButton);
@@ -1616,13 +2240,17 @@ function showPotWinnerPicker(question, players, awardFunction, splitFunction = n
         button.classList.remove('selected');
         button.setAttribute('aria-pressed', 'false');
       });
-      winnerQuestion.textContent = splitMode ? 'Who tied for this pot?' : question;
+      winnerQuestion.textContent = splitMode
+        ? 'Who tied for this pot?'
+        : question;
       narrate(winnerQuestion.textContent);
       splitButton.textContent = splitMode ? 'Cancel split' : 'Split pot';
       confirmSplitButton.hidden = !splitMode;
       confirmSplitButton.disabled = true;
     });
-    confirmSplitButton.addEventListener('click', () => splitFunction([...selectedWinnerNumbers]));
+    confirmSplitButton.addEventListener('click', () =>
+      splitFunction([...selectedWinnerNumbers]),
+    );
     winnerOptions.append(splitButton, confirmSplitButton);
   }
 
@@ -1638,7 +2266,11 @@ function awardPot(potIndex, winnerNumber) {
 }
 
 function awardSplitPot(potIndex, winnerNumbers) {
-  invokeGame({ type: Transition.SPLIT_POT, potIndex, winnerIds: winnerNumbers });
+  invokeGame({
+    type: Transition.SPLIT_POT,
+    potIndex,
+    winnerIds: winnerNumbers,
+  });
   renderGameState();
 }
 
@@ -1673,7 +2305,8 @@ function startNewHand() {
 function connectVoiceForCurrentGame() {
   connectVoiceAgent()
     .then(async (agent) => {
-      const shouldAnnounceDeal = !dealPrompt.hidden && gameState.phase === GamePhase.DEAL_HOLE_CARDS;
+      const shouldAnnounceDeal =
+        !dealPrompt.hidden && gameState.phase === GamePhase.DEAL_HOLE_CARDS;
       if (shouldAnnounceDeal) {
         startMicrophoneAfterSpeech = gameSettings.startMicrophoneAutomatically;
         agent.speak(dealMessage.textContent);
@@ -1704,7 +2337,10 @@ function beginSeatPositioning() {
 }
 
 function lockSeatsAndStartGame() {
-  if (!seatingMode) {return;}
+  if (!seatingMode) {
+    return;
+  }
+  setGameStartedAt();
   lockClockwiseSeatOrder();
   seatingMode = false;
   gameScreen.classList.remove('seating-mode');
@@ -1734,13 +2370,22 @@ function confirmTurn() {
     action = { type: Transition.CHECK, playerId: currentPlayerNumber };
   } else if (pendingBet === amountToCall) {
     action = { type: Transition.CALL, playerId: currentPlayerNumber };
-  } else if (legalActions.some(({ type }) => type === Transition.ALL_IN) && pendingBet === player.chips) {
+  } else if (
+    legalActions.some(({ type }) => type === Transition.ALL_IN) &&
+    pendingBet === player.chips
+  ) {
     action = { type: Transition.ALL_IN, playerId: currentPlayerNumber };
   } else {
-    action = { type: Transition.BET, playerId: currentPlayerNumber, additionalChips: pendingBet };
+    action = {
+      type: Transition.BET,
+      playerId: currentPlayerNumber,
+      additionalChips: pendingBet,
+    };
   }
   invokeGame(action);
-  lastTurnEndedHandByFold = action.type === Transition.FOLD && gameState.phase === GamePhase.HAND_COMPLETE;
+  lastTurnEndedHandByFold =
+    action.type === Transition.FOLD &&
+    gameState.phase === GamePhase.HAND_COMPLETE;
   pendingFold = false;
   pendingVoiceAction = null;
   renderGameState();
@@ -1749,7 +2394,6 @@ function confirmTurn() {
 function foldCurrentPlayer() {
   pendingFold = true;
   updateBetControls();
-
 }
 
 function betCurrentPlayer(amount) {
@@ -1757,7 +2401,9 @@ function betCurrentPlayer(amount) {
   const player = viewPlayer(currentPlayerNumber);
   const requestedAmount = Number(amount);
 
-  if (!Number.isFinite(requestedAmount) || requestedAmount < 0) {return false;}
+  if (!Number.isFinite(requestedAmount) || requestedAmount < 0) {
+    return false;
+  }
 
   pendingFold = false;
   const maximumBet = bettingBoundsForView(player).maxAdditionalChips;
@@ -1781,7 +2427,11 @@ function stopDealNarration() {
 }
 
 function cardsAreDealt() {
-  if (!currentGameActions().some(({ type }) => type === Transition.CARDS_DEALT)) {return false;}
+  if (
+    !currentGameActions().some(({ type }) => type === Transition.CARDS_DEALT)
+  ) {
+    return false;
+  }
   stopDealNarration();
   invokeGame({ type: Transition.CARDS_DEALT });
   renderGameState();
@@ -1818,7 +2468,9 @@ chipDisplayModeButton.addEventListener('click', () => {
   updateChipDisplayModeButton();
 });
 chipEnabledCheckboxes.forEach((checkbox) => {
-  checkbox.addEventListener('change', () => updateChipDenominationAvailability(checkbox));
+  checkbox.addEventListener('change', () =>
+    updateChipDenominationAvailability(checkbox),
+  );
   updateChipDenominationAvailability(checkbox);
 });
 testVoiceButton.addEventListener('click', previewVoice);
@@ -1828,20 +2480,30 @@ voiceAudioFile.addEventListener('change', () => {
 });
 voiceAudioTestButton.addEventListener('click', testVoiceWithAudioFile);
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && !gameScreen.hidden && !viewIsGameWon()) {
+  if (
+    document.visibilityState === 'visible' &&
+    !gameScreen.hidden &&
+    !viewIsGameWon()
+  ) {
     keepScreenAwake();
   }
 });
 callActionButton.addEventListener('click', () => {
-  if (callActionButton.disabled) {return;}
+  if (callActionButton.disabled) {
+    return;
+  }
   const player = viewPlayer(viewActionPlayerNumber());
-  if (!player) {return;}
+  if (!player) {
+    return;
+  }
   raiseMode = false;
   pendingBet = amountToCallForView(player);
   confirm();
 });
 checkActionButton.addEventListener('click', () => {
-  if (checkActionButton.disabled) {return;}
+  if (checkActionButton.disabled) {
+    return;
+  }
   raiseMode = false;
   pendingBet = 0;
   pendingFold = false;
@@ -1853,34 +2515,50 @@ foldActionButton.addEventListener('click', () => {
   confirm();
 });
 allInActionButton.addEventListener('click', () => {
-  if (allInActionButton.disabled) {return;}
+  if (allInActionButton.disabled) {
+    return;
+  }
   const player = viewPlayer(viewActionPlayerNumber());
-  if (!player) {return;}
+  if (!player) {
+    return;
+  }
   raiseMode = false;
   betCurrentPlayer(player.chips);
   confirm();
 });
 raiseActionButton.addEventListener('click', enterRaiseMode);
 raiseDecreaseButton.addEventListener('click', () => {
-  if (!raiseDecreaseButton.disabled) {adjustRaiseBy(-1);}
+  if (!raiseDecreaseButton.disabled) {
+    adjustRaiseBy(-1);
+  }
 });
 raiseIncreaseButton.addEventListener('click', () => {
-  if (!raiseIncreaseButton.disabled) {adjustRaiseBy(1);}
+  if (!raiseIncreaseButton.disabled) {
+    adjustRaiseBy(1);
+  }
 });
 raiseShortcutButtons.forEach((button) => {
   button.addEventListener('click', () => {
-    if (!button.disabled) {adjustRaiseBy(Number(button.dataset.raiseAdjustment));}
+    if (!button.disabled) {
+      adjustRaiseBy(Number(button.dataset.raiseAdjustment));
+    }
   });
 });
-raiseTotalValue.addEventListener('change', () => setRaiseTotal(raiseTotalValue.value));
+raiseTotalValue.addEventListener('change', () =>
+  setRaiseTotal(raiseTotalValue.value),
+);
 raiseTotalValue.addEventListener('keydown', (event) => {
-  if (event.key !== 'Enter') {return;}
+  if (event.key !== 'Enter') {
+    return;
+  }
   event.preventDefault();
   setRaiseTotal(raiseTotalValue.value);
   raiseTotalValue.blur();
 });
 confirmRaiseButton.addEventListener('click', () => {
-  if (confirmRaiseButton.disabled) {return;}
+  if (confirmRaiseButton.disabled) {
+    return;
+  }
   raiseMode = false;
   confirm();
 });
@@ -1891,7 +2569,9 @@ helpButton.addEventListener('click', () => {
 });
 closeHelpButton.addEventListener('click', closeButtonHelp);
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !buttonHelp.hidden) {closeButtonHelp();}
+  if (event.key === 'Escape' && !buttonHelp.hidden) {
+    closeButtonHelp();
+  }
 });
 undoButton.addEventListener('click', () => undoLastTurn());
 showdownUndoButton.addEventListener('click', () => undoLastTurn(true));
@@ -1903,25 +2583,33 @@ resumeGameButton.addEventListener('click', resumeSavedGame);
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   clearSavedCurrentGame();
+  clearLog();
   gameSettings = {
     playerCount: Number(playerCount.value),
     startingMoney: Number(document.querySelector('#starting-money').value),
     smallBlind: Number(document.querySelector('#small-blind').value),
-    smallBlindIncrease: Number(document.querySelector('#small-blind-increase').value),
+    smallBlindIncrease: Number(
+      document.querySelector('#small-blind-increase').value,
+    ),
     useBigBlind: useBigBlindCheckbox.checked,
     useAnte: useAnteCheckbox.checked,
     ante: useAnteCheckbox.checked ? Number(anteInput.value) : 0,
     bettingLimit: bettingLimitSelect.value,
     fixedLimitBet: Number(fixedLimitBetInput.value),
     dealerNumber: Number(dealerSelect.value),
-    playerNames: [...playerNames.querySelectorAll('input')].map((input) => input.value),
+    playerNames: [...playerNames.querySelectorAll('input')].map(
+      (input) => input.value,
+    ),
     startMicrophoneAutomatically: startMicrophoneAutomaticallyCheckbox.checked,
     showVoiceTranscript: showVoiceTranscriptCheckbox.checked,
     chipDisplayMode,
     chipDenominations: selectedChipDenominations(),
     voice: selectedVoiceSettings(),
-    debugPreset: debugFeaturesCheckbox.checked ? debugPresetSelect.value : 'normal',
-    enableAudioFileInput: debugFeaturesCheckbox.checked && enableAudioFileInputCheckbox.checked,
+    debugPreset: debugFeaturesCheckbox.checked
+      ? debugPresetSelect.value
+      : 'normal',
+    enableAudioFileInput:
+      debugFeaturesCheckbox.checked && enableAudioFileInputCheckbox.checked,
   };
   saveLastGameSettings();
   makePlayers();

@@ -6,3 +6,7 @@ Never modify, reformat, rename, replace, regenerate, or delete a file in the fol
 - all files named .DS_Store
 - .gitignore
 - .env.local(special case: you may not read it either)
+
+# Keeping Stuff On
+
+If ever possible keep the localhost server on

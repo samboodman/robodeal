@@ -8,7 +8,9 @@
     "test": "node --test",
     "dev": "vite",
     "start": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "format": "prettier --write \"**/*.{js,mjs}\"",
+    "format:check": "prettier --check \"**/*.{js,mjs}\""
   },
   "repository": {
     "type": "git",
@@ -22,6 +24,7 @@
   },
   "homepage": "https://github.com/samboodman/robodeal#readme",
   "devDependencies": {
+    "prettier": "^3.9.6",
     "vite": "^8.2.1"
   }
 }

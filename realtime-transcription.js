@@ -22,7 +22,8 @@ function readableOpenAIError(response, responseBody) {
   const trimmedBody = responseBody.trim();
   return trimmedBody.length > 300
     ? `${trimmedBody.slice(0, 297)}...`
-    : trimmedBody || `OpenAI could not start live transcription (HTTP ${response.status}).`;
+    : trimmedBody ||
+        `OpenAI could not start live transcription (HTTP ${response.status}).`;
 }
 
 export function realtimeTranscriptionSession() {
@@ -41,25 +42,34 @@ export function realtimeTranscriptionSession() {
 }
 
 export async function createRealtimeTranscriptionClientSecret(apiKey) {
-  if (!apiKey) {return jsonError(500, 'The server is missing OPENAI_API_KEY.');}
+  if (!apiKey) {
+    return jsonError(500, 'The server is missing OPENAI_API_KEY.');
+  }
 
-  const response = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'OpenAI-Safety-Identifier': 'robodeal-anonymous',
+  const response = await fetch(
+    'https://api.openai.com/v1/realtime/client_secrets',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'OpenAI-Safety-Identifier': 'robodeal-anonymous',
+      },
+      body: JSON.stringify({ session: realtimeTranscriptionSession() }),
+      signal: AbortSignal.timeout(8000),
     },
-    body: JSON.stringify({ session: realtimeTranscriptionSession() }),
-    signal: AbortSignal.timeout(8000),
-  });
+  );
   const responseBody = await response.text();
   if (!response.ok) {
-    return jsonError(response.status, readableOpenAIError(response, responseBody));
+    return jsonError(
+      response.status,
+      readableOpenAIError(response, responseBody),
+    );
   }
   return {
     status: response.status,
-    contentType: response.headers.get('content-type') || 'application/json; charset=utf-8',
+    contentType:
+      response.headers.get('content-type') || 'application/json; charset=utf-8',
     body: responseBody,
   };
 }

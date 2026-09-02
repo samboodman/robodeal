@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { clockwisePlayerIds, normalizeSeatAngle, snapSeatAngle } from './seat-order.js';
+import {
+  clockwisePlayerIds,
+  normalizeSeatAngle,
+  snapSeatAngle,
+} from './seat-order.js';
 
 test('normalizes dragged seat angles around the table', () => {
   assert.equal(normalizeSeatAngle(0), 0);
@@ -16,11 +20,17 @@ test('uses physical clockwise positions instead of player numbers', () => {
 });
 
 test('snaps seats to the regular shape for the player count', () => {
-  const triangleStep = Math.PI * 2 / 3;
+  const triangleStep = (Math.PI * 2) / 3;
   const squareStep = Math.PI / 2;
 
-  assert.equal(snapSeatAngle(Math.PI / 2 + triangleStep * 1.05, 3), Math.PI / 2 + triangleStep);
-  assert.equal(snapSeatAngle(Math.PI / 2 + squareStep * 2.2, 4), Math.PI / 2 + squareStep * 2);
+  assert.equal(
+    snapSeatAngle(Math.PI / 2 + triangleStep * 1.05, 3),
+    Math.PI / 2 + triangleStep,
+  );
+  assert.equal(
+    snapSeatAngle(Math.PI / 2 + squareStep * 2.2, 4),
+    Math.PI / 2 + squareStep * 2,
+  );
 });
 
 test('every player count can snap to the four square angles', () => {
@@ -34,6 +44,9 @@ test('leaves a seat free when it is outside the magnetic snap distance', () => {
   const requestedAngle = 0.3;
   const fiveDegrees = Math.PI / 36;
 
-  assert.equal(snapSeatAngle(requestedAngle, 3, Math.PI / 2, fiveDegrees), requestedAngle);
+  assert.equal(
+    snapSeatAngle(requestedAngle, 3, Math.PI / 2, fiveDegrees),
+    requestedAngle,
+  );
   assert.equal(snapSeatAngle(0.05, 3, Math.PI / 2, fiveDegrees), 0);
 });
