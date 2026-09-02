@@ -16,12 +16,12 @@ export function maximumAdditionalBet(players, playerNumber) {
       (candidate) =>
         candidate.number !== playerNumber &&
         !candidate.folded &&
-        !candidate.eliminated,
+        !candidate.eliminated
     )
     .map(
       (candidate) =>
         (Number(candidate.handContribution) || 0) +
-        (Number(candidate.chips) || 0),
+        (Number(candidate.chips) || 0)
     );
   if (opposingTotals.length === 0) {
     return 0;
@@ -31,7 +31,7 @@ export function maximumAdditionalBet(players, playerNumber) {
   const playerChips = Math.max(0, Number(player.chips) || 0);
   const coverableAmount = Math.max(
     0,
-    Math.max(...opposingTotals) - playerContribution,
+    Math.max(...opposingTotals) - playerContribution
   );
   return Math.min(playerChips, coverableAmount);
 }
@@ -39,11 +39,11 @@ export function maximumAdditionalBet(players, playerNumber) {
 export function calculatePots(players) {
   const totalContributions = players.reduce(
     (total, player) => total + (Number(player.handContribution) || 0),
-    0,
+    0
   );
   const highestContribution = Math.max(
     0,
-    ...players.map((player) => Number(player.handContribution) || 0),
+    ...players.map((player) => Number(player.handContribution) || 0)
   );
   const eligiblePlayerNumbers = players
     .filter((player) => !player.folded && !player.eliminated)
@@ -54,12 +54,9 @@ export function calculatePots(players) {
       !player.folded &&
       !player.eliminated &&
       player.chips === 0 &&
-      player.handContribution > 0,
+      player.handContribution > 0
   );
 
-  // Unequal contributions are normal while a bet is waiting to be called.
-  // They only become separate pots when an all-in player caps the amount they
-  // can win. Until then, keep every contributed chip in one main pot.
   if (!hasAllInPlayer) {
     return totalContributions > 0
       ? [
@@ -76,7 +73,7 @@ export function calculatePots(players) {
     ...new Set(
       players
         .map((player) => Number(player.handContribution) || 0)
-        .filter((amount) => amount > 0),
+        .filter((amount) => amount > 0)
     ),
   ].sort((first, second) => first - second);
   const pots = [];
@@ -84,7 +81,7 @@ export function calculatePots(players) {
 
   contributionLevels.forEach((level) => {
     const contributors = players.filter(
-      (player) => player.handContribution >= level,
+      (player) => player.handContribution >= level
     );
     const amount = (level - previousLevel) * contributors.length;
     const eligiblePlayerNumbers = contributors
@@ -93,9 +90,6 @@ export function calculatePots(players) {
       .sort((first, second) => first - second);
     const previousPot = pots.at(-1);
 
-    // Chips from players who later fold are still dead money. If nobody in a
-    // contribution layer remains eligible, add that layer to the preceding
-    // contested pot instead of creating a pot that can never be awarded.
     if (eligiblePlayerNumbers.length === 0 && previousPot) {
       previousPot.amount += amount;
       previousPot.contributionCap = level;
@@ -103,9 +97,6 @@ export function calculatePots(players) {
       return;
     }
 
-    // Folded chips can create contribution levels without changing who may
-    // win them. Merge those levels so players are not asked to award two pots
-    // that have exactly the same eligible winners.
     if (
       previousPot &&
       samePlayers(previousPot.eligiblePlayerNumbers, eligiblePlayerNumbers)
@@ -128,9 +119,6 @@ export function potsForBettingDisplay(pots) {
     eligiblePlayerNumbers: [...pot.eligiblePlayerNumbers],
   }));
 
-  // A final layer with only one eligible player is not a contested side pot.
-  // It is an unresolved/uncalled part of the current wager. Keep it in the
-  // visible preceding pot until another player acts and makes a real side pot.
   while (
     displayedPots.length > 1 &&
     displayedPots.at(-1).eligiblePlayerNumbers.length <= 1
@@ -140,7 +128,7 @@ export function potsForBettingDisplay(pots) {
     precedingPot.amount += uncalledLayer.amount;
     precedingPot.contributionCap = Math.max(
       precedingPot.contributionCap,
-      uncalledLayer.contributionCap,
+      uncalledLayer.contributionCap
     );
   }
 
@@ -149,14 +137,14 @@ export function potsForBettingDisplay(pots) {
 
 export function hasBettingRoundFinished(players, highestRoundBet) {
   const playersWhoCanAct = players.filter(
-    (player) => !player.folded && !player.eliminated && player.chips > 0,
+    (player) => !player.folded && !player.eliminated && player.chips > 0
   );
 
   if (playersWhoCanAct.length === 0) {
     return true;
   }
   return playersWhoCanAct.every(
-    (player) => player.hasActedThisRound && player.roundBet === highestRoundBet,
+    (player) => player.hasActedThisRound && player.roundBet === highestRoundBet
   );
 }
 

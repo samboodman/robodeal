@@ -29,24 +29,23 @@ const smallNumbers = Object.freeze({
   ninety: 90,
 });
 
-/** Converts the first numeric phrase in text to a number. */
 export function wordsToNumber(input) {
-  const text = String(input || '')
+  const text = String(input || "")
     .toLowerCase()
-    .replace(/-/g, ' ')
-    .replace(/[^a-z0-9.$\s]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(/-/g, " ")
+    .replace(/[^a-z0-9.$\s]/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
   const digitAmount = text.match(/(?:^|\s)\$?(\d+(?:\.\d{1,2})?)(?=\s|$)/);
   if (digitAmount) {
     return Number(digitAmount[1]);
   }
 
-  const tokens = text.split(' ');
+  const tokens = text.split(" ");
   for (let start = 0; start < tokens.length; start += 1) {
     if (
       !(tokens[start] in smallNumbers) &&
-      !['hundred', 'thousand', 'million'].includes(tokens[start])
+      !["hundred", "thousand", "million"].includes(tokens[start])
     ) {
       continue;
     }
@@ -55,17 +54,17 @@ export function wordsToNumber(input) {
     let found = false;
     for (let index = start; index < tokens.length; index += 1) {
       const token = tokens[index];
-      if (token === 'and' && found) {
+      if (token === "and" && found) {
         continue;
       }
       if (token in smallNumbers) {
         current += smallNumbers[token];
         found = true;
-      } else if (token === 'hundred') {
+      } else if (token === "hundred") {
         current = Math.max(1, current) * 100;
         found = true;
-      } else if (token === 'thousand' || token === 'million') {
-        const scale = token === 'thousand' ? 1_000 : 1_000_000;
+      } else if (token === "thousand" || token === "million") {
+        const scale = token === "thousand" ? 1_000 : 1_000_000;
         total += Math.max(1, current) * scale;
         current = 0;
         found = true;

@@ -1,48 +1,48 @@
-import { defineConfig, loadEnv } from 'vite';
-import { handleVoiceApi } from './voice-api-handler.js';
-import { createRealtimeTranscriptionClientSecret } from './realtime-transcription.js';
-import { handleWordsToNumberApi } from './word-to-number-handler.js';
+import { defineConfig, loadEnv } from "vite";
+import { handleVoiceApi } from "./voice-api-handler.js";
+import { createRealtimeTranscriptionClientSecret } from "./realtime-transcription.js";
+import { handleWordsToNumberApi } from "./word-to-number-handler.js";
 
 async function readJsonBody(request) {
   const chunks = [];
   for await (const chunk of request) {
     chunks.push(chunk);
   }
-  return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+  return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 }
 
 function localWordsToNumberApi() {
   return {
-    name: 'robodeal-local-words-to-number-api',
+    name: "robodeal-local-words-to-number-api",
     configureServer(server) {
       server.middlewares.use(
-        '/api/words-to-number',
+        "/api/words-to-number",
         async (request, response) => {
-          response.setHeader('Content-Type', 'application/json; charset=utf-8');
-          if (request.method !== 'POST') {
+          response.setHeader("Content-Type", "application/json; charset=utf-8");
+          if (request.method !== "POST") {
             response.statusCode = 405;
             response.end(
               JSON.stringify({
-                error: 'Use POST for words-to-number requests.',
-              }),
+                error: "Use POST for words-to-number requests.",
+              })
             );
             return;
           }
           try {
             const result = handleWordsToNumberApi(await readJsonBody(request));
             response.statusCode = result.status;
-            response.setHeader('Content-Type', result.contentType);
+            response.setHeader("Content-Type", result.contentType);
             response.end(result.body);
           } catch (error) {
-            console.error('Local words-to-number request failed:', error);
+            console.error("Local words-to-number request failed:", error);
             response.statusCode = 400;
             response.end(
               JSON.stringify({
-                error: 'The words-to-number request was invalid.',
-              }),
+                error: "The words-to-number request was invalid.",
+              })
             );
           }
-        },
+        }
       );
     },
   };
@@ -50,16 +50,16 @@ function localWordsToNumberApi() {
 
 function localRealtimeApi(apiKey) {
   return {
-    name: 'robodeal-local-realtime-api',
+    name: "robodeal-local-realtime-api",
     configureServer(server) {
       server.middlewares.use(
-        '/api/realtime-call',
+        "/api/realtime-call",
         async (request, response) => {
-          response.setHeader('Content-Type', 'application/json; charset=utf-8');
-          if (request.method !== 'POST') {
+          response.setHeader("Content-Type", "application/json; charset=utf-8");
+          if (request.method !== "POST") {
             response.statusCode = 405;
             response.end(
-              JSON.stringify({ error: 'Use POST for a Realtime call.' }),
+              JSON.stringify({ error: "Use POST for a Realtime call." })
             );
             return;
           }
@@ -67,16 +67,16 @@ function localRealtimeApi(apiKey) {
             const result =
               await createRealtimeTranscriptionClientSecret(apiKey);
             response.statusCode = result.status;
-            response.setHeader('Content-Type', result.contentType);
+            response.setHeader("Content-Type", result.contentType);
             response.end(result.body);
           } catch (error) {
-            console.error('Local Realtime call failed:', error);
+            console.error("Local Realtime call failed:", error);
             response.statusCode = 500;
             response.end(
-              JSON.stringify({ error: 'The local Realtime server failed.' }),
+              JSON.stringify({ error: "The local Realtime server failed." })
             );
           }
-        },
+        }
       );
     },
   };
@@ -84,14 +84,14 @@ function localRealtimeApi(apiKey) {
 
 function localVoiceApi(apiKey) {
   return {
-    name: 'robodeal-local-voice-api',
+    name: "robodeal-local-voice-api",
     configureServer(server) {
-      server.middlewares.use('/api/voice', async (request, response) => {
-        response.setHeader('Content-Type', 'application/json; charset=utf-8');
-        if (request.method !== 'POST') {
+      server.middlewares.use("/api/voice", async (request, response) => {
+        response.setHeader("Content-Type", "application/json; charset=utf-8");
+        if (request.method !== "POST") {
           response.statusCode = 405;
           response.end(
-            JSON.stringify({ error: 'Use POST for voice requests.' }),
+            JSON.stringify({ error: "Use POST for voice requests." })
           );
           return;
         }
@@ -100,7 +100,7 @@ function localVoiceApi(apiKey) {
           const body = await readJsonBody(request);
           const result = await handleVoiceApi(body, apiKey);
           response.statusCode = result.status;
-          response.setHeader('Content-Type', result.contentType);
+          response.setHeader("Content-Type", result.contentType);
           if (result.body?.getReader) {
             const reader = result.body.getReader();
             for (;;) {
@@ -115,10 +115,10 @@ function localVoiceApi(apiKey) {
           }
           response.end(result.body);
         } catch (error) {
-          console.error('Local voice request failed:', error);
+          console.error("Local voice request failed:", error);
           response.statusCode = 500;
           response.end(
-            JSON.stringify({ error: 'The local voice server failed.' }),
+            JSON.stringify({ error: "The local voice server failed." })
           );
         }
       });
@@ -127,7 +127,7 @@ function localVoiceApi(apiKey) {
 }
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '');
+  const env = loadEnv(mode, process.cwd(), "");
   return {
     plugins: [
       localRealtimeApi(env.OPENAI_API_KEY),

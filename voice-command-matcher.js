@@ -1,26 +1,26 @@
-import { wordsToNumber } from './word-to-number.js';
+import { wordsToNumber } from "./word-to-number.js";
 
 export const voiceCommandPriorities = Object.freeze([
-  'cancelAction',
-  'confirmAction',
-  'undo',
-  'nextHand',
-  'cardsDealt',
-  'allIn',
-  'raise',
-  'bet',
-  'fold',
-  'call',
-  'check',
+  "cancelAction",
+  "confirmAction",
+  "undo",
+  "nextHand",
+  "cardsDealt",
+  "allIn",
+  "raise",
+  "bet",
+  "fold",
+  "call",
+  "check",
 ]);
 
 function normalizeTranscript(transcript) {
-  return String(transcript || '')
+  return String(transcript || "")
     .toLowerCase()
-    .replace(/[’']/g, ' ')
-    .replace(/-/g, ' ')
-    .replace(/[^a-z0-9.$\s]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(/[’']/g, " ")
+    .replace(/-/g, " ")
+    .replace(/[^a-z0-9.$\s]/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -47,12 +47,11 @@ function betTotal(text) {
     return null;
   }
   const amount = amountFrom(
-    text.slice(betMatch.index + betMatch[0].length).trim(),
+    text.slice(betMatch.index + betMatch[0].length).trim()
   );
   return Number.isFinite(amount) && amount > 0 ? amount : null;
 }
 
-/** Returns one high-confidence poker command, or null so the model can decide. */
 export function matchVoiceCommand(transcript) {
   const text = normalizeTranscript(transcript);
   if (!text) {
@@ -63,100 +62,99 @@ export function matchVoiceCommand(transcript) {
     /\b(?:cancel|never mind|never mind that|don t do it)\b/.test(text) ||
     /^(?:no|nope)$/.test(text)
   ) {
-    return { name: 'cancelAction', args: {} };
+    return { name: "cancelAction", args: {} };
   }
   if (
     /\b(?:confirm|yes do it|go ahead|do it)\b/.test(text) ||
     /^(?:yes|yeah|yep)$/.test(text)
   ) {
-    return { name: 'confirmAction', args: {} };
+    return { name: "confirmAction", args: {} };
   }
   if (/\b(?:undo|take that back|revert that)\b/.test(text)) {
-    return { name: 'undo', args: {} };
+    return { name: "undo", args: {} };
   }
   if (/\b(?:next hand|new hand|deal again)\b/.test(text)) {
-    return { name: 'nextHand', args: {} };
+    return { name: "nextHand", args: {} };
   }
   if (
     /\b(?:cards are dealt|cards dealt|finished dealing|done dealing)\b/.test(
-      text,
+      text
     )
   ) {
-    return { name: 'cardsDealt', args: {} };
+    return { name: "cardsDealt", args: {} };
   }
   if (
     /\b(?:all in|shove|shove it|jam|jam it|send it|whole stack|everything i have)\b/.test(
-      text,
+      text
     )
   ) {
-    return { name: 'allIn', args: {} };
+    return { name: "allIn", args: {} };
   }
 
   const raiseAmount = raisedAmount(text);
   if (raiseAmount !== null) {
-    return { name: 'raise', args: { amount: raiseAmount } };
+    return { name: "raise", args: { amount: raiseAmount } };
   }
 
   const total = betTotal(text);
   if (total !== null) {
-    return { name: 'bet', args: { total } };
+    return { name: "bet", args: { total } };
   }
 
   if (
     /\b(?:fold|muck|muck them|chuck them|chuck em)\b/.test(text) ||
     /\bi (?:am|m) out\b/.test(text)
   ) {
-    return { name: 'fold', args: {} };
+    return { name: "fold", args: {} };
   }
   if (
     /\bcall\b/.test(text) ||
     /\bmatch (?:it|that|the bet|your bet|\$?\d+)\b/.test(text) ||
     /\b(?:i |i ll |i will )?see (?:you|ya|your bet|that|it)\b/.test(text)
   ) {
-    return { name: 'call', args: {} };
+    return { name: "call", args: {} };
   }
   if (
     /\bcheck\b/.test(text) ||
     /\bi (?:am|m) good\b/.test(text) ||
     /\b(?:tap|tap the table)\b/.test(text)
   ) {
-    return { name: 'check', args: {} };
+    return { name: "check", args: {} };
   }
 
   return null;
 }
 
-/** Uses the first-party API for spoken wager amounts, with local matching as a fallback. */
 export async function matchVoiceCommandViaApi(
   transcript,
-  fetchImpl = globalThis.fetch,
+  fetchImpl = globalThis.fetch
 ) {
   const directCommand = matchVoiceCommand(transcript);
-  if (!directCommand || !['raise', 'bet'].includes(directCommand.name)) {
+  if (!directCommand || !["raise", "bet"].includes(directCommand.name)) {
     return directCommand;
   }
 
   const text = normalizeTranscript(transcript);
   const actionMatch = text.match(
-    directCommand.name === 'raise'
+    directCommand.name === "raise"
       ? /\b(?:raise|reraise|re raise|bump)\b/
-      : /\b(?:bet|wager)\b/,
+      : /\b(?:bet|wager)\b/
   );
   const amountText = actionMatch
     ? text.slice(actionMatch.index + actionMatch[0].length).trim()
-    : '';
+    : "";
   if (
     !amountText ||
     /(?:^|\s)\$?\d/.test(amountText) ||
-    typeof fetchImpl !== 'function'
+    typeof fetchImpl !== "function"
   ) {
     return directCommand;
   }
 
   try {
-    const response = await fetchImpl('/api/words-to-number', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const response = await fetchImpl("/api/words-to-number", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ words: amountText }),
     });
     if (!response.ok) {
@@ -166,9 +164,9 @@ export async function matchVoiceCommandViaApi(
     if (!Number.isFinite(result.number) || result.number <= 0) {
       return directCommand;
     }
-    return directCommand.name === 'raise'
-      ? { name: 'raise', args: { amount: result.number } }
-      : { name: 'bet', args: { total: result.number } };
+    return directCommand.name === "raise"
+      ? { name: "raise", args: { amount: result.number } }
+      : { name: "bet", args: { total: result.number } };
   } catch {
     return directCommand;
   }

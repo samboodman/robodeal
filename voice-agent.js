@@ -1,11 +1,11 @@
 import {
   matchVoiceCommand,
   matchVoiceCommandViaApi,
-} from './voice-command-matcher.js';
+} from "./voice-command-matcher.js";
 
 export function fillPrompt(template, values) {
   return template.replace(/\{\{([A-Z_]+)\}\}/g, (placeholder, key) =>
-    Object.hasOwn(values, key) ? String(values[key]) : placeholder,
+    Object.hasOwn(values, key) ? String(values[key]) : placeholder
   );
 }
 
@@ -20,11 +20,11 @@ export function microphoneAudioConstraints(supported = {}) {
 }
 
 function bytesToBase64(bytes) {
-  let binary = '';
+  let binary = "";
   const blockSize = 0x8000;
   for (let offset = 0; offset < bytes.length; offset += blockSize) {
     binary += String.fromCharCode(
-      ...bytes.subarray(offset, offset + blockSize),
+      ...bytes.subarray(offset, offset + blockSize)
     );
   }
   return btoa(binary);
@@ -40,17 +40,17 @@ function responseText(response) {
   }
   return (response.output || [])
     .flatMap((item) => item.content || [])
-    .filter((content) => content.type === 'output_text')
+    .filter((content) => content.type === "output_text")
     .map((content) => content.text)
-    .join('\n')
+    .join("\n")
     .trim();
 }
 
 function comparableTranscript(transcript) {
-  return String(transcript || '')
+  return String(transcript || "")
     .toLowerCase()
-    .replace(/[^a-z0-9$\s]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(/[^a-z0-9$\s]/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -59,7 +59,7 @@ function preciseNow() {
 }
 
 const silentAudioUrl =
-  'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAACAgICA';
+  "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAACAgICA";
 const pcmSampleRate = 24_000;
 const completeCommandSilenceMs = 220;
 const fallbackSilenceMs = 650;
@@ -71,10 +71,10 @@ function pcmWavBlob(pcmBytes) {
     [...text].forEach((character, index) => {
       view.setUint8(offset + index, character.charCodeAt(0));
     });
-  writeText(0, 'RIFF');
+  writeText(0, "RIFF");
   view.setUint32(4, 36 + pcmBytes.byteLength, true);
-  writeText(8, 'WAVE');
-  writeText(12, 'fmt ');
+  writeText(8, "WAVE");
+  writeText(12, "fmt ");
   view.setUint32(16, 16, true);
   view.setUint16(20, 1, true);
   view.setUint16(22, 1, true);
@@ -82,21 +82,21 @@ function pcmWavBlob(pcmBytes) {
   view.setUint32(28, pcmSampleRate * 2, true);
   view.setUint16(32, 2, true);
   view.setUint16(34, 16, true);
-  writeText(36, 'data');
+  writeText(36, "data");
   view.setUint32(40, pcmBytes.byteLength, true);
-  return new Blob([header, pcmBytes], { type: 'audio/wav' });
+  return new Blob([header, pcmBytes], { type: "audio/wav" });
 }
 
 async function apiJson(body, signal) {
-  const response = await fetch('/api/voice', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const response = await fetch("/api/voice", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
     signal,
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(result.error || 'The voice service failed.');
+    throw new Error(result.error || "The voice service failed.");
   }
   return result;
 }
@@ -118,7 +118,7 @@ export class VoiceAgent {
     this.onTranscript = onTranscript;
     this.onStatus = onStatus;
     this.onLatency = onLatency;
-    this.voice = 'alloy';
+    this.voice = "alloy";
     this.isConnected = false;
     this.microphoneStream = null;
     this.peerConnection = null;
@@ -162,17 +162,17 @@ export class VoiceAgent {
     return Boolean(this.microphoneStream);
   }
 
-  async connect(voice = 'alloy') {
+  async connect(voice = "alloy") {
     this.disconnect();
     this.voice = voice;
     this.isConnected = true;
-    this.onStatus('AI connected.');
+    this.onStatus("AI connected.");
   }
 
   updateContext() {}
 
   unlockAudioPlayback() {
-    if (typeof Audio === 'undefined' || this.audioUnlocked) {
+    if (typeof Audio === "undefined" || this.audioUnlocked) {
       return;
     }
     this.audio ||= new Audio();
@@ -197,7 +197,7 @@ export class VoiceAgent {
     }
     this.cancelResponse();
     this.pendingResponseCount = 1;
-    this.onStatus('Thinking…');
+    this.onStatus("Thinking…");
     this.activeRequest = new AbortController();
     const restoreMicrophone = this.recording && !this.microphoneMuted;
     if (restoreMicrophone) {
@@ -205,24 +205,24 @@ export class VoiceAgent {
     }
     let failed = false;
     try {
-      const response = await fetch('/api/voice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'speech', text, voice: this.voice }),
+      const response = await fetch("/api/voice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "speech", text, voice: this.voice }),
         signal: this.activeRequest.signal,
       });
       if (!response.ok) {
         const result = await response.json().catch(() => ({}));
-        throw new Error(result.error || 'Speech generation failed.');
+        throw new Error(result.error || "Speech generation failed.");
       }
       if (!this.connected) {
         return;
       }
       this.onTranscript(`RoboDeal: “${text}”`);
-      this.onStatus('Speaking…');
+      this.onStatus("Speaking…");
       await this.playPcmResponse(response);
     } catch (error) {
-      failed = error.name !== 'AbortError';
+      failed = error.name !== "AbortError";
       if (failed) {
         this.onStatus(`AI error: ${error.message}`);
       }
@@ -240,31 +240,31 @@ export class VoiceAgent {
 
   async startMicrophone() {
     if (!this.connected) {
-      throw new Error('The AI is not connected yet.');
+      throw new Error("The AI is not connected yet.");
     }
     if (this.recording) {
       return;
     }
     const supported = navigator.mediaDevices.getSupportedConstraints?.() || {};
-    this.onStatus('Starting microphone…');
+    this.onStatus("Starting microphone…");
     try {
       this.microphoneStream = await navigator.mediaDevices.getUserMedia({
         audio: microphoneAudioConstraints(supported),
       });
       this.peerConnection = new RTCPeerConnection();
-      this.dataChannel = this.peerConnection.createDataChannel('oai-events');
-      this.dataChannel.addEventListener('message', (event) =>
-        this.handleRealtimeEvent(event),
+      this.dataChannel = this.peerConnection.createDataChannel("oai-events");
+      this.dataChannel.addEventListener("message", (event) =>
+        this.handleRealtimeEvent(event)
       );
-      this.dataChannel.addEventListener('open', () => this.startClientVad());
-      this.dataChannel.addEventListener('close', () => {
+      this.dataChannel.addEventListener("open", () => this.startClientVad());
+      this.dataChannel.addEventListener("close", () => {
         if (this.connected && this.recording) {
-          this.onStatus('Voice unavailable: transcription connection closed.');
+          this.onStatus("Voice unavailable: transcription connection closed.");
         }
       });
-      this.peerConnection.addEventListener?.('connectionstatechange', () => {
-        if (this.peerConnection?.connectionState === 'failed') {
-          this.onStatus('Voice unavailable: transcription connection failed.');
+      this.peerConnection.addEventListener?.("connectionstatechange", () => {
+        if (this.peerConnection?.connectionState === "failed") {
+          this.onStatus("Voice unavailable: transcription connection failed.");
         }
       });
       const microphoneTrack =
@@ -274,34 +274,34 @@ export class VoiceAgent {
 
       const offer = await this.peerConnection.createOffer();
       await this.peerConnection.setLocalDescription(offer);
-      const tokenResponse = await fetch('/api/realtime-call', {
-        method: 'POST',
+      const tokenResponse = await fetch("/api/realtime-call", {
+        method: "POST",
       });
       const tokenData = await tokenResponse.json().catch(() => ({}));
       if (!tokenResponse.ok || !tokenData.value) {
         throw new Error(
-          tokenData.error || 'Could not create a live transcription key.',
+          tokenData.error || "Could not create a live transcription key."
         );
       }
       const connectionController = new AbortController();
       const connectionTimeout = setTimeout(
         () => connectionController.abort(),
-        12000,
+        12000
       );
       let response;
       try {
-        response = await fetch('https://api.openai.com/v1/realtime/calls', {
-          method: 'POST',
+        response = await fetch("https://api.openai.com/v1/realtime/calls", {
+          method: "POST",
           headers: {
             Authorization: `Bearer ${tokenData.value}`,
-            'Content-Type': 'application/sdp',
+            "Content-Type": "application/sdp",
           },
           body: offer.sdp,
           signal: connectionController.signal,
         });
       } catch (error) {
-        if (error.name === 'AbortError') {
-          throw new Error('OpenAI took too long to connect. Please try again.');
+        if (error.name === "AbortError") {
+          throw new Error("OpenAI took too long to connect. Please try again.");
         }
         throw error;
       } finally {
@@ -309,7 +309,7 @@ export class VoiceAgent {
       }
       const answer = await response.text();
       if (!response.ok) {
-        let message = 'The live transcription connection failed.';
+        let message = "The live transcription connection failed.";
         try {
           message =
             JSON.parse(answer).error?.message ||
@@ -319,13 +319,13 @@ export class VoiceAgent {
         throw new Error(message);
       }
       await this.peerConnection.setRemoteDescription({
-        type: 'answer',
+        type: "answer",
         sdp: answer,
       });
-      if (this.dataChannel.readyState === 'open') {
+      if (this.dataChannel.readyState === "open") {
         this.startClientVad();
       }
-      this.onStatus('Listening');
+      this.onStatus("Listening");
     } catch (error) {
       this.closeMicrophoneConnection();
       throw error;
@@ -337,7 +337,7 @@ export class VoiceAgent {
       return;
     }
     this.closeMicrophoneConnection();
-    this.onStatus('Microphone off');
+    this.onStatus("Microphone off");
   }
 
   handleRealtimeEvent(messageEvent) {
@@ -348,28 +348,28 @@ export class VoiceAgent {
       return;
     }
 
-    if (event.type === 'input_audio_buffer.speech_started') {
+    if (event.type === "input_audio_buffer.speech_started") {
       if (!this.microphoneMuted) {
         this.currentSpeechTiming = {
           utteranceId: event.item_id || null,
           speechStartedAt: preciseNow(),
         };
-        this.onStatus('Hearing speech…');
+        this.onStatus("Hearing speech…");
       }
       return;
     }
-    if (event.type === 'input_audio_buffer.speech_stopped') {
+    if (event.type === "input_audio_buffer.speech_stopped") {
       if (!this.microphoneMuted) {
         this.currentSpeechTiming ||= { utteranceId: event.item_id || null };
         this.currentSpeechTiming.speechStoppedAt = preciseNow();
-        this.onStatus('Transcribing…');
+        this.onStatus("Transcribing…");
       }
       return;
     }
-    if (event.type === 'conversation.item.input_audio_transcription.delta') {
-      const itemId = event.item_id || 'current';
+    if (event.type === "conversation.item.input_audio_transcription.delta") {
+      const itemId = event.item_id || "current";
       this.latestDeltaItemId = itemId;
-      const transcript = `${this.transcriptDeltas.get(itemId) || ''}${event.delta || ''}`;
+      const transcript = `${this.transcriptDeltas.get(itemId) || ""}${event.delta || ""}`;
       this.transcriptDeltas.set(itemId, transcript);
       if (transcript.trim()) {
         this.onTranscript(`Hearing: “${transcript.trim()}”`);
@@ -378,14 +378,14 @@ export class VoiceAgent {
       return;
     }
     if (
-      event.type === 'conversation.item.input_audio_transcription.completed'
+      event.type === "conversation.item.input_audio_transcription.completed"
     ) {
-      const itemId = event.item_id || 'current';
+      const itemId = event.item_id || "current";
       if (this.latestDeltaItemId === itemId) {
         this.latestDeltaItemId = null;
       }
       this.transcriptDeltas.delete(itemId);
-      const transcript = String(event.transcript || '').trim();
+      const transcript = String(event.transcript || "").trim();
       const prepared = this.preparedTranscriptCommands.get(itemId);
       this.preparedTranscriptCommands.delete(itemId);
       if (!transcript) {
@@ -402,7 +402,7 @@ export class VoiceAgent {
         this.processedUtteranceIds.add(utteranceId);
         if (this.processedUtteranceIds.size > 100) {
           this.processedUtteranceIds.delete(
-            this.processedUtteranceIds.values().next().value,
+            this.processedUtteranceIds.values().next().value
           );
         }
       }
@@ -417,16 +417,16 @@ export class VoiceAgent {
           : null;
       this.transcriptQueue = this.transcriptQueue
         .then(() =>
-          this.processLiveTranscript(transcript, preparedCommand, timing),
+          this.processLiveTranscript(transcript, preparedCommand, timing)
         )
         .catch((error) => {
           this.onStatus(`AI error: ${error.message}`);
         });
       return;
     }
-    if (event.type === 'error') {
+    if (event.type === "error") {
       this.onStatus(
-        `AI error: ${event.error?.message || 'Live transcription failed.'}`,
+        `AI error: ${event.error?.message || "Live transcription failed."}`
       );
     }
   }
@@ -444,7 +444,7 @@ export class VoiceAgent {
       this.preparedTranscriptCommands.delete(itemId);
       return;
     }
-    const command = ['raise', 'bet'].includes(localCommand.name)
+    const command = ["raise", "bet"].includes(localCommand.name)
       ? matchVoiceCommandViaApi(transcript)
       : Promise.resolve(localCommand);
     this.preparedTranscriptCommands.set(itemId, {
@@ -456,7 +456,7 @@ export class VoiceAgent {
   async processLiveTranscript(
     transcript,
     preparedCommand = null,
-    timing = null,
+    timing = null
   ) {
     if (!this.connected || !this.recording) {
       return;
@@ -472,10 +472,10 @@ export class VoiceAgent {
         transcript,
         this.activeRequest.signal,
         preparedCommand && (await preparedCommand),
-        timing,
+        timing
       );
     } catch (error) {
-      failed = error.name !== 'AbortError';
+      failed = error.name !== "AbortError";
       if (failed) {
         this.onStatus(`AI error: ${error.message}`);
       }
@@ -489,7 +489,7 @@ export class VoiceAgent {
           this.setMicrophoneMuted(false);
         }
         if (!failed && !this.backgroundSpeech) {
-          this.onStatus('Listening');
+          this.onStatus("Listening");
         }
       }
     }
@@ -510,14 +510,14 @@ export class VoiceAgent {
       globalThis.AudioContext || globalThis.webkitAudioContext;
     if (!AudioContextClass) {
       this.onStatus(
-        'Voice unavailable: this browser cannot detect when speech ends.',
+        "Voice unavailable: this browser cannot detect when speech ends."
       );
       return;
     }
     this.vadAudioContext = new AudioContextClass();
     this.vadAudioContext.resume?.().catch(() => {});
     this.vadSource = this.vadAudioContext.createMediaStreamSource(
-      this.microphoneStream,
+      this.microphoneStream
     );
     this.vadAnalyser = this.vadAudioContext.createAnalyser();
     this.vadAnalyser.fftSize = 1024;
@@ -533,7 +533,7 @@ export class VoiceAgent {
     this.vadAnalyser.getFloatTimeDomainData(this.vadSamples);
     const sumOfSquares = this.vadSamples.reduce(
       (sum, sample) => sum + sample * sample,
-      0,
+      0
     );
     const volume = Math.sqrt(sumOfSquares / this.vadSamples.length);
     if (volume >= 0.018) {
@@ -544,7 +544,7 @@ export class VoiceAgent {
           utteranceId: this.latestDeltaItemId,
           speechStartedAt: preciseNow(),
         };
-        this.onStatus('Hearing speech…');
+        this.onStatus("Hearing speech…");
       }
       this.vadLastVoiceAt = now;
       return;
@@ -569,14 +569,14 @@ export class VoiceAgent {
   }
 
   commitDetectedSpeechTurn() {
-    if (this.dataChannel?.readyState !== 'open') {
+    if (this.dataChannel?.readyState !== "open") {
       return;
     }
     this.currentSpeechTiming ||= { utteranceId: this.latestDeltaItemId };
     this.currentSpeechTiming.speechStoppedAt = preciseNow();
-    this.onStatus('Transcribing…');
+    this.onStatus("Transcribing…");
     this.dataChannel.send(
-      JSON.stringify({ type: 'input_audio_buffer.commit' }),
+      JSON.stringify({ type: "input_audio_buffer.commit" })
     );
   }
 
@@ -613,17 +613,17 @@ export class VoiceAgent {
 
   async playAudioFile(file) {
     if (!this.connected) {
-      throw new Error('The AI is not connected yet.');
+      throw new Error("The AI is not connected yet.");
     }
     if (!file) {
-      throw new Error('Choose an audio file first.');
+      throw new Error("Choose an audio file first.");
     }
     if (this.audioTestRunning) {
-      throw new Error('An audio test is already running.');
+      throw new Error("An audio test is already running.");
     }
     this.audioTestRunning = true;
     try {
-      await this.processAudio(file, file.name || 'audio');
+      await this.processAudio(file, file.name || "audio");
     } finally {
       this.audioTestRunning = false;
     }
@@ -643,20 +643,20 @@ export class VoiceAgent {
       inputSubmittedAt: preciseNow(),
     };
     try {
-      this.onStatus('Transcribing…');
+      this.onStatus("Transcribing…");
       const transcription = await apiJson(
         {
-          action: 'transcribe',
+          action: "transcribe",
           audio: await blobToBase64(audio),
-          mimeType: audio.type || 'audio/webm',
+          mimeType: audio.type || "audio/webm",
           fileName,
           prompt: this.prompts.transcription.prompt,
         },
-        this.activeRequest.signal,
+        this.activeRequest.signal
       );
-      const transcript = String(transcription.text || '').trim();
+      const transcript = String(transcription.text || "").trim();
       if (!transcript) {
-        throw new Error('No speech was detected.');
+        throw new Error("No speech was detected.");
       }
       timing.transcriptionCompletedAt = preciseNow();
       this.onTranscript(`Heard: “${transcript}”`);
@@ -664,10 +664,10 @@ export class VoiceAgent {
         transcript,
         this.activeRequest.signal,
         null,
-        timing,
+        timing
       );
     } catch (error) {
-      failed = error.name !== 'AbortError';
+      failed = error.name !== "AbortError";
       if (failed) {
         this.onStatus(`AI error: ${error.message}`);
       }
@@ -692,8 +692,8 @@ export class VoiceAgent {
   async processText(transcript, signal, preparedCommand = null, timing = null) {
     const directCommand =
       preparedCommand || (await matchVoiceCommandViaApi(transcript));
-    if (directCommand && typeof this.executeTool === 'function') {
-      this.onStatus('Applying action…');
+    if (directCommand && typeof this.executeTool === "function") {
+      this.onStatus("Applying action…");
       let result;
       try {
         result = await this.executeTool(directCommand.name, directCommand.args);
@@ -707,7 +707,7 @@ export class VoiceAgent {
         this.finishLatency(timing);
         return;
       }
-      const message = String(result?.message || '').trim();
+      const message = String(result?.message || "").trim();
       if (message) {
         this.startBackgroundAcknowledgement(message, timing);
       } else {
@@ -716,33 +716,33 @@ export class VoiceAgent {
       return;
     }
 
-    this.onStatus('Thinking…');
+    this.onStatus("Thinking…");
     let response = await apiJson(
       {
-        action: 'respond',
+        action: "respond",
         input: transcript,
         instructions: this.getInstructions(),
         tools: this.tools,
       },
-      signal,
+      signal
     );
 
     for (let turn = 0; turn < 4; turn += 1) {
       const functionCalls = (response.output || []).filter(
-        (item) => item.type === 'function_call',
+        (item) => item.type === "function_call"
       );
       if (functionCalls.length === 0) {
         break;
       }
       const outputs = [];
       let shouldStaySilent = false;
-      this.onStatus('Applying action…');
+      this.onStatus("Applying action…");
       for (const call of functionCalls) {
         let result;
         try {
           result = await this.executeTool(
             call.name,
-            JSON.parse(call.arguments || '{}'),
+            JSON.parse(call.arguments || "{}")
           );
         } catch (error) {
           result = { ok: false, message: error.message };
@@ -752,7 +752,7 @@ export class VoiceAgent {
         }
         shouldStaySilent ||= Boolean(result.silent);
         outputs.push({
-          type: 'function_call_output',
+          type: "function_call_output",
           call_id: call.call_id,
           output: JSON.stringify(result),
         });
@@ -761,16 +761,16 @@ export class VoiceAgent {
         this.finishLatency(timing);
         return;
       }
-      this.onStatus('Thinking…');
+      this.onStatus("Thinking…");
       response = await apiJson(
         {
-          action: 'respond',
+          action: "respond",
           input: outputs,
           previousResponseId: response.id,
           instructions: this.getInstructions(),
           tools: this.tools,
         },
-        signal,
+        signal
       );
     }
 
@@ -787,7 +787,7 @@ export class VoiceAgent {
     this.backgroundSpeechController = controller;
     const speech = this.speakWithoutCancelling(text, controller.signal, timing)
       .catch((error) => {
-        if (error.name !== 'AbortError') {
+        if (error.name !== "AbortError") {
           this.onStatus(`AI error: ${error.message}`);
         }
       })
@@ -848,18 +848,18 @@ export class VoiceAgent {
     if (timing) {
       timing.ttsRequestedAt = preciseNow();
     }
-    const response = await fetch('/api/voice', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'speech', text, voice: this.voice }),
+    const response = await fetch("/api/voice", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "speech", text, voice: this.voice }),
       signal,
     });
     if (!response.ok) {
       const result = await response.json().catch(() => ({}));
-      throw new Error(result.error || 'Speech generation failed.');
+      throw new Error(result.error || "Speech generation failed.");
     }
     this.onTranscript(`RoboDeal: “${text}”`);
-    this.onStatus('Speaking…');
+    this.onStatus("Speaking…");
     await this.playPcmResponse(response, timing);
   }
 
@@ -919,7 +919,7 @@ export class VoiceAgent {
         const sampleView = new DataView(
           combined.buffer,
           combined.byteOffset,
-          playableLength,
+          playableLength
         );
         for (let index = 0; index < sampleCount; index += 1) {
           samples[index] = sampleView.getInt16(index * 2, true) / 32768;
@@ -931,7 +931,7 @@ export class VoiceAgent {
         source.connect(context.destination);
         const startAt = Math.max(
           context.currentTime + 0.02,
-          this.nextAudioStartAt,
+          this.nextAudioStartAt
         );
         this.nextAudioStartAt = startAt + buffer.duration;
         this.outputAudioSources.add(source);
@@ -966,11 +966,11 @@ export class VoiceAgent {
     this.audio ||= new Audio();
     this.audio.src = this.audioUrl;
     return new Promise((resolve, reject) => {
-      this.audio.addEventListener('ended', resolve, { once: true });
+      this.audio.addEventListener("ended", resolve, { once: true });
       this.audio.addEventListener(
-        'error',
-        () => reject(new Error('The generated speech could not play.')),
-        { once: true },
+        "error",
+        () => reject(new Error("The generated speech could not play.")),
+        { once: true }
       );
       this.audio.play().catch(reject);
     });
@@ -1006,14 +1006,14 @@ export class VoiceAgent {
 
   send(event) {
     if (
-      event?.type === 'response.cancel' ||
-      event?.type === 'output_audio_buffer.clear'
+      event?.type === "response.cancel" ||
+      event?.type === "output_audio_buffer.clear"
     ) {
       this.cancelResponse();
     }
   }
 
   idleStatus() {
-    return this.recording ? 'Listening' : 'Microphone off';
+    return this.recording ? "Listening" : "Microphone off";
   }
 }

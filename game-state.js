@@ -3,56 +3,56 @@ import {
   hasBettingRoundFinished,
   maximumAdditionalBet,
   splitPotAmount,
-} from './pot-logic.js';
+} from "./pot-logic.js";
 
 export const GamePhase = Object.freeze({
-  SETUP: 'SETUP',
-  DEAL_HOLE_CARDS: 'DEAL_HOLE_CARDS',
-  BETTING_PREFLOP: 'BETTING_PREFLOP',
-  DEAL_FLOP: 'DEAL_FLOP',
-  BETTING_FLOP: 'BETTING_FLOP',
-  DEAL_TURN: 'DEAL_TURN',
-  BETTING_TURN: 'BETTING_TURN',
-  DEAL_RIVER: 'DEAL_RIVER',
-  BETTING_RIVER: 'BETTING_RIVER',
-  ALL_IN_RUNOUT: 'ALL_IN_RUNOUT',
-  SHOWDOWN: 'SHOWDOWN',
-  HAND_COMPLETE: 'HAND_COMPLETE',
-  GAME_COMPLETE: 'GAME_COMPLETE',
+  SETUP: "SETUP",
+  DEAL_HOLE_CARDS: "DEAL_HOLE_CARDS",
+  BETTING_PREFLOP: "BETTING_PREFLOP",
+  DEAL_FLOP: "DEAL_FLOP",
+  BETTING_FLOP: "BETTING_FLOP",
+  DEAL_TURN: "DEAL_TURN",
+  BETTING_TURN: "BETTING_TURN",
+  DEAL_RIVER: "DEAL_RIVER",
+  BETTING_RIVER: "BETTING_RIVER",
+  ALL_IN_RUNOUT: "ALL_IN_RUNOUT",
+  SHOWDOWN: "SHOWDOWN",
+  HAND_COMPLETE: "HAND_COMPLETE",
+  GAME_COMPLETE: "GAME_COMPLETE",
 });
 
 export function formatTime(totalMilliseconds) {
-  const hours = Math.floor(totalMilliseconds / 3600000);
-  const minutes = Math.floor((totalMilliseconds % 3600000) / 60000);
-  const seconds = Math.floor((totalMilliseconds % 60000) / 1000);
-
-  const decimals = Math.floor((totalMilliseconds % 1000) / 10);
-
-  const padH = String(hours).padStart(2, '0');
-  const padM = String(minutes).padStart(2, '0');
-  const padS = String(seconds).padStart(2, '0');
-  const padD = String(decimals).padStart(2, '0');
-
-  return `${padH}:${padM}:${padS}.${padD}`;
+  const totalCentiseconds = Math.floor(totalMilliseconds / 10);
+  const totalSeconds = Math.floor(totalCentiseconds / 100);
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const nonPadCS = totalCentiseconds % 100;
+  const nonPadS = totalSeconds % 60;
+  const nonPadM = totalMinutes % 60;
+  const nonPadH = Math.floor(totalMinutes / 60);
+  const CS = String(nonPadCS).padStart(2, "0");
+  const S = String(nonPadS).padStart(2, "0");
+  const M = String(nonPadM).padStart(2, "0");
+  const H = String(nonPadH).padStart(2, "0");
+  return `${H}:${M}:${S}.${CS}`;
 }
 
 export const Transition = Object.freeze({
-  START_HAND: 'START_HAND',
-  CARDS_DEALT: 'CARDS_DEALT',
-  FOLD: 'FOLD',
-  CHECK: 'CHECK',
-  CALL: 'CALL',
-  BET: 'BET',
-  ALL_IN: 'ALL_IN',
-  AWARD_POT: 'AWARD_POT',
-  SPLIT_POT: 'SPLIT_POT',
-  START_NEXT_HAND: 'START_NEXT_HAND',
+  START_HAND: "START_HAND",
+  CARDS_DEALT: "CARDS_DEALT",
+  FOLD: "FOLD",
+  CHECK: "CHECK",
+  CALL: "CALL",
+  BET: "BET",
+  ALL_IN: "ALL_IN",
+  AWARD_POT: "AWARD_POT",
+  SPLIT_POT: "SPLIT_POT",
+  START_NEXT_HAND: "START_NEXT_HAND",
 });
 
 export const BettingLimit = Object.freeze({
-  NO_LIMIT: 'no-limit',
-  POT_LIMIT: 'pot-limit',
-  FIXED_LIMIT: 'fixed-limit',
+  NO_LIMIT: "no-limit",
+  POT_LIMIT: "pot-limit",
+  FIXED_LIMIT: "fixed-limit",
 });
 
 export let gameStartedAt = null;
@@ -76,10 +76,23 @@ const dealPhaseFor = Object.freeze({
   [GamePhase.BETTING_RIVER]: GamePhase.SHOWDOWN,
 });
 
-const logStorageKey = 'robodeal-log-v1';
-const legacyHistoryStorageKey = 'robodeal-history-v1';
-const logDebugElementId = 'robodeal-log-data';
+const logStorageKey = "robodeal-log-v1";
+const legacyHistoryStorageKey = "robodeal-history-v1";
+const logDebugElementId = "robodeal-log-data";
 const fullStateInterval = 5;
+const playerActionLogTypes = new Set([
+  "All in",
+  "Bet",
+  "Call",
+  "Check",
+  "Fold",
+  "Raise",
+  "Undo",
+]);
+
+function logKindForType(type) {
+  return playerActionLogTypes.has(type) ? "Action" : "Event";
+}
 
 function storesFullState(logIndex) {
   return logIndex % fullStateInterval === 0;
@@ -90,7 +103,7 @@ function loadSavedLog() {
     const savedLogText =
       globalThis.localStorage?.getItem(logStorageKey) ??
       globalThis.localStorage?.getItem(legacyHistoryStorageKey) ??
-      '[]';
+      "[]";
     const savedLog = JSON.parse(savedLogText);
     return Array.isArray(savedLog) ? savedLog : [];
   } catch {
@@ -99,7 +112,7 @@ function loadSavedLog() {
 }
 
 function isObject(value) {
-  return value !== null && typeof value === 'object';
+  return value !== null && typeof value === "object";
 }
 
 function stateDifference(before, after, path = []) {
@@ -108,7 +121,7 @@ function stateDifference(before, after, path = []) {
   }
 
   if (!isObject(before) || !isObject(after)) {
-    return [{ operation: 'replace', path, value: structuredClone(after) }];
+    return [{ operation: "replace", path, value: structuredClone(after) }];
   }
 
   if (Array.isArray(before) || Array.isArray(after)) {
@@ -117,10 +130,10 @@ function stateDifference(before, after, path = []) {
       !Array.isArray(after) ||
       before.length !== after.length
     ) {
-      return [{ operation: 'replace', path, value: structuredClone(after) }];
+      return [{ operation: "replace", path, value: structuredClone(after) }];
     }
     return after.flatMap((value, index) =>
-      stateDifference(before[index], value, [...path, index]),
+      stateDifference(before[index], value, [...path, index])
     );
   }
 
@@ -129,10 +142,10 @@ function stateDifference(before, after, path = []) {
   keys.forEach((key) => {
     const nextPath = [...path, key];
     if (!(key in after)) {
-      changes.push({ operation: 'remove', path: nextPath });
+      changes.push({ operation: "remove", path: nextPath });
     } else if (!(key in before)) {
       changes.push({
-        operation: 'add',
+        operation: "add",
         path: nextPath,
         value: structuredClone(after[key]),
       });
@@ -147,7 +160,7 @@ function applyStateDifference(previousState, changes) {
   let state = structuredClone(previousState);
   changes.forEach(({ operation, path, value }) => {
     if (path.length === 0) {
-      state = operation === 'remove' ? undefined : structuredClone(value);
+      state = operation === "remove" ? undefined : structuredClone(value);
       return;
     }
 
@@ -156,7 +169,7 @@ function applyStateDifference(previousState, changes) {
       target = target[path[index]];
     }
     const key = path.at(-1);
-    if (operation === 'remove') {
+    if (operation === "remove") {
       if (Array.isArray(target)) {
         target.splice(Number(key), 1);
       } else {
@@ -171,12 +184,17 @@ function applyStateDifference(previousState, changes) {
 
 function logWithDifferences(savedLog) {
   let previousState = null;
-  let previousTime = '00:00:00.00';
+  let previousTime = "00:00:00.00";
   return savedLog.map((entry, index) => {
-    const time = typeof entry?.Time === 'string' ? entry.Time : previousTime;
+    const time = typeof entry?.Time === "string" ? entry.Time : previousTime;
     previousTime = time;
+    const normalizedEntry = {
+      ...entry,
+      Kind: entry?.Kind ?? logKindForType(entry?.Type),
+      Time: time,
+    };
     if (!entry?.State) {
-      return { ...entry, Time: time };
+      return normalizedEntry;
     }
     const stateIsDifference = index > 0 && Array.isArray(entry.State);
     const fullState = stateIsDifference
@@ -184,11 +202,10 @@ function logWithDifferences(savedLog) {
       : structuredClone(entry.State);
     const convertedEntry =
       storesFullState(index) || previousState === null
-        ? { ...entry, State: fullState, Time: time }
+        ? { ...normalizedEntry, State: fullState }
         : {
-            ...entry,
+            ...normalizedEntry,
             State: stateDifference(previousState, fullState),
-            Time: time,
           };
     previousState = fullState;
     return convertedEntry;
@@ -202,15 +219,15 @@ function persistLog(entries) {
     globalThis.localStorage?.setItem(logStorageKey, serializedLog);
   } catch {}
 
-  if (typeof document === 'undefined') {
+  if (typeof document === "undefined") {
     return;
   }
-  document.querySelector('#robodeal-history-data')?.remove();
+  document.querySelector("#robodeal-history-data")?.remove();
   let debugElement = document.querySelector(`#${logDebugElementId}`);
   if (!debugElement) {
-    debugElement = document.createElement('script');
+    debugElement = document.createElement("script");
     debugElement.id = logDebugElementId;
-    debugElement.type = 'application/json';
+    debugElement.type = "application/json";
     document.head.append(debugElement);
   }
   debugElement.textContent = serializedLog;
@@ -226,7 +243,7 @@ let latestLogState = log.reduce((state, entry, index) => {
     : applyStateDifference(state, entry.State);
 }, null);
 
-Object.defineProperty(log, 'push', {
+Object.defineProperty(log, "push", {
   enumerable: false,
   value(...entries) {
     const elapsedMilliseconds =
@@ -238,7 +255,8 @@ Object.defineProperty(log, 'push', {
     const differentialEntries = entries.map((entry, entryOffset) => {
       const timedEntry = {
         ...entry,
-        Time: typeof entry?.Time === 'string' ? entry.Time : time,
+        Kind: entry?.Kind ?? logKindForType(entry?.Type),
+        Time: typeof entry?.Time === "string" ? entry.Time : time,
       };
       if (!timedEntry.State) {
         return timedEntry;
@@ -359,7 +377,7 @@ function nextPlayerNeedingActionFrom(state, playerId) {
 function playerToDealersLeft(state, dealerId) {
   const index = state.players.findIndex((player) => player.id === dealerId);
   if (index < 0) {
-    throw new Error('The dealer must be seated at the table.');
+    throw new Error("The dealer must be seated at the table.");
   }
 
   for (let step = 1; step <= state.players.length; step += 1) {
@@ -373,7 +391,7 @@ function playerToDealersLeft(state, dealerId) {
 
 function winnerIdsInOddChipOrder(state, winnerIds) {
   const dealerIndex = state.players.findIndex(
-    (player) => player.id === state.dealerId,
+    (player) => player.id === state.dealerId
   );
   const winnerSet = new Set(winnerIds);
   const orderedWinnerIds = [];
@@ -395,7 +413,7 @@ function currentPlayer(state) {
 function amountToCall(state, player) {
   return Math.min(
     Math.max(0, state.highestRoundBet - player.roundBet),
-    player.chips,
+    player.chips
   );
 }
 
@@ -428,7 +446,7 @@ function refreshPots(state) {
       handContribution: player.handContribution,
       folded: player.folded,
       eliminated: player.eliminated,
-    })),
+    }))
   );
 }
 
@@ -440,7 +458,7 @@ function takeAnte(state, ante) {
     log.push({
       PlayerId: state.players[i].id,
       State: structuredClone(state),
-      Type: 'Ante',
+      Type: "Ante",
       Amount: takenAmount,
     });
   }
@@ -450,7 +468,7 @@ function postBlind(
   state,
   playerId,
   requestedAmount,
-  countsAsInitialAction = true,
+  countsAsInitialAction = true
 ) {
   const player = playerById(state, playerId);
   const amount = Math.min(requestedAmount, player.chips);
@@ -462,7 +480,7 @@ function postBlind(
   log.push({
     PlayerId: playerId,
     State: structuredClone(state),
-    Type: 'Blind',
+    Type: "Blind",
     Amount: amount,
   });
 }
@@ -499,15 +517,22 @@ function finishHand(state, winnerIds) {
   const playersWithChips = state.players.filter((player) => player.chips > 0);
   if (playersWithChips.length === 1) {
     state.phase = GamePhase.GAME_COMPLETE;
-    log.push({
-      PlayerId: playersWithChips[0].id,
-      Type: 'Game Won',
-      Time: formatTime(performance.now() - gameStartedAt),
-      Amount: playersWithChips[0].chips,
-    });
   } else {
     state.phase = GamePhase.HAND_COMPLETE;
   }
+}
+
+function logGameWon(state) {
+  if (state.phase !== GamePhase.GAME_COMPLETE) {
+    return;
+  }
+  const winner = state.players.find((player) => player.chips > 0);
+  log.push({
+    PlayerId: winner.id,
+    State: structuredClone(state),
+    Type: "Game Won",
+    Amount: winner.chips,
+  });
 }
 
 function awardAllPots(state, winnerId) {
@@ -521,9 +546,10 @@ function awardAllPots(state, winnerId) {
   log.push({
     PlayerId: winnerId,
     State: structuredClone(state),
-    Type: 'FoldWin',
+    Type: "FoldWin",
     Amount: amountWon,
   });
+  logGameWon(state);
 }
 
 function resolveBetting(state) {
@@ -553,7 +579,7 @@ function resolveBetting(state) {
 
   state.actionPlayerId = nextPlayerNeedingActionFrom(
     state,
-    state.actionPlayerId,
+    state.actionPlayerId
   );
 }
 
@@ -562,11 +588,11 @@ function assertBettingTurn(state, action) {
     throw new Error(`No betting action is allowed during ${state.phase}.`);
   }
   if (action.playerId !== state.actionPlayerId) {
-    throw new Error('It is not that player’s turn.');
+    throw new Error("It is not that player’s turn.");
   }
   const player = currentPlayer(state);
   if (!player || player.folded || player.eliminated || player.chips <= 0) {
-    throw new Error('That player cannot act.');
+    throw new Error("That player cannot act.");
   }
   return player;
 }
@@ -598,7 +624,7 @@ function advanceAward(state) {
         ? state.handWinnerIds
         : fallback
           ? [fallback.id]
-          : [],
+          : []
     );
   }
 }
@@ -607,10 +633,6 @@ function makeAction(type, details = {}) {
   return { type, ...details };
 }
 
-/**
- * Creates the initial, serializable GameState. It intentionally contains no
- * browser state: it can be constructed directly in a test.
- */
 export function createGameState({
   players,
   smallBlind,
@@ -622,19 +644,19 @@ export function createGameState({
   fixedLimitBet = Math.max(1, smallBlind * 2),
 }) {
   if (!Array.isArray(players) || players.length < 2) {
-    throw new Error('At least two players are required.');
+    throw new Error("At least two players are required.");
   }
   if (!Number.isInteger(smallBlind) || smallBlind < 0) {
-    throw new Error('Small blind must be a non-negative integer.');
+    throw new Error("Small blind must be a non-negative integer.");
   }
   if (!players.some((player) => player.id === dealerId)) {
-    throw new Error('The dealer must be a player.');
+    throw new Error("The dealer must be a player.");
   }
   if (!Object.values(BettingLimit).includes(bettingLimit)) {
-    throw new Error('Betting limit is not supported.');
+    throw new Error("Betting limit is not supported.");
   }
   if (!Number.isInteger(fixedLimitBet) || fixedLimitBet <= 0) {
-    throw new Error('Fixed-limit bet must be a positive integer.');
+    throw new Error("Fixed-limit bet must be a positive integer.");
   }
 
   return {
@@ -658,6 +680,7 @@ export function createGameState({
     fixedLimitBet,
     dealerId,
     firstDealerId: dealerId,
+    activeFirstDealerId: dealerId,
     actionPlayerId: null,
     smallBlindPlayerId: null,
     bigBlindPlayerId: null,
@@ -675,7 +698,6 @@ export function createGameState({
   };
 }
 
-/** Returns the call and legal raise range for the selected Hold'em limit. */
 export function getBettingBounds(state, playerId = state.actionPlayerId) {
   const player = playerById(state, playerId);
   if (!player || player.folded || player.eliminated || player.chips <= 0) {
@@ -685,7 +707,7 @@ export function getBettingBounds(state, playerId = state.actionPlayerId) {
   const callAmount = amountToCall(state, player);
   const effectiveMaximum = maximumAdditionalBet(
     state.players.map((candidate) => ({ ...candidate, number: candidate.id })),
-    player.id,
+    player.id
   );
   let minRaiseAdditionalChips;
   if (state.lastFullRaiseSize !== 1) {
@@ -698,11 +720,11 @@ export function getBettingBounds(state, playerId = state.actionPlayerId) {
   if (state.bettingLimit === BettingLimit.POT_LIMIT) {
     const potBeforeAction = state.players.reduce(
       (total, candidate) => total + candidate.handContribution,
-      0,
+      0
     );
     maxAdditionalChips = Math.min(
       effectiveMaximum,
-      Math.max(minRaiseAdditionalChips, potBeforeAction + callAmount * 2),
+      Math.max(minRaiseAdditionalChips, potBeforeAction + callAmount * 2)
     );
   } else if (state.bettingLimit === BettingLimit.FIXED_LIMIT) {
     const fixedRaiseSize = state.fixedLimitBet * (state.round <= 2 ? 1 : 2);
@@ -714,28 +736,28 @@ export function getBettingBounds(state, playerId = state.actionPlayerId) {
 }
 
 const debugPresets = Object.freeze({
-  'two-pots': {
+  "two-pots": {
     phase: GamePhase.BETTING_RIVER,
     contributions: [25, 50, 50],
     chips: [0, 87, 88],
     actionPlayerId: 2,
     round: 4,
   },
-  'three-pots': {
+  "three-pots": {
     phase: GamePhase.BETTING_RIVER,
     contributions: [25, 50, 75, 75],
     chips: [0, 0, 87, 88],
     actionPlayerId: 3,
     round: 4,
   },
-  'all-in-runout': {
+  "all-in-runout": {
     phase: GamePhase.ALL_IN_RUNOUT,
     contributions: [25, 50, 50],
     chips: [0, 0, 175],
     actionPlayerId: null,
     round: 1,
   },
-  'deal-flop': {
+  "deal-flop": {
     phase: GamePhase.DEAL_FLOP,
     contributions: [10, 10, 10],
     chips: [90, 90, 90],
@@ -749,7 +771,7 @@ const debugPresets = Object.freeze({
     actionPlayerId: null,
     round: 4,
   },
-  'hand-won': {
+  "hand-won": {
     phase: GamePhase.HAND_COMPLETE,
     contributions: [0, 0, 0],
     chips: [140, 80, 80],
@@ -757,7 +779,7 @@ const debugPresets = Object.freeze({
     round: 4,
     winnerIds: [1],
   },
-  'game-won': {
+  "game-won": {
     phase: GamePhase.GAME_COMPLETE,
     contributions: [0, 0],
     chips: [200, 0],
@@ -767,14 +789,13 @@ const debugPresets = Object.freeze({
   },
 });
 
-/** Creates a named, internally consistent state for localhost debug starts. */
 export function createDebugGameState(gameState, presetName) {
   const preset = debugPresets[presetName];
   if (!preset) {
     return executeTransition(gameState, { type: Transition.START_HAND });
   }
   if (gameState.phase !== GamePhase.SETUP) {
-    throw new Error('A debug starting point can only be created from setup.');
+    throw new Error("A debug starting point can only be created from setup.");
   }
   if (gameState.players.length !== preset.chips.length) {
     throw new Error(`${presetName} requires ${preset.chips.length} players.`);
@@ -782,7 +803,7 @@ export function createDebugGameState(gameState, presetName) {
 
   const state = clone(gameState);
   const activePlayerCount = state.players.filter(
-    (player) => !player.eliminated,
+    (player) => !player.eliminated
   ).length;
   state.phase = preset.phase;
   state.handNumber = 1;
@@ -809,7 +830,6 @@ export function createDebugGameState(gameState, presetName) {
   return state;
 }
 
-/** Returns only the transitions that are legal for this exact state. */
 export function getAvailableActions(state) {
   if (
     state.phase === GamePhase.SETUP ||
@@ -819,7 +839,7 @@ export function getAvailableActions(state) {
       makeAction(
         state.phase === GamePhase.SETUP
           ? Transition.START_HAND
-          : Transition.START_NEXT_HAND,
+          : Transition.START_NEXT_HAND
       ),
     ];
   }
@@ -882,7 +902,7 @@ export function getAvailableActions(state) {
       makeAction(Transition.BET, {
         minAdditionalChips: minimumBet,
         maxAdditionalChips: maximumBet,
-      }),
+      })
     );
   }
   const allInDoesNotRaise =
@@ -893,23 +913,22 @@ export function getAvailableActions(state) {
     (canRaise || allInDoesNotRaise)
   ) {
     actions.push(
-      makeAction(Transition.ALL_IN, { additionalChips: maximumBet }),
+      makeAction(Transition.ALL_IN, { additionalChips: maximumBet })
     );
   }
   return actions;
 }
 
-/**
- * Applies one named transition and returns a new GameState. Invalid transitions
- * throw without modifying the supplied state.
- */
 export function executeTransition(gameState, action) {
   if (!action?.type) {
-    throw new Error('A transition type is required.');
+    throw new Error("A transition type is required.");
   }
   const state = clone(gameState);
+  state.activeFirstDealerId ??=
+    state.ActiveFirstDealerId ?? state.firstDealerId;
+  delete state.ActiveFirstDealerId;
   const activePlayerCount = state.players.filter(
-    (player) => !player.eliminated,
+    (player) => !player.eliminated
   ).length;
 
   if (
@@ -926,14 +945,14 @@ export function executeTransition(gameState, action) {
     if (action.type === Transition.START_NEXT_HAND) {
       state.dealerId = playerToDealersLeft(state, state.dealerId);
       if (playerById(state, state.firstDealerId).eliminated) {
-        state.ActiveFirstDealerId = playerToDealersLeft(
+        state.activeFirstDealerId = playerToDealersLeft(
           state,
-          state.firstDealerId,
+          state.firstDealerId
         );
       } else {
-        state.ActiveFirstDealerId = state.firstDealerId;
+        state.activeFirstDealerId = state.firstDealerId;
       }
-      if (state.dealerId === state.ActiveFirstDealerId) {
+      if (state.dealerId === state.activeFirstDealerId) {
         state.smallBlind += state.smallBlindIncrease;
       }
     }
@@ -970,11 +989,11 @@ export function executeTransition(gameState, action) {
     refreshPots(state);
     state.actionPlayerId = nextPlayerFrom(
       state,
-      state.bigBlindPlayerId ?? state.smallBlindPlayerId,
+      state.bigBlindPlayerId ?? state.smallBlindPlayerId
     );
     log.push({
       State: structuredClone(state),
-      Type: 'HandStart',
+      Type: "HandStart",
     });
     return state;
   }
@@ -1007,7 +1026,7 @@ export function executeTransition(gameState, action) {
     }
     log.push({
       State: structuredClone(state),
-      Type: 'CardsDealt',
+      Type: "CardsDealt",
       Phase: nextBettingPhase,
     });
     return state;
@@ -1021,11 +1040,11 @@ export function executeTransition(gameState, action) {
       throw new Error(`A pot cannot be awarded during ${state.phase}.`);
     }
     if (action.potIndex !== state.potAwardIndex) {
-      throw new Error('That pot is not ready to be awarded.');
+      throw new Error("That pot is not ready to be awarded.");
     }
     const pot = state.pots[state.potAwardIndex];
     if (!pot || pot.amount < 0) {
-      throw new Error('There is no pot to award.');
+      throw new Error("There is no pot to award.");
     }
 
     const winnerIds =
@@ -1037,13 +1056,13 @@ export function executeTransition(gameState, action) {
       winnerIds.length === 0 ||
       !winnerIds.every((id) => pot.eligiblePlayerNumbers.includes(id))
     ) {
-      throw new Error('A pot winner must be eligible for that pot.');
+      throw new Error("A pot winner must be eligible for that pot.");
     }
     if (action.type === Transition.AWARD_POT && winnerIds.length !== 1) {
-      throw new Error('AWARD_POT requires exactly one winner.');
+      throw new Error("AWARD_POT requires exactly one winner.");
     }
     if (action.type === Transition.SPLIT_POT && new Set(winnerIds).size < 2) {
-      throw new Error('SPLIT_POT requires at least two distinct winners.');
+      throw new Error("SPLIT_POT requires at least two distinct winners.");
     }
 
     const orderedWinnerIds =
@@ -1064,10 +1083,11 @@ export function executeTransition(gameState, action) {
       log.push({
         PlayerId: winnerId,
         State: structuredClone(state),
-        Type: 'Win',
+        Type: "Win",
         Amount: amount,
       });
     });
+    logGameWon(state);
     return state;
   }
 
@@ -1087,7 +1107,7 @@ export function executeTransition(gameState, action) {
     log.push({
       PlayerId: player.id,
       State: structuredClone(state),
-      Type: 'Fold',
+      Type: "Fold",
     });
     resolveBetting(state);
     return state;
@@ -1096,23 +1116,23 @@ export function executeTransition(gameState, action) {
   let additionalChips;
   if (action.type === Transition.CHECK) {
     if (callAmount !== 0) {
-      throw new Error('CHECK is not legal while chips are owed.');
+      throw new Error("CHECK is not legal while chips are owed.");
     }
     additionalChips = 0;
   } else if (action.type === Transition.CALL) {
     if (callAmount === 0) {
-      throw new Error('CALL is not legal when nothing is owed.');
+      throw new Error("CALL is not legal when nothing is owed.");
     }
     additionalChips = callAmount;
   } else if (action.type === Transition.ALL_IN) {
     if (maximumBet !== player.chips || maximumBet === 0) {
-      throw new Error('ALL_IN is not legal for this player.');
+      throw new Error("ALL_IN is not legal for this player.");
     }
     if (!canRaise && player.roundBet + maximumBet > state.highestRoundBet) {
       throw new Error(
         raiseCapOpen
-          ? 'ALL_IN cannot raise because betting was not reopened.'
-          : 'ALL_IN cannot raise because the fixed-limit raise cap has been reached.',
+          ? "ALL_IN cannot raise because betting was not reopened."
+          : "ALL_IN cannot raise because the fixed-limit raise cap has been reached."
       );
     }
     additionalChips = maximumBet;
@@ -1120,8 +1140,8 @@ export function executeTransition(gameState, action) {
     if (!canRaise) {
       throw new Error(
         raiseCapOpen
-          ? 'BET cannot raise because betting was not reopened.'
-          : 'BET cannot raise because the fixed-limit raise cap has been reached.',
+          ? "BET cannot raise because betting was not reopened."
+          : "BET cannot raise because the fixed-limit raise cap has been reached."
       );
     }
     additionalChips = Number(action.additionalChips);
@@ -1130,7 +1150,7 @@ export function executeTransition(gameState, action) {
       additionalChips < minimumBet ||
       additionalChips > maximumBet
     ) {
-      throw new Error('BET amount is outside the legal range.');
+      throw new Error("BET amount is outside the legal range.");
     }
   } else {
     throw new Error(`Unknown transition: ${action.type}.`);
@@ -1162,10 +1182,13 @@ export function executeTransition(gameState, action) {
   log.push({
     PlayerId: player.id,
     State: structuredClone(state),
-    Type: action.type
-      .toLowerCase()
-      .replace(/_/g, ' ')
-      .replace(/^./, (letter) => letter.toUpperCase()),
+    Type:
+      action.type === Transition.BET && previousHighestRoundBet > 0
+        ? "Raise"
+        : action.type
+            .toLowerCase()
+            .replace(/_/g, " ")
+            .replace(/^./, (letter) => letter.toUpperCase()),
     Amount: additionalChips,
   });
   return state;
