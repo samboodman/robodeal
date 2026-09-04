@@ -25,14 +25,14 @@ export function formatTime(totalMilliseconds) {
   const totalCentiseconds = Math.floor(totalMilliseconds / 10);
   const totalSeconds = Math.floor(totalCentiseconds / 100);
   const totalMinutes = Math.floor(totalSeconds / 60);
-  const nonPadCS = totalCentiseconds % 100;
-  const nonPadS = totalSeconds % 60;
-  const nonPadM = totalMinutes % 60;
-  const nonPadH = Math.floor(totalMinutes / 60);
-  const CS = String(nonPadCS).padStart(2, "0");
-  const S = String(nonPadS).padStart(2, "0");
-  const M = String(nonPadM).padStart(2, "0");
-  const H = String(nonPadH).padStart(2, "0");
+  let CS = totalCentiseconds % 100;
+  let S = totalSeconds % 60;
+  let M = totalMinutes % 60;
+  let H = Math.floor(totalMinutes / 60);
+  CS = String(CS).padStart(2, "0");
+  S = String(S).padStart(2, "0");
+  M = String(M).padStart(2, "0");
+  H = String(H).padStart(2, "0");
   return `${H}:${M}:${S}.${CS}`;
 }
 
@@ -46,6 +46,9 @@ export const Transition = Object.freeze({
   ALL_IN: "ALL_IN",
   AWARD_POT: "AWARD_POT",
   SPLIT_POT: "SPLIT_POT",
+  REBUY: "REBUY",
+  LEAVE_GAME: "LEAVE_GAME",
+  JOIN_GAME: "JOIN_GAME",
   START_NEXT_HAND: "START_NEXT_HAND",
 });
 
@@ -87,6 +90,9 @@ const playerActionLogTypes = new Set([
   "Check",
   "Fold",
   "Raise",
+  "Buy back",
+  "Leave game",
+  "Join game",
   "Undo",
 ]);
 
@@ -96,6 +102,15 @@ function logKindForType(type) {
 
 function storesFullState(logIndex) {
   return logIndex % fullStateInterval === 0;
+}
+
+function millisecondsFromFormattedTime(time) {
+  const match = /^(\d+):(\d{2}):(\d{2})\.(\d{2})$/.exec(time);
+  if (!match) {
+    return 0;
+  }
+  const [, hours, minutes, seconds, centiseconds] = match.map(Number);
+  return ((hours * 60 * 60 + minutes * 60 + seconds) * 100 + centiseconds) * 10;
 }
 
 function loadSavedLog() {
@@ -192,6 +207,9 @@ function logWithDifferences(savedLog) {
       ...entry,
       Kind: entry?.Kind ?? logKindForType(entry?.Type),
       Time: time,
+      Milliseconds: Number.isFinite(entry?.Milliseconds)
+        ? entry.Milliseconds
+        : millisecondsFromFormattedTime(time),
     };
     if (!entry?.State) {
       return normalizedEntry;
@@ -257,6 +275,9 @@ Object.defineProperty(log, "push", {
         ...entry,
         Kind: entry?.Kind ?? logKindForType(entry?.Type),
         Time: typeof entry?.Time === "string" ? entry.Time : time,
+        Milliseconds: Number.isFinite(entry?.Milliseconds)
+          ? entry.Milliseconds
+          : elapsedMilliseconds,
       };
       if (!timedEntry.State) {
         return timedEntry;
@@ -667,6 +688,7 @@ export function createGameState({
       chips: player.chips,
       folded: Boolean(player.folded),
       eliminated: Boolean(player.eliminated),
+      leftGame: Boolean(player.leftGame),
       roundBet: 0,
       handContribution: 0,
       hasActedThisRound: false,
@@ -930,6 +952,114 @@ export function executeTransition(gameState, action) {
   const activePlayerCount = state.players.filter(
     (player) => !player.eliminated
   ).length;
+
+  if (action.type === Transition.REBUY) {
+    const player = playerById(state, action.playerId);
+    const amount = Number(action.amount);
+    if (!player) {
+      throw new Error("A buy back requires a player.");
+    }
+    if (!Number.isInteger(amount) || amount <= 0) {
+      throw new Error("A buy back must be a positive whole number.");
+    }
+    const wasEliminated = player.eliminated;
+    player.chips += amount;
+    player.eliminated = false;
+    player.leftGame = false;
+    if (wasEliminated && state.phase === GamePhase.GAME_COMPLETE) {
+      state.phase = GamePhase.HAND_COMPLETE;
+    }
+    log.push({
+      PlayerId: player.id,
+      State: structuredClone(state),
+      Type: "Buy back",
+      Amount: amount,
+    });
+    return state;
+  }
+
+  if (action.type === Transition.LEAVE_GAME) {
+    const player = playerById(state, action.playerId);
+    if (!player || player.eliminated) {
+      throw new Error("That player is not in the game.");
+    }
+    if (activePlayerCount <= 1) {
+      throw new Error("The last player cannot leave the game.");
+    }
+    const cashOutAmount = player.chips;
+    player.chips = 0;
+    player.folded = true;
+    player.eliminated = true;
+    player.leftGame = true;
+    state.pots.forEach((pot) => {
+      pot.eligiblePlayerNumbers = pot.eligiblePlayerNumbers.filter(
+        (playerId) => playerId !== player.id
+      );
+    });
+    refreshPots(state);
+    if (bettingPhases.includes(state.phase)) {
+      resolveBetting(state);
+    } else if (nonFoldedPlayers(state).length === 1) {
+      awardAllPots(state, nonFoldedPlayers(state)[0].id);
+    } else if (
+      [GamePhase.HAND_COMPLETE, GamePhase.GAME_COMPLETE].includes(state.phase)
+    ) {
+      const remainingPlayers = state.players.filter(
+        (candidate) => !candidate.eliminated
+      );
+      if (remainingPlayers.length === 1) {
+        state.phase = GamePhase.GAME_COMPLETE;
+        state.actionPlayerId = null;
+        state.handWinnerIds = [remainingPlayers[0].id];
+      }
+    }
+    log.push({
+      PlayerId: player.id,
+      State: structuredClone(state),
+      Type: "Leave game",
+      Amount: cashOutAmount,
+    });
+    logGameWon(state);
+    return state;
+  }
+
+  if (action.type === Transition.JOIN_GAME) {
+    const playerId = Number(action.playerId);
+    const amount = Number(action.amount);
+    if (!Number.isInteger(playerId) || playerById(state, playerId)) {
+      throw new Error("A joining player needs a new player number.");
+    }
+    if (!Number.isInteger(amount) || amount <= 0) {
+      throw new Error("A joining player needs a positive chip amount.");
+    }
+    const joiningDuringHand = ![
+      GamePhase.SETUP,
+      GamePhase.HAND_COMPLETE,
+      GamePhase.GAME_COMPLETE,
+    ].includes(state.phase);
+    state.players.push({
+      id: playerId,
+      name: action.name?.trim() || `Player ${playerId}`,
+      chips: amount,
+      folded: joiningDuringHand,
+      eliminated: false,
+      leftGame: false,
+      roundBet: 0,
+      handContribution: 0,
+      hasActedThisRound: false,
+      lastActionBetLevel: null,
+    });
+    if (state.phase === GamePhase.GAME_COMPLETE) {
+      state.phase = GamePhase.HAND_COMPLETE;
+    }
+    log.push({
+      PlayerId: playerId,
+      State: structuredClone(state),
+      Type: "Join game",
+      Amount: amount,
+    });
+    return state;
+  }
 
   if (
     action.type === Transition.START_HAND ||

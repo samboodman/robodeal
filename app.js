@@ -55,6 +55,7 @@ const gameScreen = document.querySelector("#game-screen");
 const gameWinnerScreen = document.querySelector("#game-winner-screen");
 const gameWinnerMessage = document.querySelector("#game-winner-message");
 const playerSeats = document.querySelector("#player-seats");
+const playerSeatEffects = document.querySelector("#player-seat-effects");
 const lockSeatsButton = document.querySelector("#lock-seats-button");
 const turnControl = document.querySelector("#turn-control");
 const turnIndicator = document.querySelector("#turn-indicator");
@@ -78,6 +79,26 @@ const cancelRaiseButton = document.querySelector("#cancel-raise-button");
 const helpButton = document.querySelector("#help-button");
 const buttonHelp = document.querySelector("#button-help");
 const closeHelpButton = document.querySelector("#close-help-button");
+const otherButton = document.querySelector("#other-button");
+const otherPage = document.querySelector("#other-page");
+const otherPageTitle = document.querySelector("#other-page-title");
+const buyBackQuestion = document.querySelector("#buy-back-question");
+const closeOtherButton = document.querySelector("#close-other-button");
+const buyBackButton = document.querySelector("#buy-back-button");
+const leaveGameButton = document.querySelector("#leave-game-button");
+const joinGameButton = document.querySelector("#join-game-button");
+const joinGamePanel = document.querySelector("#join-game-panel");
+const joinGameName = document.querySelector("#join-game-name");
+const joinGameChips = document.querySelector("#join-game-chips");
+const cancelJoinGameButton = document.querySelector("#cancel-join-game-button");
+const confirmJoinGameButton = document.querySelector(
+  "#confirm-join-game-button"
+);
+const joinGameStatus = document.querySelector("#join-game-status");
+const buyBackPanel = document.querySelector("#buy-back-panel");
+const buyBackAmount = document.querySelector("#buy-back-amount");
+const cancelBuyBackButton = document.querySelector("#cancel-buy-back-button");
+const confirmBuyBackButton = document.querySelector("#confirm-buy-back-button");
 const potValue = document.querySelector("#pot-value");
 const sidePotValue = document.querySelector("#side-pot-value");
 const winnerPicker = document.querySelector("#winner-picker");
@@ -145,6 +166,10 @@ let suppressAutomaticNarration = false;
 let raiseMode = false;
 let seatingMode = false;
 let seatAngles = {};
+let joiningPlayerAnimationId = null;
+let buyBackPlayerId = null;
+let buyBackWasAutomatic = false;
+const declinedBuyBackPlayerIds = new Set();
 const lastGameSettingsKey = "robodeal-last-game-settings";
 const currentGameKey = "robodeal-current-game-v1";
 const isLocalDebugEnvironment = ["localhost", "127.0.0.1"].includes(
@@ -233,7 +258,7 @@ function roundNumberFromGamePhase(phase) {
 }
 
 function viewPlayers() {
-  return gameState?.players || [];
+  return gameState?.players.filter((player) => !player.leftGame) || [];
 }
 
 function viewPlayer(playerNumber) {
@@ -400,8 +425,7 @@ function restoreLastGameSettings() {
   if (
     !settings ||
     !Number.isInteger(settings.playerCount) ||
-    settings.playerCount < 2 ||
-    settings.playerCount > 8
+    settings.playerCount < 2
   ) {
     return;
   }
@@ -482,7 +506,6 @@ function getSavedCurrentGame() {
     const validPlayers =
       Array.isArray(savedState?.players) &&
       savedState.players.length >= 2 &&
-      savedState.players.length <= 8 &&
       savedState.players.every(
         (player) => Number.isInteger(player.id) && Number.isFinite(player.chips)
       );
@@ -1582,11 +1605,72 @@ function initializeSeatAngles() {
   );
 }
 
+function addJoiningPlayerSeat(playerId) {
+  const angles = Object.values(seatAngles)
+    .map(Number)
+    .filter(Number.isFinite)
+    .sort((first, second) => first - second);
+  if (angles.length === 0) {
+    seatAngles[playerId] = Math.PI / 2;
+    return;
+  }
+  let widestGap = -1;
+  let angleAfterGap = angles[0];
+  angles.forEach((angle, index) => {
+    const nextAngle = angles[(index + 1) % angles.length];
+    const gap = normalizeSeatAngle(nextAngle - angle);
+    if (gap > widestGap) {
+      widestGap = gap;
+      angleAfterGap = angle;
+    }
+  });
+  seatAngles[playerId] = normalizeSeatAngle(angleAfterGap + widestGap / 2);
+}
+
 function positionSeatElement(seat, playerId) {
   const angle = seatAngles[playerId] ?? 0;
   seat.style.setProperty("--x", `${50 + Math.cos(angle) * 40}%`);
   seat.style.setProperty("--y", `${50 + Math.sin(angle) * 40}%`);
   seat.style.setProperty("--rotation", `${angle - Math.PI / 2}rad`);
+}
+
+function animateSeatParticles(playerId, animationClass) {
+  const angle = seatAngles[playerId] ?? 0;
+  const x = 50 + Math.cos(angle) * 40;
+  const y = 50 + Math.sin(angle) * 40;
+  for (let index = 0; index < 24; index += 1) {
+    const direction = Math.random() * Math.PI * 2;
+    const distance = 25 + Math.random() * 75;
+    const particle = document.createElement("span");
+    particle.className = `seat-particle ${animationClass}`;
+    particle.style.setProperty("--x", `${x}%`);
+    particle.style.setProperty("--y", `${y}%`);
+    particle.style.setProperty("--dx", `${Math.cos(direction) * distance}px`);
+    particle.style.setProperty("--dy", `${Math.sin(direction) * distance}px`);
+    particle.addEventListener("animationend", () => particle.remove());
+    playerSeatEffects.append(particle);
+  }
+}
+
+function animatePlayerLeaving(playerId) {
+  const seat = playerSeats.querySelector(`[data-player-id="${playerId}"]`);
+  if (seat) {
+    const ghostSeat = seat.cloneNode(true);
+    ghostSeat.classList.add("disintegrating");
+    ghostSeat.removeAttribute("tabindex");
+    ghostSeat.addEventListener("animationend", () => ghostSeat.remove());
+    playerSeatEffects.append(ghostSeat);
+  }
+  animateSeatParticles(playerId, "disintegrating");
+}
+
+function animatePlayerJoining(playerId) {
+  animateSeatParticles(playerId, "reintegrating");
+  window.setTimeout(() => {
+    if (joiningPlayerAnimationId === playerId) {
+      joiningPlayerAnimationId = null;
+    }
+  }, 2_800);
 }
 
 function pointerSeatAngle(event) {
@@ -1771,6 +1855,9 @@ function drawPlayerSeats() {
   players.forEach((player) => {
     const seat = document.createElement("div");
     seat.className = "player-seat";
+    if (player.id === joiningPlayerAnimationId) {
+      seat.classList.add("reintegrating");
+    }
     seat.dataset.playerId = String(player.id);
     const playerNumber = viewPlayerNumber(player);
     const isCurrentPlayer = playerNumber === currentPlayerNumber;
@@ -1972,6 +2059,99 @@ function closeButtonHelp() {
   buttonHelp.hidden = true;
 }
 
+function playerNeedingBuyBackDecision() {
+  if (
+    !gameState ||
+    ![GamePhase.HAND_COMPLETE, GamePhase.GAME_COMPLETE].includes(
+      gameState.phase
+    )
+  ) {
+    return null;
+  }
+  return gameState.players.find(
+    (player) => player.eliminated && !declinedBuyBackPlayerIds.has(player.id)
+  );
+}
+
+function updateBuyBackConfirmButton() {
+  confirmBuyBackButton.disabled = !(Number(buyBackAmount.value) > 0);
+}
+
+function nextJoiningPlayerId() {
+  return Math.max(...gameState.players.map((player) => player.id)) + 1;
+}
+
+function updateJoinGameConfirmButton() {
+  confirmJoinGameButton.disabled = !(
+    joinGameName.value.trim() &&
+    Number.isInteger(Number(joinGameChips.value)) &&
+    Number(joinGameChips.value) > 0
+  );
+}
+
+function cancelJoinGame() {
+  joinGamePanel.hidden = true;
+  joinGameName.value = "";
+  joinGameChips.value = "";
+  updateJoinGameConfirmButton();
+  joinGameButton.hidden = false;
+}
+
+function openJoinGamePanel() {
+  joinGameName.value = `Player ${nextJoiningPlayerId()}`;
+  joinGameChips.value = gameSettings.startingMoney;
+  buyBackPanel.hidden = true;
+  buyBackButton.hidden = true;
+  leaveGameButton.hidden = true;
+  joinGameButton.hidden = true;
+  joinGamePanel.hidden = false;
+  updateJoinGameConfirmButton();
+  joinGameName.focus();
+}
+
+function openBuyBackPage(player, automatically = false) {
+  buyBackPlayerId = player.id;
+  buyBackWasAutomatic = automatically;
+  otherPageTitle.textContent = automatically ? "Buy back?" : "Buy back";
+  buyBackQuestion.textContent = automatically
+    ? `${player.name}, do you want to buy back into the game?`
+    : `Add chips to ${player.name}.`;
+  buyBackQuestion.hidden = false;
+  buyBackButton.hidden = true;
+  leaveGameButton.hidden = automatically;
+  joinGamePanel.hidden = true;
+  buyBackPanel.hidden = false;
+  buyBackAmount.value = "";
+  updateBuyBackConfirmButton();
+  otherPage.hidden = false;
+  buyBackAmount.focus();
+}
+
+function cancelBuyBack() {
+  buyBackAmount.value = "";
+  updateBuyBackConfirmButton();
+  buyBackPanel.hidden = true;
+  buyBackButton.hidden = false;
+  leaveGameButton.hidden = false;
+  joinGameButton.hidden = false;
+}
+
+function closeOtherPage() {
+  const declinedPlayerId = buyBackPlayerId;
+  const declinedAutomaticBuyBack = buyBackWasAutomatic;
+  buyBackPlayerId = null;
+  buyBackWasAutomatic = false;
+  otherPageTitle.textContent = "Other";
+  buyBackQuestion.hidden = true;
+  cancelBuyBack();
+  cancelJoinGame();
+  otherPage.hidden = true;
+  if (declinedAutomaticBuyBack && declinedPlayerId !== null) {
+    declinedBuyBackPlayerIds.add(declinedPlayerId);
+    renderGameState();
+  }
+}
+
 function captureTurnState() {
   return structuredClone(gameState);
 }
@@ -2029,12 +2209,14 @@ function renderGameState() {
   if (!gameState) {
     return;
   }
-  if (gameState.phase === GamePhase.GAME_COMPLETE) {
+  const playerNeedingBuyBack = playerNeedingBuyBackDecision();
+  if (gameState.phase === GamePhase.GAME_COMPLETE && !playerNeedingBuyBack) {
     clearSavedCurrentGame();
   } else {
     saveCurrentGame();
   }
   updateSeatOrderButton();
+  joinGameButton.disabled = false;
   const phase = gameState.phase;
   gamePhaseLabel.textContent = gamePhaseLabels[phase] || "";
   const betting = [
@@ -2110,8 +2292,14 @@ function renderGameState() {
   dealPrompt.hidden = true;
   if (phase === GamePhase.SHOWDOWN) {
     showWinnerPicker();
-  } else if (phase === GamePhase.HAND_COMPLETE) {
+  } else if (
+    phase === GamePhase.HAND_COMPLETE ||
+    (phase === GamePhase.GAME_COMPLETE && playerNeedingBuyBack)
+  ) {
     showHandCompleteFromGameState();
+    if (playerNeedingBuyBack) {
+      openBuyBackPage(playerNeedingBuyBack, true);
+    }
   } else if (phase === GamePhase.GAME_COMPLETE) {
     showGameWinner(
       viewPlayer(gameState.handWinnerIds[0]) ||
@@ -2280,6 +2468,7 @@ function showGameWinner(winner) {
 }
 
 function startHand() {
+  declinedBuyBackPlayerIds.clear();
   lastTurnState = null;
   lastTurnEndedHandByFold = false;
   pendingBet = 0;
@@ -2290,6 +2479,8 @@ function startHand() {
 }
 
 function startNewHand() {
+  declinedBuyBackPlayerIds.clear();
+  joinGameStatus.hidden = true;
   lastTurnState = null;
   lastTurnEndedHandByFold = false;
   pendingBet = 0;
@@ -2561,13 +2752,113 @@ confirmRaiseButton.addEventListener("click", () => {
 });
 cancelRaiseButton.addEventListener("click", cancelRaiseMode);
 helpButton.addEventListener("click", () => {
+  closeOtherPage();
   buttonHelp.hidden = false;
   closeHelpButton.focus();
 });
 closeHelpButton.addEventListener("click", closeButtonHelp);
+otherButton.addEventListener("click", () => {
+  closeButtonHelp();
+  buyBackPlayerId = null;
+  buyBackWasAutomatic = false;
+  otherPageTitle.textContent = "Other";
+  buyBackQuestion.hidden = true;
+  cancelBuyBack();
+  cancelJoinGame();
+  otherPage.hidden = false;
+  closeOtherButton.focus();
+});
+buyBackButton.addEventListener("click", () => {
+  const player =
+    viewPlayer(viewActionPlayerNumber()) ||
+    gameState?.players.find((candidate) => !candidate.eliminated) ||
+    gameState?.players[0];
+  if (player) {
+    openBuyBackPage(player);
+  }
+});
+leaveGameButton.addEventListener("click", () => {
+  const player =
+    viewPlayer(viewActionPlayerNumber()) ||
+    gameState?.players.find((candidate) => !candidate.eliminated);
+  if (!player) {
+    return;
+  }
+  buyBackPlayerId = null;
+  buyBackWasAutomatic = false;
+  invokeGame({ type: Transition.LEAVE_GAME, playerId: player.id });
+  animatePlayerLeaving(player.id);
+  closeOtherPage();
+  renderGameState();
+});
+joinGameButton.addEventListener("click", () => {
+  if (!gameState) {
+    return;
+  }
+  openJoinGamePanel();
+});
+joinGameName.addEventListener("input", updateJoinGameConfirmButton);
+joinGameChips.addEventListener("input", updateJoinGameConfirmButton);
+cancelJoinGameButton.addEventListener("click", () => {
+  cancelJoinGame();
+  joinGameButton.focus();
+});
+confirmJoinGameButton.addEventListener("click", () => {
+  const name = joinGameName.value.trim();
+  const amount = Number(joinGameChips.value);
+  if (!name || !Number.isInteger(amount) || amount <= 0) {
+    return;
+  }
+  const joiningDuringHand = ![
+    GamePhase.HAND_COMPLETE,
+    GamePhase.GAME_COMPLETE,
+  ].includes(gameState.phase);
+  const playerId = nextJoiningPlayerId();
+  addJoiningPlayerSeat(playerId);
+  invokeGame({
+    type: Transition.JOIN_GAME,
+    playerId,
+    name,
+    amount,
+  });
+  joiningPlayerAnimationId = playerId;
+  gameSettings.playerCount = gameState.players.length;
+  closeOtherPage();
+  renderGameState();
+  animatePlayerJoining(playerId);
+  if (joiningDuringHand) {
+    joinGameStatus.textContent = `${name} is sitting out this hand, so he/she looks folded. They will play in the next hand.`;
+    joinGameStatus.hidden = false;
+  }
+});
+buyBackAmount.addEventListener("input", updateBuyBackConfirmButton);
+cancelBuyBackButton.addEventListener("click", () => {
+  if (buyBackWasAutomatic) {
+    closeOtherPage();
+    return;
+  }
+  cancelBuyBack();
+  buyBackButton.focus();
+});
+confirmBuyBackButton.addEventListener("click", () => {
+  const player = viewPlayer(buyBackPlayerId);
+  const amount = Number(buyBackAmount.value);
+  if (!player || amount <= 0) {
+    return;
+  }
+  buyBackPlayerId = null;
+  declinedBuyBackPlayerIds.delete(player.id);
+  invokeGame({ type: Transition.REBUY, playerId: player.id, amount });
+  closeOtherPage();
+  renderGameState();
+});
+closeOtherButton.addEventListener("click", closeOtherPage);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !buttonHelp.hidden) {
     closeButtonHelp();
+  }
+  if (event.key === "Escape" && !otherPage.hidden) {
+    closeOtherPage();
   }
 });
 undoButton.addEventListener("click", () => undoLastTurn());
@@ -2577,6 +2868,11 @@ recordingButton.addEventListener("click", toggleRecording);
 seatOrderButton.addEventListener("click", toggleInGameSeatPositioning);
 lockSeatsButton.addEventListener("click", lockSeatsAndStartGame);
 resumeGameButton.addEventListener("click", resumeSavedGame);
+form.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+  }
+});
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   clearSavedCurrentGame();

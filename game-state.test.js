@@ -88,6 +88,8 @@ test("log stores a full state every five items and differences between them", ()
   assert.ok(
     log.every((entry) => /^\d{2}:\d{2}:\d{2}\.\d{2}$/.test(entry.Time))
   );
+  assert.ok(log.every((entry) => Number.isFinite(entry.Milliseconds)));
+  assert.ok(log.every((entry) => entry.Milliseconds >= 0));
   assert.ok(log.every((entry) => ["Action", "Event"].includes(entry.Kind)));
   assert.deepEqual(materializeLogState(log.length - 1), currentState);
   assert.ok(
@@ -207,6 +209,114 @@ test("GameState uses camel case for the active first dealer", () => {
   const state = game();
   assert.equal(state.activeFirstDealerId, state.dealerId);
   assert.equal(Object.hasOwn(state, "ActiveFirstDealerId"), false);
+});
+
+test("a player can buy back at any time and an eliminated player can rejoin", () => {
+  clearLog();
+  const completeGame = game();
+  completeGame.phase = GamePhase.GAME_COMPLETE;
+  completeGame.handWinnerIds = [2];
+  completeGame.players[0].chips = 0;
+  completeGame.players[0].eliminated = true;
+
+  const reboughtGame = executeTransition(completeGame, {
+    type: Transition.REBUY,
+    playerId: 1,
+    amount: 100,
+  });
+
+  assert.equal(reboughtGame.phase, GamePhase.HAND_COMPLETE);
+  assert.equal(reboughtGame.players[0].chips, 100);
+  assert.equal(reboughtGame.players[0].eliminated, false);
+  assert.equal(log.at(-1).Type, "Buy back");
+  assert.equal(log.at(-1).Amount, 100);
+  const activeGame = executeTransition(game(), {
+    type: Transition.REBUY,
+    playerId: 1,
+    amount: 100,
+  });
+  assert.equal(activeGame.players[0].chips, 350);
+});
+
+test("the current player can leave a hand and play continues without them", () => {
+  clearLog();
+  const state = start(game());
+  const leavingPlayerId = state.actionPlayerId;
+  const leavingPlayer = state.players.find(
+    (player) => player.id === leavingPlayerId
+  );
+
+  const next = executeTransition(state, {
+    type: Transition.LEAVE_GAME,
+    playerId: leavingPlayerId,
+  });
+
+  assert.equal(leavingPlayer.chips, 250);
+  assert.equal(
+    next.players.find((player) => player.id === leavingPlayerId).chips,
+    0
+  );
+  assert.equal(
+    next.players.find((player) => player.id === leavingPlayerId).eliminated,
+    true
+  );
+  assert.equal(
+    next.players.find((player) => player.id === leavingPlayerId).leftGame,
+    true
+  );
+  assert.notEqual(next.actionPlayerId, leavingPlayerId);
+  assert.equal(log.at(-1).Type, "Leave game");
+  assert.equal(log.at(-1).Amount, 250);
+});
+
+test("a player can join during a hand and waits for the next hand to play", () => {
+  clearLog();
+  const state = start(game());
+
+  const next = executeTransition(state, {
+    type: Transition.JOIN_GAME,
+    playerId: 4,
+    name: "Jordan",
+    amount: 250,
+  });
+
+  assert.equal(next.players.length, 4);
+  assert.deepEqual(next.players.at(-1), {
+    id: 4,
+    name: "Jordan",
+    chips: 250,
+    folded: true,
+    eliminated: false,
+    leftGame: false,
+    roundBet: 0,
+    handContribution: 0,
+    hasActedThisRound: false,
+    lastActionBetLevel: null,
+  });
+  assert.equal(next.actionPlayerId, state.actionPlayerId);
+  assert.equal(log.at(-1).Type, "Join game");
+  assert.equal(log.at(-1).Amount, 250);
+});
+
+test("players can join a table with more than eight players", () => {
+  const players = Array.from({ length: 8 }, (_, index) => ({
+    id: index + 1,
+    chips: 250,
+  }));
+  const state = createGameState({
+    players,
+    smallBlind: 5,
+    dealerId: 1,
+  });
+
+  const next = executeTransition(state, {
+    type: Transition.JOIN_GAME,
+    playerId: 9,
+    amount: 250,
+  });
+
+  assert.equal(next.players.length, 9);
+  assert.equal(next.players.at(-1).name, "Player 9");
 });
 
 test("debug presets create authoritative states with working pots and transitions", () => {

@@ -240,6 +240,52 @@ body {
   position: absolute;
   inset: 0;
 }
+.player-seat-effects {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  pointer-events: none;
+}
+.player-seat.disintegrating {
+  animation: seat-disintegrate 2.8s ease-in forwards;
+}
+.player-seat.reintegrating {
+  animation: seat-reintegrate 2.8s ease-out both;
+}
+.seat-particle {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ffe18a;
+  box-shadow: 0 0 9px #ffe18a;
+}
+.seat-particle.disintegrating {
+  animation: seat-particle-disintegrate 2.8s ease-out forwards;
+}
+.seat-particle.reintegrating {
+  animation: seat-particle-reintegrate 2.8s ease-in forwards;
+}
+@keyframes seat-disintegrate {
+  0% { opacity: 1; filter: blur(0); transform: translate(-50%, -50%) rotate(var(--rotation)) scale(1); }
+  100% { opacity: 0; filter: blur(12px); transform: translate(-50%, -50%) rotate(var(--rotation)) scale(0.15); }
+}
+@keyframes seat-reintegrate {
+  0% { opacity: 0; filter: blur(12px); transform: translate(-50%, -50%) rotate(var(--rotation)) scale(0.15); }
+  55% { opacity: 0.9; filter: blur(2px); }
+  100% { opacity: 1; filter: blur(0); transform: translate(-50%, -50%) rotate(var(--rotation)) scale(1); }
+}
+@keyframes seat-particle-disintegrate {
+  0% { opacity: 0.95; transform: translate(-50%, -50%) scale(0.5); }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.05); }
+}
+@keyframes seat-particle-reintegrate {
+  0% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.05); }
+  55% { opacity: 0.95; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+}
 .lock-seats-button {
   position: absolute;
   z-index: 4;
@@ -304,7 +350,8 @@ body {
 }
 .action-menu button,
 .raise-panel button,
-.button-help button {
+.button-help button,
+.other-page button {
   min-width: 0;
   min-height: 0;
   margin: 0;
@@ -319,7 +366,8 @@ body {
   touch-action: manipulation;
 }
 .action-menu button:disabled,
-.raise-panel button:disabled {
+.raise-panel button:disabled,
+.other-page button:disabled {
   background: #c8cbc9 !important;
   color: #6f7773 !important;
   cursor: default;
@@ -338,8 +386,8 @@ body {
 #undo-button {
   background: #557066;
 }
-.action-menu .help-button {
-  grid-column: 1 / -1;
+.action-menu .help-button,
+.action-menu .other-button {
   background: #6b4f3b;
 }
 .raise-panel {
@@ -429,7 +477,8 @@ body {
   font-weight: 850;
   line-height: 1;
 }
-.button-help {
+.button-help,
+.other-page {
   position: absolute;
   z-index: 5;
   left: 50%;
@@ -444,7 +493,8 @@ body {
   box-shadow: 0 12px 34px #24100699;
   transform: translate(-50%, -50%);
 }
-.button-help h2 {
+.button-help h2,
+.other-page h2 {
   margin: 0 0 16px;
   font-size: 1.5rem;
 }
@@ -465,9 +515,41 @@ body {
   margin: 0;
   line-height: 1.3;
 }
-.button-help button {
+.button-help button,
+.other-page button {
   width: 100%;
   min-height: 46px;
+}
+.other-actions,
+.buy-back-panel:not([hidden]),
+.join-game-panel:not([hidden]) {
+  display: grid;
+  gap: 12px;
+}
+.buy-back-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.buy-back-panel label,
+.join-game-panel label {
+  margin: 4px 0 -5px;
+}
+.join-game-note,
+.join-game-status {
+  margin: 0;
+  color: #dfe8e3;
+  line-height: 1.4;
+}
+.join-game-status {
+  margin: 12px 0;
+  text-align: center;
+}
+.buy-back-question {
+  margin: -5px 0 16px;
+  font-size: 1.05rem;
+  font-weight: 750;
+  line-height: 1.35;
 }
 .side-pot-value {
   position: absolute;

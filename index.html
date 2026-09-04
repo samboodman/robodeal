@@ -14,15 +14,7 @@
 
         <form id="setup-form">
           <label for="player-count">Number of players</label>
-          <select id="player-count" name="playerCount">
-            <option value="2" selected>2 players</option>
-            <option value="3">3 players</option>
-            <option value="4">4 players</option>
-            <option value="5">5 players</option>
-            <option value="6">6 players</option>
-            <option value="7">7 players</option>
-            <option value="8">8 players</option>
-          </select>
+          <input id="player-count" name="playerCount" type="number" min="2" step="1" value="2" inputmode="numeric" required />
           <div class="money-grid">
             <div>
               <label for="starting-money">Starting money</label>
@@ -206,6 +198,7 @@
 
       <section id="game-screen" class="game-screen" aria-label="Poker game" hidden>
         <div id="player-seats" class="player-seats" aria-label="Players around the table"></div>
+        <div id="player-seat-effects" class="player-seat-effects" aria-hidden="true"></div>
         <button id="lock-seats-button" class="lock-seats-button" type="button" hidden>Lock seats and start game</button>
         <p id="voice-transcript" class="voice-transcript" aria-live="polite" hidden></p>
         <p id="voice-status" class="voice-status" role="status" aria-live="polite" data-state="disconnected">Voice disconnected</p>
@@ -225,6 +218,7 @@
                 <button id="raise-action-button" type="button">Raise</button>
                 <button id="undo-button" type="button" disabled>Undo</button>
                 <button id="help-button" class="help-button" type="button">Help</button>
+                <button id="other-button" class="other-button" type="button">Other</button>
               </div>
               <div id="raise-panel" class="raise-panel" hidden>
                 <p>Raise total</p>
@@ -267,6 +261,7 @@
           <p id="deal-message"></p>
           <button id="deal-ok-button" type="button">OK</button>
         </section>
+        <p id="join-game-status" class="join-game-status" role="status" hidden></p>
         <section id="button-help" class="button-help" aria-labelledby="button-help-title" hidden>
           <h2 id="button-help-title">Button guide</h2>
           <dl>
@@ -276,8 +271,38 @@
             <div><dt>All in</dt><dd>Bet all of your remaining chips when the table can cover them.</dd></div>
             <div><dt>Raise</dt><dd>Increase the current bet, then confirm the total.</dd></div>
             <div><dt>Undo</dt><dd>Restore the immediately previous turn when available.</dd></div>
+            <div><dt>Other</dt><dd>Uncommon options such as buying back, leaving mid game, etc</dd></div>
           </dl>
           <button id="close-help-button" type="button">Back to game</button>
+        </section>
+        <section id="other-page" class="other-page" aria-labelledby="other-page-title" hidden>
+          <h2 id="other-page-title">Other</h2>
+          <p id="buy-back-question" class="buy-back-question" hidden></p>
+          <div class="other-actions">
+            <button id="buy-back-button" type="button">Buy back</button>
+            <button id="leave-game-button" type="button">Leave game</button>
+            <button id="join-game-button" type="button">Add player</button>
+            <div id="join-game-panel" class="join-game-panel" hidden>
+              <label for="join-game-name">Player name</label>
+              <input id="join-game-name" type="text" maxlength="40" autocomplete="off" />
+              <label for="join-game-chips">Starting chips</label>
+              <input id="join-game-chips" type="number" inputmode="numeric" min="1" step="1" />
+              <p class="join-game-note">During a hand, the new player looks folded because they are waiting for the next hand to play.</p>
+              <div class="buy-back-buttons">
+                <button id="cancel-join-game-button" type="button">Cancel</button>
+                <button id="confirm-join-game-button" type="button" disabled>Add player</button>
+              </div>
+            </div>
+            <div id="buy-back-panel" class="buy-back-panel" hidden>
+              <label for="buy-back-amount">Buy back amount</label>
+              <input id="buy-back-amount" type="number" inputmode="numeric" min="1" step="1" />
+              <div class="buy-back-buttons">
+                <button id="cancel-buy-back-button" type="button">Cancel buy back</button>
+                <button id="confirm-buy-back-button" type="button" disabled>Confirm buy back</button>
+              </div>
+            </div>
+            <button id="close-other-button" type="button">Back to game</button>
+          </div>
         </section>
       </section>
       <section id="game-winner-screen" class="game-winner-screen" aria-live="polite" hidden>

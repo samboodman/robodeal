@@ -52,6 +52,125 @@ test("voice selection excludes Marin and defaults to Cedar", () => {
   );
 });
 
+test("help and other share a row and other returns to the game", () => {
+  assert.match(
+    indexSource,
+    /id="help-button"[\s\S]*?id="other-button"[\s\S]*?id="other-page"[\s\S]*?id="close-other-button"[^>]*>Back to game/
+  );
+  assert.match(
+    stylesSource,
+    /\.action-menu \.help-button,[\s\S]*?\.action-menu \.other-button/
+  );
+  assert.match(
+    appSource,
+    /otherButton\.addEventListener\("click"[\s\S]*?otherPage\.hidden = false[\s\S]*?closeOtherButton\.focus\(\)/
+  );
+  assert.match(
+    appSource,
+    /closeOtherButton\.addEventListener\("click", closeOtherPage\)/
+  );
+});
+
+test("the buy back controls open and cancel without changing chips", () => {
+  assert.match(
+    indexSource,
+    /id="buy-back-button"[^>]*>Buy back[\s\S]*?id="buy-back-panel"[^>]*hidden[\s\S]*?id="buy-back-amount"[^>]*type="number"[\s\S]*?id="cancel-buy-back-button"[^>]*>Cancel buy back/
+  );
+  assert.match(
+    appSource,
+    /buyBackButton\.addEventListener\("click"[\s\S]*?openBuyBackPage\(player\)/
+  );
+  assert.match(
+    appSource,
+    /cancelBuyBackButton\.addEventListener\("click"[\s\S]*?cancelBuyBack\(\)[\s\S]*?buyBackButton\.focus\(\)/
+  );
+});
+
+test("other has a button for the current player to leave the game", () => {
+  assert.match(indexSource, /id="leave-game-button"[^>]*>Leave game/);
+  assert.match(
+    appSource,
+    /leaveGameButton\.addEventListener\("click"[\s\S]*?viewPlayer\(viewActionPlayerNumber\(\)\)[\s\S]*?Transition\.LEAVE_GAME[\s\S]*?renderGameState\(\)/
+  );
+  assert.match(appSource, /function viewPlayers\(\)[\s\S]*?!player\.leftGame/);
+  assert.match(
+    appSource,
+    /leaveGameButton\.addEventListener\("click"[\s\S]*?animatePlayerLeaving\(player\.id\)/
+  );
+});
+
+test("other can add a named player with chosen starting chips", () => {
+  assert.match(indexSource, /id="join-game-button"[^>]*>Add player/);
+  assert.match(
+    indexSource,
+    /id="join-game-name"[^>]*type="text"[\s\S]*?id="join-game-chips"[^>]*type="number"[\s\S]*?During a hand, the new player looks folded/
+  );
+  assert.match(
+    appSource,
+    /confirmJoinGameButton\.addEventListener\("click"[\s\S]*?Transition\.JOIN_GAME[\s\S]*?name,[\s\S]*?amount,/
+  );
+  assert.match(
+    appSource,
+    /joinGameStatus\.textContent = .*sitting out this hand.*look folded/
+  );
+  assert.match(appSource, /joiningPlayerAnimationId = playerId/);
+});
+
+test("setup accepts any whole player count of at least two", () => {
+  assert.match(
+    indexSource,
+    /id="player-count"[^>]*type="number"[^>]*min="2"[^>]*step="1"/
+  );
+  assert.doesNotMatch(indexSource, /id="player-count"[^>]*max=/);
+  assert.doesNotMatch(appSource, /gameState\.players\.length >= 8/);
+});
+
+test("pressing Enter in setup does not start the game", () => {
+  assert.match(
+    appSource,
+    /form\.addEventListener\("keydown"[\s\S]*?event\.key === "Enter"[\s\S]*?event\.preventDefault\(\)/
+  );
+});
+
+test("buy back confirmation requires a positive amount and restores an eliminated player", () => {
+  assert.match(
+    indexSource,
+    /id="cancel-buy-back-button"[^>]*>Cancel buy back[\s\S]*?id="confirm-buy-back-button"[^>]*disabled[^>]*>Confirm buy back/
+  );
+  assert.match(
+    stylesSource,
+    /\.other-page button:disabled[\s\S]*?background: #c8cbc9/
+  );
+  assert.match(
+    appSource,
+    /confirmBuyBackButton\.disabled = !\(Number\(buyBackAmount\.value\) > 0\)/
+  );
+  assert.match(
+    appSource,
+    /buyBackAmount\.addEventListener\("input", updateBuyBackConfirmButton\)/
+  );
+  assert.match(
+    appSource,
+    /confirmBuyBackButton\.addEventListener\("click"[\s\S]*?viewPlayer\(buyBackPlayerId\)[\s\S]*?Transition\.REBUY[\s\S]*?renderGameState\(\)/
+  );
+});
+
+test("an eliminated player is automatically asked about buying back", () => {
+  assert.match(indexSource, /id="buy-back-question"[^>]*hidden/);
+  assert.match(
+    appSource,
+    /function playerNeedingBuyBackDecision\(\)[\s\S]*?player\.eliminated/
+  );
+  assert.match(
+    appSource,
+    /function openBuyBackPage\(player, automatically = false\)[\s\S]*?do you want to buy back into the game\?/
+  );
+  assert.match(
+    appSource,
+    /playerNeedingBuyBack[\s\S]*?openBuyBackPage\(playerNeedingBuyBack, true\)/
+  );
+});
+
 test("in-game seat controls hide play controls and preserve the current game while reordering seats", () => {
   assert.match(
     indexSource,
@@ -85,14 +204,14 @@ test("live games are saved and can be resumed from setup", () => {
     indexSource,
     /id="resume-game-button"[^>]*hidden>Resume saved game/
   );
-  assert.match(appSource, /const currentGameKey = 'robodeal-current-game-v1'/);
+  assert.match(appSource, /const currentGameKey = "robodeal-current-game-v1"/);
   assert.match(
     appSource,
     /function saveCurrentGame\(\)[\s\S]*?gameSettings,[\s\S]*?gameState,[\s\S]*?seatAngles,[\s\S]*?lastTurnState/
   );
   assert.match(
     appSource,
-    /function renderGameState\(\)[\s\S]*?GamePhase\.GAME_COMPLETE\) \{\s*clearSavedCurrentGame\(\);\s*\}[\s\S]*?saveCurrentGame\(\)/
+    /function renderGameState\(\)[\s\S]*?const playerNeedingBuyBack = playerNeedingBuyBackDecision\(\)[\s\S]*?GamePhase\.GAME_COMPLETE &&\s*!playerNeedingBuyBack[\s\S]*?clearSavedCurrentGame\(\);[\s\S]*?saveCurrentGame\(\)/
   );
   assert.match(
     appSource,
@@ -100,7 +219,7 @@ test("live games are saved and can be resumed from setup", () => {
   );
   assert.match(
     appSource,
-    /resumeGameButton\.addEventListener\('click', resumeSavedGame\)/
+    /resumeGameButton\.addEventListener\("click", resumeSavedGame\)/
   );
 });
 
@@ -134,35 +253,35 @@ test("narrates every deal stage, showdown question, and winner result", () => {
 });
 
 test("voice can award or split the current showdown pot", () => {
-  assert.match(appSource, /name: 'chooseWinner'/);
-  assert.match(appSource, /name: 'splitPot'/);
+  assert.match(appSource, /name: "chooseWinner"/);
+  assert.match(appSource, /name: "splitPot"/);
   assert.match(
     appSource,
     /function currentShowdownPot\(\)[\s\S]*?eligiblePlayerNumbers/
   );
   assert.match(
     appSource,
-    /name === 'chooseWinner'[\s\S]*?awardPot\(showdown\.potIndex, requestedPlayerNumbers\[0\]\)/
+    /name === "chooseWinner"[\s\S]*?awardPot\(showdown\.potIndex, requestedPlayerNumbers\[0\]\)/
   );
   assert.match(
     appSource,
-    /name === 'splitPot'[\s\S]*?awardSplitPot\(showdown\.potIndex, requestedPlayerNumbers\)/
+    /name === "splitPot"[\s\S]*?awardSplitPot\(showdown\.potIndex, requestedPlayerNumbers\)/
   );
 });
 
 test("voice can start the next hand from the completed-hand screen", () => {
-  assert.match(appSource, /name: 'nextHand'/);
+  assert.match(appSource, /name: "nextHand"/);
   assert.match(
     appSource,
-    /name === 'nextHand'[\s\S]*?GamePhase\.HAND_COMPLETE[\s\S]*?startNewHand\(\)[\s\S]*?dealMessage\.textContent/
+    /name === "nextHand"[\s\S]*?GamePhase\.HAND_COMPLETE[\s\S]*?startNewHand\(\)[\s\S]*?dealMessage\.textContent/
   );
 });
 
 test("dismissing a deal prompt stops active narration and clears buffered audio", () => {
-  assert.match(appSource, /voiceAgent\.send\(\{ type: 'response\.cancel' \}\)/);
+  assert.match(appSource, /voiceAgent\.send\(\{ type: "response\.cancel" \}\)/);
   assert.match(
     appSource,
-    /voiceAgent\.send\(\{ type: 'output_audio_buffer\.clear' \}\)/
+    /voiceAgent\.send\(\{ type: "output_audio_buffer\.clear" \}\)/
   );
   assert.match(
     appSource,
