@@ -41,6 +41,19 @@ const useBigBlindCheckbox = document.querySelector("#use-big-blind");
 const useAnteCheckbox = document.querySelector("#use-ante");
 const anteSetting = document.querySelector("#ante-setting");
 const anteInput = document.querySelector("#ante");
+const anteModeSelect = document.querySelector("#ante-mode");
+const useStraddleCheckbox = document.querySelector("#use-straddle");
+const straddleSetting = document.querySelector("#straddle-setting");
+const straddleAmountInput = document.querySelector("#straddle-amount");
+const useBombPotCheckbox = document.querySelector("#use-bomb-pot");
+const bombPotSetting = document.querySelector("#bomb-pot-setting");
+const bombPotAmountInput = document.querySelector("#bomb-pot-amount");
+const runItTwiceCheckbox = document.querySelector("#run-it-twice");
+const useRakeCheckbox = document.querySelector("#use-rake");
+const rakeSetting = document.querySelector("#rake-setting");
+const rakeAmountInput = document.querySelector("#rake-amount");
+const allowAddOnsCheckbox = document.querySelector("#allow-add-ons");
+const allowReEntriesCheckbox = document.querySelector("#allow-re-entries");
 const bettingLimitSelect = document.querySelector("#betting-limit");
 const fixedLimitSetting = document.querySelector("#fixed-limit-setting");
 const fixedLimitBetInput = document.querySelector("#fixed-limit-bet");
@@ -87,6 +100,12 @@ const closeOtherButton = document.querySelector("#close-other-button");
 const buyBackButton = document.querySelector("#buy-back-button");
 const leaveGameButton = document.querySelector("#leave-game-button");
 const joinGameButton = document.querySelector("#join-game-button");
+const otherPlayerPicker = document.querySelector("#other-player-picker");
+const otherPlayerQuestion = document.querySelector("#other-player-question");
+const otherPlayerOptions = document.querySelector("#other-player-options");
+const cancelOtherPlayerPickerButton = document.querySelector(
+  "#cancel-other-player-picker",
+);
 const joinGamePanel = document.querySelector("#join-game-panel");
 const joinGameName = document.querySelector("#join-game-name");
 const joinGameChips = document.querySelector("#join-game-chips");
@@ -204,6 +223,26 @@ function updateFixedLimitSetting() {
 function updateAnteSetting() {
   anteSetting.hidden = !useAnteCheckbox.checked;
   anteInput.disabled = !useAnteCheckbox.checked;
+  anteModeSelect.disabled = !useAnteCheckbox.checked;
+}
+
+function updateOptionalPokerRuleSetting(checkbox, setting, input) {
+  setting.hidden = !checkbox.checked;
+  input.disabled = !checkbox.checked;
+}
+
+function updatePokerRuleSettings() {
+  updateOptionalPokerRuleSetting(
+    useStraddleCheckbox,
+    straddleSetting,
+    straddleAmountInput,
+  );
+  updateOptionalPokerRuleSetting(
+    useBombPotCheckbox,
+    bombPotSetting,
+    bombPotAmountInput,
+  );
+  updateOptionalPokerRuleSetting(useRakeCheckbox, rakeSetting, rakeAmountInput);
 }
 
 function updateDebugFeatures() {
@@ -456,7 +495,28 @@ function restoreLastGameSettings() {
   if (Number.isInteger(settings.ante) && settings.ante > 0) {
     anteInput.value = settings.ante;
   }
+  anteModeSelect.value = ["everyone", "big-blind", "button"].includes(
+    settings.anteMode,
+  )
+    ? settings.anteMode
+    : "everyone";
+  useStraddleCheckbox.checked = settings.useStraddle === true;
+  if (Number.isInteger(settings.straddleAmount) && settings.straddleAmount > 0) {
+    straddleAmountInput.value = settings.straddleAmount;
+  }
+  useBombPotCheckbox.checked = settings.useBombPot === true;
+  if (Number.isInteger(settings.bombPotAmount) && settings.bombPotAmount > 0) {
+    bombPotAmountInput.value = settings.bombPotAmount;
+  }
+  runItTwiceCheckbox.checked = settings.runItTwice === true;
+  useRakeCheckbox.checked = settings.useRake === true;
+  if (Number.isInteger(settings.rakeAmount) && settings.rakeAmount > 0) {
+    rakeAmountInput.value = settings.rakeAmount;
+  }
+  allowAddOnsCheckbox.checked = settings.allowAddOns !== false;
+  allowReEntriesCheckbox.checked = settings.allowReEntries !== false;
   updateAnteSetting();
+  updatePokerRuleSettings();
   bettingLimitSelect.value = Object.values(BettingLimit).includes(
     settings.bettingLimit,
   )
@@ -1543,8 +1603,17 @@ function makePlayers() {
     smallBlind: gameSettings.smallBlind,
     smallBlindIncrease: gameSettings.smallBlindIncrease,
     ante: gameSettings.ante,
+    anteMode: gameSettings.anteMode,
     dealerId: gameSettings.dealerNumber,
     useBigBlind: gameSettings.useBigBlind,
+    useStraddle: gameSettings.useStraddle,
+    straddleAmount: gameSettings.straddleAmount,
+    useBombPot: gameSettings.useBombPot,
+    bombPotAmount: gameSettings.bombPotAmount,
+    rakeAmount: gameSettings.rakeAmount,
+    runItTwice: gameSettings.runItTwice,
+    allowAddOns: gameSettings.allowAddOns,
+    allowReEntries: gameSettings.allowReEntries,
     bettingLimit: gameSettings.bettingLimit,
     fixedLimitBet: gameSettings.fixedLimitBet,
   });
@@ -2072,7 +2141,11 @@ function playerNeedingBuyBackDecision() {
     return null;
   }
   return gameState.players.find(
-    (player) => player.eliminated && !declinedBuyBackPlayerIds.has(player.id),
+    (player) =>
+      player.eliminated &&
+      !player.leftGame &&
+      player.eliminatedHandNumber === gameState.handNumber &&
+      !declinedBuyBackPlayerIds.has(player.id),
   );
 }
 
@@ -2104,12 +2177,69 @@ function openJoinGamePanel() {
   joinGameName.value = `Player ${nextJoiningPlayerId()}`;
   joinGameChips.value = gameSettings.startingMoney;
   buyBackPanel.hidden = true;
+  otherPlayerPicker.hidden = true;
   buyBackButton.hidden = true;
   leaveGameButton.hidden = true;
   joinGameButton.hidden = true;
   joinGamePanel.hidden = false;
   updateJoinGameConfirmButton();
   joinGameName.focus();
+}
+
+function cancelOtherPlayerPicker() {
+  otherPlayerPicker.hidden = true;
+  otherPlayerOptions.replaceChildren();
+  buyBackButton.hidden = false;
+  leaveGameButton.hidden = false;
+  joinGameButton.hidden = false;
+}
+
+function leaveGameForPlayer(player) {
+  invokeGame({ type: Transition.LEAVE_GAME, playerId: player.id });
+  animatePlayerLeaving(player.id);
+  closeOtherPage();
+  renderGameState();
+}
+
+function openOtherPlayerPicker(action) {
+  const candidates = gameState.players.filter((player) => {
+    if (player.leftGame) {
+      return false;
+    }
+    if (action === "buy-back") {
+      return player.eliminated
+        ? gameState.allowReEntries !== false
+        : gameState.allowAddOns !== false;
+    }
+    return !player.eliminated;
+  });
+  if (candidates.length === 0) {
+    return;
+  }
+  otherPlayerQuestion.textContent =
+    action === "buy-back"
+      ? "Which player is buying back?"
+      : "Which player is leaving the game?";
+  otherPlayerOptions.replaceChildren();
+  candidates.forEach((player) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = player.name;
+    button.addEventListener("click", () => {
+      if (action === "buy-back") {
+        openBuyBackPage(player);
+      } else {
+        leaveGameForPlayer(player);
+      }
+    });
+    otherPlayerOptions.append(button);
+  });
+  buyBackPanel.hidden = true;
+  joinGamePanel.hidden = true;
+  buyBackButton.hidden = true;
+  leaveGameButton.hidden = true;
+  joinGameButton.hidden = true;
+  otherPlayerPicker.hidden = false;
 }
 
 function openBuyBackPage(player, automatically = false) {
@@ -2122,6 +2252,7 @@ function openBuyBackPage(player, automatically = false) {
   buyBackQuestion.hidden = false;
   buyBackButton.hidden = true;
   leaveGameButton.hidden = automatically;
+  otherPlayerPicker.hidden = true;
   joinGamePanel.hidden = true;
   buyBackPanel.hidden = false;
   buyBackAmount.value = "";
@@ -2137,6 +2268,7 @@ function cancelBuyBack() {
   buyBackButton.hidden = false;
   leaveGameButton.hidden = false;
   joinGameButton.hidden = false;
+  otherPlayerPicker.hidden = true;
 }
 
 function closeOtherPage() {
@@ -2147,6 +2279,7 @@ function closeOtherPage() {
   otherPageTitle.textContent = "Other";
   buyBackQuestion.hidden = true;
   cancelBuyBack();
+  cancelOtherPlayerPicker();
   cancelJoinGame();
   otherPage.hidden = true;
   if (declinedAutomaticBuyBack && declinedPlayerId !== null) {
@@ -2357,9 +2490,11 @@ function showGameStatePotWinnerPicker() {
   }
 
   showPotWinnerPicker(
-    potIndex === 0
-      ? "Who had the best cards?"
-      : `Who wins side pot ${potIndex}?`,
+    pot.runNumber
+      ? `Who wins ${potIndex < 2 ? "the main pot" : `side pot ${Math.floor(potIndex / 2)}`} on board ${pot.runNumber}?`
+      : potIndex === 0
+        ? "Who had the best cards?"
+        : `Who wins side pot ${potIndex}?`,
     eligiblePlayers.map((player) => ({ ...player, number: player.id })),
     (winnerNumber) => awardPot(potIndex, winnerNumber),
     (winnerNumbers) => awardSplitPot(potIndex, winnerNumbers),
@@ -2635,6 +2770,9 @@ playerCount.addEventListener("change", () => {
 });
 bettingLimitSelect.addEventListener("change", updateFixedLimitSetting);
 useAnteCheckbox.addEventListener("change", updateAnteSetting);
+useStraddleCheckbox.addEventListener("change", updatePokerRuleSettings);
+useBombPotCheckbox.addEventListener("change", updatePokerRuleSettings);
+useRakeCheckbox.addEventListener("change", updatePokerRuleSettings);
 debugFeaturesCheckbox.addEventListener("change", updateDebugFeatures);
 debugPresetSelect.addEventListener("change", selectDebugPreset);
 enableAudioFileInputCheckbox.addEventListener("change", updateDebugFeatures);
@@ -2768,32 +2906,17 @@ otherButton.addEventListener("click", () => {
   buyBackQuestion.hidden = true;
   cancelBuyBack();
   cancelJoinGame();
+  cancelOtherPlayerPicker();
   otherPage.hidden = false;
   closeOtherButton.focus();
 });
 buyBackButton.addEventListener("click", () => {
-  const player =
-    viewPlayer(viewActionPlayerNumber()) ||
-    gameState?.players.find((candidate) => !candidate.eliminated) ||
-    gameState?.players[0];
-  if (player) {
-    openBuyBackPage(player);
-  }
+  openOtherPlayerPicker("buy-back");
 });
 leaveGameButton.addEventListener("click", () => {
-  const player =
-    viewPlayer(viewActionPlayerNumber()) ||
-    gameState?.players.find((candidate) => !candidate.eliminated);
-  if (!player) {
-    return;
-  }
-  buyBackPlayerId = null;
-  buyBackWasAutomatic = false;
-  invokeGame({ type: Transition.LEAVE_GAME, playerId: player.id });
-  animatePlayerLeaving(player.id);
-  closeOtherPage();
-  renderGameState();
+  openOtherPlayerPicker("leave-game");
 });
+cancelOtherPlayerPickerButton.addEventListener("click", cancelOtherPlayerPicker);
 joinGameButton.addEventListener("click", () => {
   if (!gameState) {
     return;
@@ -2830,7 +2953,7 @@ confirmJoinGameButton.addEventListener("click", () => {
   renderGameState();
   animatePlayerJoining(playerId);
   if (joiningDuringHand) {
-    joinGameStatus.textContent = `${name} is sitting out this hand, so he/she looks folded. They will play in the next hand.`;
+    joinGameStatus.textContent = name + " is sitting out this hand, so they look folded. They play next hand.";
     joinGameStatus.hidden = false;
   }
 });
@@ -2890,6 +3013,16 @@ form.addEventListener("submit", (event) => {
     useBigBlind: useBigBlindCheckbox.checked,
     useAnte: useAnteCheckbox.checked,
     ante: useAnteCheckbox.checked ? Number(anteInput.value) : 0,
+    anteMode: anteModeSelect.value,
+    useStraddle: useStraddleCheckbox.checked,
+    straddleAmount: Number(straddleAmountInput.value),
+    useBombPot: useBombPotCheckbox.checked,
+    bombPotAmount: Number(bombPotAmountInput.value),
+    runItTwice: runItTwiceCheckbox.checked,
+    useRake: useRakeCheckbox.checked,
+    rakeAmount: useRakeCheckbox.checked ? Number(rakeAmountInput.value) : 0,
+    allowAddOns: allowAddOnsCheckbox.checked,
+    allowReEntries: allowReEntriesCheckbox.checked,
     bettingLimit: bettingLimitSelect.value,
     fixedLimitBet: Number(fixedLimitBetInput.value),
     dealerNumber: Number(dealerSelect.value),
@@ -2925,5 +3058,6 @@ updateChipDisplayModeButton();
 restoreLastGameSettings();
 updateFixedLimitSetting();
 updateAnteSetting();
+updatePokerRuleSettings();
 updateDebugFeatures();
 updateResumeGameButton();

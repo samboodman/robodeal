@@ -78,7 +78,7 @@ test("the buy back controls open and cancel without changing chips", () => {
   );
   assert.match(
     appSource,
-    /buyBackButton\.addEventListener\("click"[\s\S]*?openBuyBackPage\(player\)/,
+    /buyBackButton\.addEventListener\("click"[\s\S]*?openOtherPlayerPicker\("buy-back"\)/,
   );
   assert.match(
     appSource,
@@ -86,16 +86,16 @@ test("the buy back controls open and cancel without changing chips", () => {
   );
 });
 
-test("other has a button for the current player to leave the game", () => {
+test("other asks which player should leave the game", () => {
   assert.match(indexSource, /id="leave-game-button"[^>]*>Leave game/);
   assert.match(
     appSource,
-    /leaveGameButton\.addEventListener\("click"[\s\S]*?viewPlayer\(viewActionPlayerNumber\(\)\)[\s\S]*?Transition\.LEAVE_GAME[\s\S]*?renderGameState\(\)/,
+    /leaveGameButton\.addEventListener\("click"[\s\S]*?openOtherPlayerPicker\("leave-game"\)/,
   );
   assert.match(appSource, /function viewPlayers\(\)[\s\S]*?!player\.leftGame/);
   assert.match(
     appSource,
-    /leaveGameButton\.addEventListener\("click"[\s\S]*?animatePlayerLeaving\(player\.id\)/,
+    /function leaveGameForPlayer\(player\)[\s\S]*?Transition\.LEAVE_GAME[\s\S]*?animatePlayerLeaving\(player\.id\)/,
   );
 });
 
@@ -160,6 +160,10 @@ test("an eliminated player is automatically asked about buying back", () => {
   assert.match(
     appSource,
     /function playerNeedingBuyBackDecision\(\)[\s\S]*?player\.eliminated/,
+  );
+  assert.match(
+    appSource,
+    /function playerNeedingBuyBackDecision\(\)[\s\S]*?!player\.leftGame[\s\S]*?player\.eliminatedHandNumber === gameState\.handNumber/,
   );
   assert.match(
     appSource,

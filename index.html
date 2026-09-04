@@ -40,7 +40,52 @@
           <div id="ante-setting" hidden>
             <label for="ante">Ante amount</label>
             <input id="ante" name="ante" type="number" min="1" value="5" inputmode="numeric" required disabled />
+            <label for="ante-mode">Who pays the ante?</label>
+            <select id="ante-mode" name="anteMode" disabled>
+              <option value="everyone" selected>Every player</option>
+              <option value="big-blind">Big blind pays all antes</option>
+              <option value="button">Dealer button pays all antes</option>
+            </select>
           </div>
+          <label class="checkbox-setting" for="use-straddle">
+            <input id="use-straddle" name="useStraddle" type="checkbox" />
+            Use straddle
+          </label>
+          <div id="straddle-setting" hidden>
+            <label for="straddle-amount">Straddle amount</label>
+            <input id="straddle-amount" name="straddleAmount" type="number" min="1" value="20" inputmode="numeric" required disabled />
+            <p class="field-note">Default: two times the big blind.</p>
+          </div>
+          <label class="checkbox-setting" for="use-bomb-pot">
+            <input id="use-bomb-pot" name="useBombPot" type="checkbox" />
+            Use bomb pots
+          </label>
+          <div id="bomb-pot-setting" hidden>
+            <label for="bomb-pot-amount">Bomb-pot amount per player</label>
+            <input id="bomb-pot-amount" name="bombPotAmount" type="number" min="1" value="10" inputmode="numeric" required disabled />
+            <p class="field-note">Default: double the ante.</p>
+          </div>
+          <label class="checkbox-setting" for="run-it-twice">
+            <input id="run-it-twice" name="runItTwice" type="checkbox" />
+            Run it twice when everyone is all in
+          </label>
+          <label class="checkbox-setting" for="use-rake">
+            <input id="use-rake" name="useRake" type="checkbox" />
+            Take rake
+          </label>
+          <div id="rake-setting" hidden>
+            <label for="rake-amount">Rake per pot</label>
+            <input id="rake-amount" name="rakeAmount" type="number" min="1" value="10" inputmode="numeric" required disabled />
+            <p class="field-note">Default: double the ante.</p>
+          </div>
+          <label class="checkbox-setting" for="allow-add-ons">
+            <input id="allow-add-ons" name="allowAddOns" type="checkbox" checked />
+            Allow add-ons (buy more chips while still in)
+          </label>
+          <label class="checkbox-setting" for="allow-re-entries">
+            <input id="allow-re-entries" name="allowReEntries" type="checkbox" checked />
+            Allow re-entries after elimination
+          </label>
 
           <label for="betting-limit">Betting limit</label>
           <select id="betting-limit" name="bettingLimit">
@@ -282,6 +327,11 @@
             <button id="buy-back-button" type="button">Buy back</button>
             <button id="leave-game-button" type="button">Leave game</button>
             <button id="join-game-button" type="button">Add player</button>
+            <div id="other-player-picker" class="join-game-panel" hidden>
+              <p id="other-player-question"></p>
+              <div id="other-player-options" class="winner-options"></div>
+              <button id="cancel-other-player-picker" type="button">Cancel</button>
+            </div>
             <div id="join-game-panel" class="join-game-panel" hidden>
               <label for="join-game-name">Player name</label>
               <input id="join-game-name" type="text" maxlength="40" autocomplete="off" />

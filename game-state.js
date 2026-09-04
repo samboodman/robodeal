@@ -472,17 +472,86 @@ function refreshPots(state) {
 }
 
 function takeAnte(state, ante) {
-  for (let i = state.players.length - 1; i >= 0; i--) {
-    const takenAmount = Math.min(ante, state.players[i].chips);
-    state.players[i].chips -= takenAmount;
-    state.players[i].handContribution += takenAmount;
+  const activePlayers = state.players.filter((player) => !player.eliminated);
+  const payerIds =
+    state.anteMode === "big-blind"
+      ? [state.bigBlindPlayerId]
+      : state.anteMode === "button"
+        ? [state.dealerId]
+        : activePlayers.map((player) => player.id);
+  const amountPerPayer =
+    state.anteMode === "everyone" ? ante : ante * activePlayers.length;
+
+  payerIds.forEach((playerId) => {
+    const player = playerById(state, playerId);
+    if (!player || player.eliminated) {
+      return;
+    }
+    const takenAmount = Math.min(amountPerPayer, player.chips);
+    player.chips -= takenAmount;
+    player.handContribution += takenAmount;
     log.push({
-      PlayerId: state.players[i].id,
+      PlayerId: player.id,
       State: structuredClone(state),
-      Type: "Ante",
+      Type:
+        state.anteMode === "big-blind"
+          ? "Big blind ante"
+          : state.anteMode === "button"
+            ? "Button ante"
+            : "Ante",
       Amount: takenAmount,
     });
+  });
+}
+
+function postForcedContribution(state, playerId, requestedAmount, type) {
+  const player = playerById(state, playerId);
+  const amount = Math.min(requestedAmount, player.chips);
+  player.chips -= amount;
+  player.handContribution += amount;
+  log.push({
+    PlayerId: playerId,
+    State: structuredClone(state),
+    Type: type,
+    Amount: amount,
+  });
+}
+
+function postBombPot(state) {
+  state.players
+    .filter((player) => !player.eliminated)
+    .forEach((player) =>
+      postForcedContribution(state, player.id, state.bombPotAmount, "Bomb pot"),
+    );
+}
+
+function splitPotsForTwoRuns(state) {
+  if (!state.runItTwice || state.pots.some((pot) => pot.runNumber)) {
+    return;
   }
+  state.pots = state.pots.flatMap((pot) => {
+    takeRake(state, pot);
+    const firstAmount = Math.floor(pot.amount / 2);
+    return [
+      { ...pot, amount: firstAmount, runNumber: 1 },
+      { ...pot, amount: pot.amount - firstAmount, runNumber: 2 },
+    ];
+  });
+}
+
+function takeRake(state, pot) {
+  if (state.rakeAmount <= 0 || pot.raked) {
+    return;
+  }
+  const amount = Math.min(state.rakeAmount, pot.amount);
+  pot.amount -= amount;
+  pot.raked = true;
+  state.rakeCollected += amount;
+  log.push({
+    State: structuredClone(state),
+    Type: "Rake",
+    Amount: amount,
+  });
 }
 
 function postBlind(
@@ -532,7 +601,11 @@ function ensureShowdownPot(state) {
 function finishHand(state, winnerIds) {
   state.handWinnerIds = [...new Set(winnerIds)];
   state.players.forEach((player) => {
+    const wasEliminated = player.eliminated;
     player.eliminated = player.chips === 0;
+    if (player.eliminated && !wasEliminated && !player.leftGame) {
+      player.eliminatedHandNumber = state.handNumber;
+    }
   });
   state.actionPlayerId = null;
   const playersWithChips = state.players.filter((player) => player.chips > 0);
@@ -558,6 +631,7 @@ function logGameWon(state) {
 
 function awardAllPots(state, winnerId) {
   const winner = playerById(state, winnerId);
+  state.pots.forEach((pot) => takeRake(state, pot));
   const amountWon = state.pots.reduce((total, pot) => total + pot.amount, 0);
   winner.chips += amountWon;
   state.pots.forEach((pot) => {
@@ -659,8 +733,17 @@ export function createGameState({
   smallBlind,
   smallBlindIncrease = 0,
   ante = 0,
+  anteMode = "everyone",
   dealerId,
   useBigBlind = false,
+  useStraddle = false,
+  straddleAmount = Math.max(1, smallBlind * 4),
+  useBombPot = false,
+  bombPotAmount = Math.max(1, ante * 2),
+  rakeAmount = 0,
+  runItTwice = false,
+  allowAddOns = true,
+  allowReEntries = true,
   bettingLimit = BettingLimit.NO_LIMIT,
   fixedLimitBet = Math.max(1, smallBlind * 2),
 }) {
@@ -679,6 +762,14 @@ export function createGameState({
   if (!Number.isInteger(fixedLimitBet) || fixedLimitBet <= 0) {
     throw new Error("Fixed-limit bet must be a positive integer.");
   }
+  if (!["everyone", "big-blind", "button"].includes(anteMode)) {
+    throw new Error("Ante payer is not supported.");
+  }
+  [straddleAmount, bombPotAmount, rakeAmount].forEach((amount) => {
+    if (!Number.isInteger(amount) || amount < 0) {
+      throw new Error("Poker rule amounts must be non-negative integers.");
+    }
+  });
 
   return {
     phase: GamePhase.SETUP,
@@ -689,6 +780,7 @@ export function createGameState({
       folded: Boolean(player.folded),
       eliminated: Boolean(player.eliminated),
       leftGame: Boolean(player.leftGame),
+      eliminatedHandNumber: player.eliminatedHandNumber ?? null,
       roundBet: 0,
       handContribution: 0,
       hasActedThisRound: false,
@@ -697,7 +789,17 @@ export function createGameState({
     smallBlind,
     smallBlindIncrease,
     ante,
+    anteMode,
     useBigBlind,
+    useStraddle,
+    straddleAmount,
+    useBombPot,
+    bombPotAmount,
+    rakeAmount,
+    rakeCollected: 0,
+    runItTwice,
+    allowAddOns,
+    allowReEntries,
     bettingLimit,
     fixedLimitBet,
     dealerId,
@@ -706,6 +808,7 @@ export function createGameState({
     actionPlayerId: null,
     smallBlindPlayerId: null,
     bigBlindPlayerId: null,
+    straddlePlayerId: null,
     highestRoundBet: 0,
     fullRaisesThisRound: 0,
     lastFullRaiseSize:
@@ -963,9 +1066,16 @@ export function executeTransition(gameState, action) {
       throw new Error("A buy back must be a positive whole number.");
     }
     const wasEliminated = player.eliminated;
+    if (wasEliminated && !state.allowReEntries) {
+      throw new Error("Re-entries are turned off for this game.");
+    }
+    if (!wasEliminated && !state.allowAddOns) {
+      throw new Error("Add-ons are turned off for this game.");
+    }
     player.chips += amount;
     player.eliminated = false;
     player.leftGame = false;
+    player.eliminatedHandNumber = null;
     if (wasEliminated && state.phase === GamePhase.GAME_COMPLETE) {
       state.phase = GamePhase.HAND_COMPLETE;
     }
@@ -991,6 +1101,7 @@ export function executeTransition(gameState, action) {
     player.folded = true;
     player.eliminated = true;
     player.leftGame = true;
+    player.eliminatedHandNumber = null;
     state.pots.forEach((pot) => {
       pot.eligiblePlayerNumbers = pot.eligiblePlayerNumbers.filter(
         (playerId) => playerId !== player.id,
@@ -1111,15 +1222,31 @@ export function executeTransition(gameState, action) {
         ? playerToDealersLeft(state, state.smallBlindPlayerId)
         : null;
     }
-    takeAnte(state, state.ante);
-    postBlind(state, state.smallBlindPlayerId, state.smallBlind);
-    if (state.bigBlindPlayerId !== null) {
-      postBlind(state, state.bigBlindPlayerId, state.smallBlind * 2, false);
+    state.straddlePlayerId = null;
+    if (state.useBombPot) {
+      postBombPot(state);
+    } else {
+      takeAnte(state, state.ante);
+      postBlind(state, state.smallBlindPlayerId, state.smallBlind);
+      if (state.bigBlindPlayerId !== null) {
+        postBlind(state, state.bigBlindPlayerId, state.smallBlind * 2, false);
+      }
+      if (state.useStraddle) {
+        const straddleFrom =
+          state.bigBlindPlayerId ?? state.smallBlindPlayerId;
+        state.straddlePlayerId = nextPlayerFrom(state, straddleFrom);
+        if (state.straddlePlayerId !== null) {
+          postBlind(state, state.straddlePlayerId, state.straddleAmount, false);
+          log[log.length - 1].Type = "Straddle";
+        }
+      }
     }
     refreshPots(state);
     state.actionPlayerId = nextPlayerFrom(
       state,
-      state.bigBlindPlayerId ?? state.smallBlindPlayerId,
+      state.straddlePlayerId ??
+        state.bigBlindPlayerId ??
+        state.smallBlindPlayerId,
     );
     log.push({
       State: structuredClone(state),
@@ -1133,11 +1260,22 @@ export function executeTransition(gameState, action) {
       state.phase = GamePhase.SHOWDOWN;
       state.potAwardIndex = 0;
       ensureShowdownPot(state);
+      splitPotsForTwoRuns(state);
       return state;
     }
     const nextBettingPhase = bettingPhaseFor[state.phase];
     if (!nextBettingPhase) {
       throw new Error(`CARDS_DEALT is not allowed during ${state.phase}.`);
+    }
+    if (state.phase === GamePhase.DEAL_HOLE_CARDS && state.useBombPot) {
+      state.phase = GamePhase.DEAL_FLOP;
+      state.actionPlayerId = null;
+      log.push({
+        State: structuredClone(state),
+        Type: "BombPotFlop",
+        Phase: GamePhase.DEAL_FLOP,
+      });
+      return state;
     }
     state.phase = nextBettingPhase;
     if (state.phase === GamePhase.BETTING_PREFLOP) {
@@ -1176,6 +1314,7 @@ export function executeTransition(gameState, action) {
     if (!pot || pot.amount < 0) {
       throw new Error("There is no pot to award.");
     }
+    takeRake(state, pot);
 
     const winnerIds =
       action.type === Transition.AWARD_POT
