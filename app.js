@@ -1760,8 +1760,10 @@ function animateChipsToPot(playerId, amount) {
   const targetX = targetBox.left + targetBox.width / 2 - tableBox.left;
   const targetY = targetBox.top + targetBox.height / 2 - tableBox.top;
 
-  chipColorsForAmount(amount)
-    .slice(0, 36)
+  const chipColors = chipColorsForAmount(amount).slice(0, 36);
+  const chipDelay = Math.min(90, 42 + chipColors.length * 2);
+  const flightDuration = Math.min(1400, 560 + chipColors.length * 20);
+  chipColors
     .forEach((color, index) => {
       const chip = document.createElement("i");
       chip.className = `flying-chip chip-${color}`;
@@ -1778,8 +1780,8 @@ function animateChipsToPot(playerId, amount) {
           },
         ],
         {
-          duration: 760,
-          delay: index * 24,
+          duration: flightDuration,
+          delay: index * chipDelay,
           easing: "cubic-bezier(0.22, 0.78, 0.28, 1)",
           fill: "both",
         },
