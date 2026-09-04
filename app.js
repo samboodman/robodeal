@@ -5,6 +5,7 @@ import {
   createDebugGameState,
   createGameState,
   executeTransition,
+  formatTime,
   gameStartedAt,
   GamePhase,
   getAvailableActions,
@@ -70,6 +71,9 @@ const gameWinnerMessage = document.querySelector("#game-winner-message");
 const playerSeats = document.querySelector("#player-seats");
 const playerSeatEffects = document.querySelector("#player-seat-effects");
 const chipFlightLayer = document.querySelector("#chip-flight-layer");
+const buyBackChipFlightLayer = document.querySelector(
+  "#buy-back-chip-flight-layer",
+);
 const lockSeatsButton = document.querySelector("#lock-seats-button");
 const turnControl = document.querySelector("#turn-control");
 const turnIndicator = document.querySelector("#turn-indicator");
@@ -1790,6 +1794,46 @@ function animateChipsToPot(playerId, amount) {
     });
 }
 
+function animateBuyBackChipsToPlayer(playerId, amount) {
+  const target = playerSeats.querySelector(`[data-player-id="${playerId}"]`);
+  if (!target || amount <= 0) {
+    return;
+  }
+  const targetBox = target.getBoundingClientRect();
+  const sourceX = window.innerWidth - 34;
+  const sourceY = 34;
+  const targetX = targetBox.left + targetBox.width / 2;
+  const targetY = targetBox.top + targetBox.height / 2;
+  const chipColors = chipColorsForAmount(amount).slice(0, 36);
+  const chipDelay = Math.min(90, 42 + chipColors.length * 2);
+  const flightDuration = Math.min(1400, 560 + chipColors.length * 20);
+
+  chipColors.forEach((color, index) => {
+    const chip = document.createElement("i");
+    chip.className = `flying-chip chip-${color}`;
+    chip.style.left = `${sourceX - 11}px`;
+    chip.style.top = `${sourceY - 11}px`;
+    buyBackChipFlightLayer.append(chip);
+    const animation = chip.animate(
+      [
+        { opacity: 0, transform: "scale(0.5) rotate(0deg)" },
+        { opacity: 1, offset: 0.2 },
+        {
+          opacity: 1,
+          transform: `translate(${targetX - sourceX}px, ${targetY - sourceY}px) scale(0.72) rotate(-300deg)`,
+        },
+      ],
+      {
+        duration: flightDuration,
+        delay: index * chipDelay,
+        easing: "cubic-bezier(0.22, 0.78, 0.28, 1)",
+        fill: "both",
+      },
+    );
+    animation.finished.then(() => chip.remove());
+  });
+}
+
 function playPendingChipFlights() {
   if (!bettingGamePhases.has(gameState?.phase) || pendingChipFlights.length === 0) {
     return;
@@ -2449,6 +2493,8 @@ function undoLastTurn(fromShowdown = false) {
   lastTurnEndedHandByFold = false;
   renderGameState();
   log.push({
+    Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+    Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
     PlayerId: gameState.actionPlayerId,
     State: structuredClone(gameState),
     Type: "Undo",
@@ -3117,6 +3163,7 @@ confirmBuyBackButton.addEventListener("click", () => {
   invokeGame({ type: Transition.REBUY, playerId: player.id, amount });
   closeOtherPage();
   renderGameState();
+  requestAnimationFrame(() => animateBuyBackChipsToPlayer(player.id, amount));
 });
 closeOtherButton.addEventListener("click", closeOtherPage);
 document.addEventListener("keydown", (event) => {

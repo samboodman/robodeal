@@ -104,15 +104,6 @@ function storesFullState(logIndex) {
   return logIndex % fullStateInterval === 0;
 }
 
-function millisecondsFromFormattedTime(time) {
-  const match = /^(\d+):(\d{2}):(\d{2})\.(\d{2})$/.exec(time);
-  if (!match) {
-    return 0;
-  }
-  const [, hours, minutes, seconds, centiseconds] = match.map(Number);
-  return ((hours * 60 * 60 + minutes * 60 + seconds) * 100 + centiseconds) * 10;
-}
-
 function loadSavedLog() {
   try {
     const savedLogText =
@@ -207,9 +198,6 @@ function logWithDifferences(savedLog) {
       ...entry,
       Kind: entry?.Kind ?? logKindForType(entry?.Type),
       Time: time,
-      Milliseconds: Number.isFinite(entry?.Milliseconds)
-        ? entry.Milliseconds
-        : millisecondsFromFormattedTime(time),
     };
     if (!entry?.State) {
       return normalizedEntry;
@@ -264,20 +252,15 @@ let latestLogState = log.reduce((state, entry, index) => {
 Object.defineProperty(log, "push", {
   enumerable: false,
   value(...entries) {
-    const elapsedMilliseconds =
-      gameStartedAt === null
-        ? 0
-        : Math.max(0, performance.now() - gameStartedAt);
-    const time = formatTime(elapsedMilliseconds);
+    const time = formatTime(
+      gameStartedAt === null ? 0 : Math.max(0, performance.now() - gameStartedAt),
+    );
     const startingIndex = this.length;
     const differentialEntries = entries.map((entry, entryOffset) => {
       const timedEntry = {
         ...entry,
         Kind: entry?.Kind ?? logKindForType(entry?.Type),
         Time: typeof entry?.Time === "string" ? entry.Time : time,
-        Milliseconds: Number.isFinite(entry?.Milliseconds)
-          ? entry.Milliseconds
-          : elapsedMilliseconds,
       };
       if (!timedEntry.State) {
         return timedEntry;
@@ -491,6 +474,8 @@ function takeAnte(state, ante) {
     player.chips -= takenAmount;
     player.handContribution += takenAmount;
     log.push({
+      Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+      Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
       PlayerId: player.id,
       State: structuredClone(state),
       Type:
@@ -510,6 +495,8 @@ function postForcedContribution(state, playerId, requestedAmount, type) {
   player.chips -= amount;
   player.handContribution += amount;
   log.push({
+    Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+    Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
     PlayerId: playerId,
     State: structuredClone(state),
     Type: type,
@@ -548,6 +535,8 @@ function takeRake(state, pot) {
   pot.raked = true;
   state.rakeCollected += amount;
   log.push({
+    Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+    Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
     State: structuredClone(state),
     Type: "Rake",
     Amount: amount,
@@ -568,6 +557,8 @@ function postBlind(
   player.hasActedThisRound = countsAsInitialAction;
   state.highestRoundBet = Math.max(state.highestRoundBet, player.roundBet);
   log.push({
+    Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+    Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
     PlayerId: playerId,
     State: structuredClone(state),
     Type: "Blind",
@@ -622,6 +613,8 @@ function logGameWon(state) {
   }
   const winner = state.players.find((player) => player.chips > 0);
   log.push({
+    Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+    Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
     PlayerId: winner.id,
     State: structuredClone(state),
     Type: "Game Won",
@@ -639,6 +632,8 @@ function awardAllPots(state, winnerId) {
   });
   finishHand(state, [winnerId]);
   log.push({
+    Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+    Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
     PlayerId: winnerId,
     State: structuredClone(state),
     Type: "FoldWin",
@@ -1080,6 +1075,8 @@ export function executeTransition(gameState, action) {
       state.phase = GamePhase.HAND_COMPLETE;
     }
     log.push({
+      Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+      Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
       PlayerId: player.id,
       State: structuredClone(state),
       Type: "Buy back",
@@ -1125,6 +1122,8 @@ export function executeTransition(gameState, action) {
       }
     }
     log.push({
+      Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+      Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
       PlayerId: player.id,
       State: structuredClone(state),
       Type: "Leave game",
@@ -1164,6 +1163,8 @@ export function executeTransition(gameState, action) {
       state.phase = GamePhase.HAND_COMPLETE;
     }
     log.push({
+      Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+      Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
       PlayerId: playerId,
       State: structuredClone(state),
       Type: "Join game",
@@ -1249,6 +1250,8 @@ export function executeTransition(gameState, action) {
         state.smallBlindPlayerId,
     );
     log.push({
+      Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+      Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
       State: structuredClone(state),
       Type: "HandStart",
     });
@@ -1271,6 +1274,8 @@ export function executeTransition(gameState, action) {
       state.phase = GamePhase.DEAL_FLOP;
       state.actionPlayerId = null;
       log.push({
+        Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+        Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
         State: structuredClone(state),
         Type: "BombPotFlop",
         Phase: GamePhase.DEAL_FLOP,
@@ -1293,6 +1298,8 @@ export function executeTransition(gameState, action) {
       prepareNextBettingRound(state);
     }
     log.push({
+      Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+      Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
       State: structuredClone(state),
       Type: "CardsDealt",
       Phase: nextBettingPhase,
@@ -1350,6 +1357,8 @@ export function executeTransition(gameState, action) {
     advanceAward(state);
     awards.forEach(({ number: winnerId, amount }) => {
       log.push({
+        Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+        Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
         PlayerId: winnerId,
         State: structuredClone(state),
         Type: "Win",
@@ -1374,6 +1383,8 @@ export function executeTransition(gameState, action) {
     player.folded = true;
     refreshPots(state);
     log.push({
+      Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+      Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
       PlayerId: player.id,
       State: structuredClone(state),
       Type: "Fold",
@@ -1449,6 +1460,8 @@ export function executeTransition(gameState, action) {
   refreshPots(state);
   resolveBetting(state);
   log.push({
+    Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+    Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
     PlayerId: player.id,
     State: structuredClone(state),
     Type:
