@@ -148,7 +148,7 @@ function stateDifference(before, after, path = []) {
       return [{ operation: "replace", path, value: structuredClone(after) }];
     }
     return after.flatMap((value, index) =>
-      stateDifference(before[index], value, [...path, index])
+      stateDifference(before[index], value, [...path, index]),
     );
   }
 
@@ -412,7 +412,7 @@ function playerToDealersLeft(state, dealerId) {
 
 function winnerIdsInOddChipOrder(state, winnerIds) {
   const dealerIndex = state.players.findIndex(
-    (player) => player.id === state.dealerId
+    (player) => player.id === state.dealerId,
   );
   const winnerSet = new Set(winnerIds);
   const orderedWinnerIds = [];
@@ -434,7 +434,7 @@ function currentPlayer(state) {
 function amountToCall(state, player) {
   return Math.min(
     Math.max(0, state.highestRoundBet - player.roundBet),
-    player.chips
+    player.chips,
   );
 }
 
@@ -467,7 +467,7 @@ function refreshPots(state) {
       handContribution: player.handContribution,
       folded: player.folded,
       eliminated: player.eliminated,
-    }))
+    })),
   );
 }
 
@@ -489,7 +489,7 @@ function postBlind(
   state,
   playerId,
   requestedAmount,
-  countsAsInitialAction = true
+  countsAsInitialAction = true,
 ) {
   const player = playerById(state, playerId);
   const amount = Math.min(requestedAmount, player.chips);
@@ -600,7 +600,7 @@ function resolveBetting(state) {
 
   state.actionPlayerId = nextPlayerNeedingActionFrom(
     state,
-    state.actionPlayerId
+    state.actionPlayerId,
   );
 }
 
@@ -645,7 +645,7 @@ function advanceAward(state) {
         ? state.handWinnerIds
         : fallback
           ? [fallback.id]
-          : []
+          : [],
     );
   }
 }
@@ -729,7 +729,7 @@ export function getBettingBounds(state, playerId = state.actionPlayerId) {
   const callAmount = amountToCall(state, player);
   const effectiveMaximum = maximumAdditionalBet(
     state.players.map((candidate) => ({ ...candidate, number: candidate.id })),
-    player.id
+    player.id,
   );
   let minRaiseAdditionalChips;
   if (state.lastFullRaiseSize !== 1) {
@@ -742,11 +742,11 @@ export function getBettingBounds(state, playerId = state.actionPlayerId) {
   if (state.bettingLimit === BettingLimit.POT_LIMIT) {
     const potBeforeAction = state.players.reduce(
       (total, candidate) => total + candidate.handContribution,
-      0
+      0,
     );
     maxAdditionalChips = Math.min(
       effectiveMaximum,
-      Math.max(minRaiseAdditionalChips, potBeforeAction + callAmount * 2)
+      Math.max(minRaiseAdditionalChips, potBeforeAction + callAmount * 2),
     );
   } else if (state.bettingLimit === BettingLimit.FIXED_LIMIT) {
     const fixedRaiseSize = state.fixedLimitBet * (state.round <= 2 ? 1 : 2);
@@ -825,7 +825,7 @@ export function createDebugGameState(gameState, presetName) {
 
   const state = clone(gameState);
   const activePlayerCount = state.players.filter(
-    (player) => !player.eliminated
+    (player) => !player.eliminated,
   ).length;
   state.phase = preset.phase;
   state.handNumber = 1;
@@ -861,7 +861,7 @@ export function getAvailableActions(state) {
       makeAction(
         state.phase === GamePhase.SETUP
           ? Transition.START_HAND
-          : Transition.START_NEXT_HAND
+          : Transition.START_NEXT_HAND,
       ),
     ];
   }
@@ -924,7 +924,7 @@ export function getAvailableActions(state) {
       makeAction(Transition.BET, {
         minAdditionalChips: minimumBet,
         maxAdditionalChips: maximumBet,
-      })
+      }),
     );
   }
   const allInDoesNotRaise =
@@ -935,7 +935,7 @@ export function getAvailableActions(state) {
     (canRaise || allInDoesNotRaise)
   ) {
     actions.push(
-      makeAction(Transition.ALL_IN, { additionalChips: maximumBet })
+      makeAction(Transition.ALL_IN, { additionalChips: maximumBet }),
     );
   }
   return actions;
@@ -950,7 +950,7 @@ export function executeTransition(gameState, action) {
     state.ActiveFirstDealerId ?? state.firstDealerId;
   delete state.ActiveFirstDealerId;
   const activePlayerCount = state.players.filter(
-    (player) => !player.eliminated
+    (player) => !player.eliminated,
   ).length;
 
   if (action.type === Transition.REBUY) {
@@ -993,7 +993,7 @@ export function executeTransition(gameState, action) {
     player.leftGame = true;
     state.pots.forEach((pot) => {
       pot.eligiblePlayerNumbers = pot.eligiblePlayerNumbers.filter(
-        (playerId) => playerId !== player.id
+        (playerId) => playerId !== player.id,
       );
     });
     refreshPots(state);
@@ -1005,7 +1005,7 @@ export function executeTransition(gameState, action) {
       [GamePhase.HAND_COMPLETE, GamePhase.GAME_COMPLETE].includes(state.phase)
     ) {
       const remainingPlayers = state.players.filter(
-        (candidate) => !candidate.eliminated
+        (candidate) => !candidate.eliminated,
       );
       if (remainingPlayers.length === 1) {
         state.phase = GamePhase.GAME_COMPLETE;
@@ -1077,7 +1077,7 @@ export function executeTransition(gameState, action) {
       if (playerById(state, state.firstDealerId).eliminated) {
         state.activeFirstDealerId = playerToDealersLeft(
           state,
-          state.firstDealerId
+          state.firstDealerId,
         );
       } else {
         state.activeFirstDealerId = state.firstDealerId;
@@ -1119,7 +1119,7 @@ export function executeTransition(gameState, action) {
     refreshPots(state);
     state.actionPlayerId = nextPlayerFrom(
       state,
-      state.bigBlindPlayerId ?? state.smallBlindPlayerId
+      state.bigBlindPlayerId ?? state.smallBlindPlayerId,
     );
     log.push({
       State: structuredClone(state),
@@ -1262,7 +1262,7 @@ export function executeTransition(gameState, action) {
       throw new Error(
         raiseCapOpen
           ? "ALL_IN cannot raise because betting was not reopened."
-          : "ALL_IN cannot raise because the fixed-limit raise cap has been reached."
+          : "ALL_IN cannot raise because the fixed-limit raise cap has been reached.",
       );
     }
     additionalChips = maximumBet;
@@ -1271,7 +1271,7 @@ export function executeTransition(gameState, action) {
       throw new Error(
         raiseCapOpen
           ? "BET cannot raise because betting was not reopened."
-          : "BET cannot raise because the fixed-limit raise cap has been reached."
+          : "BET cannot raise because the fixed-limit raise cap has been reached.",
       );
     }
     additionalChips = Number(action.additionalChips);

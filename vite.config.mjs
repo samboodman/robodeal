@@ -24,7 +24,7 @@ function localWordsToNumberApi() {
             response.end(
               JSON.stringify({
                 error: "Use POST for words-to-number requests.",
-              })
+              }),
             );
             return;
           }
@@ -39,10 +39,10 @@ function localWordsToNumberApi() {
             response.end(
               JSON.stringify({
                 error: "The words-to-number request was invalid.",
-              })
+              }),
             );
           }
-        }
+        },
       );
     },
   };
@@ -59,7 +59,7 @@ function localRealtimeApi(apiKey) {
           if (request.method !== "POST") {
             response.statusCode = 405;
             response.end(
-              JSON.stringify({ error: "Use POST for a Realtime call." })
+              JSON.stringify({ error: "Use POST for a Realtime call." }),
             );
             return;
           }
@@ -73,10 +73,10 @@ function localRealtimeApi(apiKey) {
             console.error("Local Realtime call failed:", error);
             response.statusCode = 500;
             response.end(
-              JSON.stringify({ error: "The local Realtime server failed." })
+              JSON.stringify({ error: "The local Realtime server failed." }),
             );
           }
-        }
+        },
       );
     },
   };
@@ -91,7 +91,7 @@ function localVoiceApi(apiKey) {
         if (request.method !== "POST") {
           response.statusCode = 405;
           response.end(
-            JSON.stringify({ error: "Use POST for voice requests." })
+            JSON.stringify({ error: "Use POST for voice requests." }),
           );
           return;
         }
@@ -118,7 +118,7 @@ function localVoiceApi(apiKey) {
           console.error("Local voice request failed:", error);
           response.statusCode = 500;
           response.end(
-            JSON.stringify({ error: "The local voice server failed." })
+            JSON.stringify({ error: "The local voice server failed." }),
           );
         }
       });

@@ -47,7 +47,7 @@ function betTotal(text) {
     return null;
   }
   const amount = amountFrom(
-    text.slice(betMatch.index + betMatch[0].length).trim()
+    text.slice(betMatch.index + betMatch[0].length).trim(),
   );
   return Number.isFinite(amount) && amount > 0 ? amount : null;
 }
@@ -78,14 +78,14 @@ export function matchVoiceCommand(transcript) {
   }
   if (
     /\b(?:cards are dealt|cards dealt|finished dealing|done dealing)\b/.test(
-      text
+      text,
     )
   ) {
     return { name: "cardsDealt", args: {} };
   }
   if (
     /\b(?:all in|shove|shove it|jam|jam it|send it|whole stack|everything i have)\b/.test(
-      text
+      text,
     )
   ) {
     return { name: "allIn", args: {} };
@@ -127,7 +127,7 @@ export function matchVoiceCommand(transcript) {
 
 export async function matchVoiceCommandViaApi(
   transcript,
-  fetchImpl = globalThis.fetch
+  fetchImpl = globalThis.fetch,
 ) {
   const directCommand = matchVoiceCommand(transcript);
   if (!directCommand || !["raise", "bet"].includes(directCommand.name)) {
@@ -138,7 +138,7 @@ export async function matchVoiceCommandViaApi(
   const actionMatch = text.match(
     directCommand.name === "raise"
       ? /\b(?:raise|reraise|re raise|bump)\b/
-      : /\b(?:bet|wager)\b/
+      : /\b(?:bet|wager)\b/,
   );
   const amountText = actionMatch
     ? text.slice(actionMatch.index + actionMatch[0].length).trim()

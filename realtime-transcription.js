@@ -57,13 +57,13 @@ export async function createRealtimeTranscriptionClientSecret(apiKey) {
       },
       body: JSON.stringify({ session: realtimeTranscriptionSession() }),
       signal: AbortSignal.timeout(8000),
-    }
+    },
   );
   const responseBody = await response.text();
   if (!response.ok) {
     return jsonError(
       response.status,
-      readableOpenAIError(response, responseBody)
+      readableOpenAIError(response, responseBody),
     );
   }
   return {

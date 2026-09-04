@@ -39,7 +39,7 @@ function chunkedAudioResponse(chunks) {
     {
       status: 200,
       headers: { "Content-Type": "audio/pcm; rate=24000; channels=1" },
-    }
+    },
   );
 }
 
@@ -111,7 +111,7 @@ function installAudioPlayer() {
 function installRealtimeMicrophone() {
   const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(
     globalThis,
-    "navigator"
+    "navigator",
   );
   const originalPeerConnection = globalThis.RTCPeerConnection;
   const track = {
@@ -217,7 +217,7 @@ function installRealtimeMicrophone() {
         Object.defineProperty(
           globalThis,
           "navigator",
-          originalNavigatorDescriptor
+          originalNavigatorDescriptor,
         );
       } else {
         delete globalThis.navigator;
@@ -241,7 +241,7 @@ test("fills dynamic values into voice instructions", () => {
       PLAYER: "Sam",
       AMOUNT: 5,
     }),
-    "Player Sam owes 5."
+    "Player Sam owes 5.",
   );
 });
 
@@ -355,16 +355,16 @@ test("microphone continuously streams, acknowledges speech, and processes VAD tu
     });
     assert.deepEqual(
       requestBodies.map(({ url }) => url),
-      ["/api/realtime-call", "https://api.openai.com/v1/realtime/calls"]
+      ["/api/realtime-call", "https://api.openai.com/v1/realtime/calls"],
     );
     assert.equal(requestBodies[1].options.body, "microphone-offer");
     assert.equal(
       requestBodies[1].options.headers.Authorization,
-      "Bearer temporary-key"
+      "Bearer temporary-key",
     );
     assert.equal(
       requestBodies[1].options.headers["Content-Type"],
-      "application/sdp"
+      "application/sdp",
     );
     assert.deepEqual(toolCalls, [{ name: "call", args: {} }]);
     assert.ok(statuses.includes("Hearing speech…"));
@@ -457,7 +457,7 @@ test("speak sends exact text to TTS and plays the returned audio", async () => {
   assert.equal(audio.pcmSources.length, 2);
   assert.deepEqual(
     audio.pcmSources.map(({ buffer }) => buffer.samples.length),
-    [1, 2]
+    [1, 2],
   );
   assert.match(transcripts.at(-1), /Deal two cards/);
 });
@@ -503,7 +503,7 @@ test("recognized audio runs through transcription, one local tool, and TTS", asy
   assert.deepEqual(toolCalls, [{ name: "call", args: {} }]);
   assert.deepEqual(
     requestBodies.map(({ action }) => action),
-    ["transcribe", "speech"]
+    ["transcribe", "speech"],
   );
   assert.match(transcripts[0], /I call/);
   assert.match(transcripts[1], /Sam calls 5/);
@@ -511,10 +511,10 @@ test("recognized audio runs through transcription, one local tool, and TTS", asy
   assert.equal(audio.pcmSources.length, 1);
   assert.equal(latencies.length, 1);
   assert.ok(
-    latencies[0].transcriptionCompletedAt >= latencies[0].inputSubmittedAt
+    latencies[0].transcriptionCompletedAt >= latencies[0].inputSubmittedAt,
   );
   assert.ok(
-    latencies[0].actionAppliedAt >= latencies[0].transcriptionCompletedAt
+    latencies[0].actionAppliedAt >= latencies[0].transcriptionCompletedAt,
   );
   assert.ok(latencies[0].ttsFirstAudioAt >= latencies[0].ttsRequestedAt);
   assert.ok(latencies[0].totalMs >= 0);
@@ -560,7 +560,7 @@ test("a silent tool result performs the function without requesting speech", asy
   assert.equal(toolWasCalled, true);
   assert.deepEqual(
     requestBodies.map(({ action }) => action),
-    ["transcribe", "respond"]
+    ["transcribe", "respond"],
   );
 });
 
@@ -604,7 +604,7 @@ test("server transcription always uses gpt-transcribe", async () => {
         mimeType: "audio/wav",
         fileName: "call.wav",
       },
-      "test-key"
+      "test-key",
     );
     assert.equal(result.status, 200);
   } finally {
@@ -633,7 +633,7 @@ test("live microphone mints a transcription-only key with application-managed tu
 
   assert.equal(
     request.url,
-    "https://api.openai.com/v1/realtime/client_secrets"
+    "https://api.openai.com/v1/realtime/client_secrets",
   );
   assert.equal(request.options.headers.Authorization, "Bearer test-key");
   const { session } = JSON.parse(request.options.body);
@@ -665,7 +665,7 @@ test("server thinking uses low-latency gpt-4o-mini with function tools", async (
         instructions: "Operate the poker game.",
         tools,
       },
-      "test-key"
+      "test-key",
     );
     assert.equal(result.status, 200);
   } finally {
@@ -693,7 +693,7 @@ test("server speech uses gpt-4o-mini-tts and preserves supported voices", async 
         text: "Sam calls 5.",
         voice: "marin",
       },
-      "test-key"
+      "test-key",
     );
     assert.equal(result.status, 200);
     assert.equal(result.contentType, "audio/pcm; rate=24000; channels=1");

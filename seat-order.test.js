@@ -25,11 +25,11 @@ test("snaps seats to the regular shape for the player count", () => {
 
   assert.equal(
     snapSeatAngle(Math.PI / 2 + triangleStep * 1.05, 3),
-    Math.PI / 2 + triangleStep
+    Math.PI / 2 + triangleStep,
   );
   assert.equal(
     snapSeatAngle(Math.PI / 2 + squareStep * 2.2, 4),
-    Math.PI / 2 + squareStep * 2
+    Math.PI / 2 + squareStep * 2,
   );
 });
 
@@ -46,7 +46,7 @@ test("leaves a seat free when it is outside the magnetic snap distance", () => {
 
   assert.equal(
     snapSeatAngle(requestedAngle, 3, Math.PI / 2, fiveDegrees),
-    requestedAngle
+    requestedAngle,
   );
   assert.equal(snapSeatAngle(0.05, 3, Math.PI / 2, fiveDegrees), 0);
 });

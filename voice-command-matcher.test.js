@@ -11,11 +11,11 @@ import { wordsToNumber } from "./word-to-number.js";
 test("command priorities put all-in and raise above call", () => {
   assert.ok(
     voiceCommandPriorities.indexOf("allIn") <
-      voiceCommandPriorities.indexOf("raise")
+      voiceCommandPriorities.indexOf("raise"),
   );
   assert.ok(
     voiceCommandPriorities.indexOf("raise") <
-      voiceCommandPriorities.indexOf("call")
+      voiceCommandPriorities.indexOf("call"),
   );
 });
 
@@ -37,7 +37,7 @@ test("call then raise is one raise for the current player", () => {
     {
       name: "raise",
       args: { amount: 15 },
-    }
+    },
   );
 });
 
@@ -96,7 +96,7 @@ test("spoken wager amounts use the first-party API", async () => {
     {
       name: "raise",
       args: { amount: 75 },
-    }
+    },
   );
   assert.deepEqual(requests, [
     {

@@ -39,7 +39,7 @@ function game({
 function start(state) {
   return executeTransition(
     executeTransition(state, { type: Transition.START_HAND }),
-    { type: Transition.CARDS_DEALT }
+    { type: Transition.CARDS_DEALT },
   );
 }
 
@@ -86,14 +86,14 @@ test("log stores a full state every five items and differences between them", ()
     assert.equal(Array.isArray(entry.State), index % 5 !== 0);
   });
   assert.ok(
-    log.every((entry) => /^\d{2}:\d{2}:\d{2}\.\d{2}$/.test(entry.Time))
+    log.every((entry) => /^\d{2}:\d{2}:\d{2}\.\d{2}$/.test(entry.Time)),
   );
   assert.ok(log.every((entry) => Number.isFinite(entry.Milliseconds)));
   assert.ok(log.every((entry) => entry.Milliseconds >= 0));
   assert.ok(log.every((entry) => ["Action", "Event"].includes(entry.Kind)));
   assert.deepEqual(materializeLogState(log.length - 1), currentState);
   assert.ok(
-    log.at(-1).State.some(({ path }) => path.includes("actionPlayerId"))
+    log.at(-1).State.some(({ path }) => path.includes("actionPlayerId")),
   );
 });
 
@@ -120,7 +120,7 @@ test("log distinguishes opening bets from raises", () => {
 test("log is persisted in browser storage", () => {
   const originalLocalStorage = Object.getOwnPropertyDescriptor(
     globalThis,
-    "localStorage"
+    "localStorage",
   );
   const storedValues = new Map();
   Object.defineProperty(globalThis, "localStorage", {
@@ -150,7 +150,7 @@ test("log is persisted in browser storage", () => {
 test("GameState creation validates the immutable table configuration", () => {
   assert.throws(
     () => createGameState({ players: [], smallBlind: 5, dealerId: 1 }),
-    /At least two/
+    /At least two/,
   );
   assert.throws(
     () =>
@@ -162,7 +162,7 @@ test("GameState creation validates the immutable table configuration", () => {
         smallBlind: -1,
         dealerId: 1,
       }),
-    /Small blind/
+    /Small blind/,
   );
   assert.throws(
     () =>
@@ -174,7 +174,7 @@ test("GameState creation validates the immutable table configuration", () => {
         smallBlind: 1,
         dealerId: 3,
       }),
-    /dealer/
+    /dealer/,
   );
   assert.throws(
     () =>
@@ -187,7 +187,7 @@ test("GameState creation validates the immutable table configuration", () => {
         dealerId: 1,
         bettingLimit: "unlimited-ish",
       }),
-    /Betting limit/
+    /Betting limit/,
   );
   assert.throws(
     () =>
@@ -201,7 +201,7 @@ test("GameState creation validates the immutable table configuration", () => {
         bettingLimit: BettingLimit.FIXED_LIMIT,
         fixedLimitBet: 0,
       }),
-    /Fixed-limit bet/
+    /Fixed-limit bet/,
   );
 });
 
@@ -243,7 +243,7 @@ test("the current player can leave a hand and play continues without them", () =
   const state = start(game());
   const leavingPlayerId = state.actionPlayerId;
   const leavingPlayer = state.players.find(
-    (player) => player.id === leavingPlayerId
+    (player) => player.id === leavingPlayerId,
   );
 
   const next = executeTransition(state, {
@@ -254,15 +254,15 @@ test("the current player can leave a hand and play continues without them", () =
   assert.equal(leavingPlayer.chips, 250);
   assert.equal(
     next.players.find((player) => player.id === leavingPlayerId).chips,
-    0
+    0,
   );
   assert.equal(
     next.players.find((player) => player.id === leavingPlayerId).eliminated,
-    true
+    true,
   );
   assert.equal(
     next.players.find((player) => player.id === leavingPlayerId).leftGame,
-    true
+    true,
   );
   assert.notEqual(next.actionPlayerId, leavingPlayerId);
   assert.equal(log.at(-1).Type, "Leave game");
@@ -322,21 +322,21 @@ test("players can join a table with more than eight players", () => {
 test("debug presets create authoritative states with working pots and transitions", () => {
   const twoPots = createDebugGameState(
     game({ chips: [100, 100, 100] }),
-    "two-pots"
+    "two-pots",
   );
   assert.equal(twoPots.phase, GamePhase.BETTING_RIVER);
   assert.equal(twoPots.actionPlayerId, 2);
   assert.deepEqual(
     twoPots.pots.map((pot) => pot.amount),
-    [75, 50]
+    [75, 50],
   );
   assert.ok(
-    getAvailableActions(twoPots).some(({ type }) => type === Transition.CHECK)
+    getAvailableActions(twoPots).some(({ type }) => type === Transition.CHECK),
   );
 
   const showdown = createDebugGameState(
     game({ chips: [100, 100, 100] }),
-    "showdown"
+    "showdown",
   );
   assert.equal(showdown.phase, GamePhase.SHOWDOWN);
   assert.deepEqual(getAvailableActions(showdown)[0], {
@@ -349,11 +349,11 @@ test("debug presets create authoritative states with working pots and transition
 test("debug presets enforce their player count and normal uses the regular start transition", () => {
   assert.throws(
     () => createDebugGameState(game(), "game-won"),
-    /requires 2 players/
+    /requires 2 players/,
   );
   assert.equal(
     createDebugGameState(game(), "normal").phase,
-    GamePhase.DEAL_HOLE_CARDS
+    GamePhase.DEAL_HOLE_CARDS,
   );
 });
 
@@ -389,7 +389,7 @@ test("turns follow the locked physical player order instead of numeric order", (
       smallBlind: 5,
       dealerId: 1,
     }),
-    { type: Transition.START_HAND }
+    { type: Transition.START_HAND },
   );
 
   assert.equal(state.smallBlindPlayerId, 3);
@@ -428,15 +428,15 @@ test("every betting transition validates its guard", () => {
   assert.throws(() => action(state, Transition.CHECK), /not legal/);
   assert.throws(
     () => executeTransition(state, { type: Transition.CALL, playerId: 1 }),
-    /not that player/
+    /not that player/,
   );
   assert.throws(
     () => action(state, Transition.BET, { additionalChips: 4 }),
-    /outside the legal range/
+    /outside the legal range/,
   );
   assert.throws(
     () => action(state, Transition.BET, { additionalChips: 5 }),
-    /outside the legal range/
+    /outside the legal range/,
   );
 });
 
@@ -448,11 +448,11 @@ test("CHECK is available only with no outstanding bet and advances to the next p
   assert.equal(state.phase, GamePhase.BETTING_FLOP);
   assert.equal(state.actionPlayerId, 2);
   assert.ok(
-    getAvailableActions(state).some(({ type }) => type === Transition.CHECK)
+    getAvailableActions(state).some(({ type }) => type === Transition.CHECK),
   );
   assert.equal(
     getAvailableActions(state).some(({ type }) => type === Transition.CALL),
-    false
+    false,
   );
 
   state = action(state, Transition.CHECK);
@@ -480,7 +480,7 @@ test("tracks the last full raise size and calls do not replace it", () => {
   assert.equal(
     getAvailableActions(state).find(({ type }) => type === Transition.BET)
       .minAdditionalChips,
-    25
+    25,
   );
 
   state = action(state, Transition.CALL);
@@ -488,7 +488,7 @@ test("tracks the last full raise size and calls do not replace it", () => {
   assert.equal(
     getAvailableActions(state).find(({ type }) => type === Transition.BET)
       .minAdditionalChips,
-    20
+    20,
   );
 });
 
@@ -505,7 +505,7 @@ test("a 50-chip opening bet requires at least 100 additional chips to raise", ()
     {
       type: Transition.CALL,
       additionalChips: 50,
-    }
+    },
   );
   assert.deepEqual(
     getAvailableActions(state).find(({ type }) => type === Transition.BET),
@@ -513,11 +513,11 @@ test("a 50-chip opening bet requires at least 100 additional chips to raise", ()
       type: Transition.BET,
       minAdditionalChips: 100,
       maxAdditionalChips: 245,
-    }
+    },
   );
   assert.throws(
     () => action(state, Transition.BET, { additionalChips: 99 }),
-    /outside the legal range/
+    /outside the legal range/,
   );
 });
 
@@ -531,14 +531,14 @@ test("limited chips allow a short all-in without replacing the last full raise s
 
   assert.equal(
     limitedPlayerActions.some(({ type }) => type === Transition.BET),
-    false
+    false,
   );
   assert.deepEqual(
     limitedPlayerActions.find(({ type }) => type === Transition.ALL_IN),
     {
       type: Transition.ALL_IN,
       additionalChips: 70,
-    }
+    },
   );
 
   state = action(state, Transition.ALL_IN);
@@ -551,7 +551,7 @@ test("limited chips allow a short all-in without replacing the last full raise s
       type: Transition.BET,
       minAdditionalChips: 120,
       maxAdditionalChips: 245,
-    }
+    },
   );
 });
 
@@ -567,7 +567,7 @@ test("the two-all-in sequence cannot skip the player who still owes chips", () =
     {
       type: Transition.CALL,
       additionalChips: 245,
-    }
+    },
   );
 
   state = action(state, Transition.CALL);
@@ -618,7 +618,7 @@ test("a zero-stakes checked-down hand can still choose a showdown winner", () =>
       ],
       smallBlind: 0,
       dealerId: 1,
-    })
+    }),
   );
 
   state = action(state, Transition.CHECK);
@@ -643,21 +643,21 @@ test("CARDS_DEALT and betting actions are rejected from the wrong phases", () =>
   const setup = game();
   assert.throws(
     () => executeTransition(setup, { type: Transition.CARDS_DEALT }),
-    /not allowed/
+    /not allowed/,
   );
   assert.throws(
     () => executeTransition(setup, { type: Transition.FOLD, playerId: 1 }),
-    /No betting action/
+    /No betting action/,
   );
 
   const dealt = executeTransition(setup, { type: Transition.START_HAND });
   assert.throws(
     () => executeTransition(dealt, { type: Transition.START_HAND }),
-    /not allowed/
+    /not allowed/,
   );
   assert.throws(
     () => executeTransition(dealt, { type: Transition.START_NEXT_HAND }),
-    /not allowed/
+    /not allowed/,
   );
 });
 
@@ -686,7 +686,7 @@ test("showdown transitions award and split pots only to eligible players", () =>
         potIndex: 1,
         winnerId: 2,
       }),
-    /not ready/
+    /not ready/,
   );
   state = executeTransition(state, {
     type: Transition.AWARD_POT,
@@ -717,7 +717,7 @@ test("showdown rejects ineligible, empty, duplicate, and incorrectly ordered awa
         potIndex: 0,
         winnerId: 99,
       }),
-    /eligible/
+    /eligible/,
   );
   assert.throws(
     () =>
@@ -726,7 +726,7 @@ test("showdown rejects ineligible, empty, duplicate, and incorrectly ordered awa
         potIndex: 0,
         winnerIds: [1],
       }),
-    /distinct/
+    /distinct/,
   );
   assert.throws(
     () =>
@@ -735,7 +735,7 @@ test("showdown rejects ineligible, empty, duplicate, and incorrectly ordered awa
         potIndex: 0,
         winnerIds: [1, 1],
       }),
-    /distinct/
+    /distinct/,
   );
   state = executeTransition(state, {
     type: Transition.AWARD_POT,
@@ -749,7 +749,7 @@ test("showdown rejects ineligible, empty, duplicate, and incorrectly ordered awa
         potIndex: 0,
         winnerId: 1,
       }),
-    /There is no pot|not ready/
+    /There is no pot|not ready/,
   );
 });
 
@@ -773,11 +773,11 @@ test("the blind increases only when the dealer returns to the first dealer", () 
   let state = completeByFolding(start(game()));
   state = executeTransition(state, { type: Transition.START_NEXT_HAND });
   state = completeByFolding(
-    executeTransition(state, { type: Transition.CARDS_DEALT })
+    executeTransition(state, { type: Transition.CARDS_DEALT }),
   );
   state = executeTransition(state, { type: Transition.START_NEXT_HAND });
   state = completeByFolding(
-    executeTransition(state, { type: Transition.CARDS_DEALT })
+    executeTransition(state, { type: Transition.CARDS_DEALT }),
   );
   state = executeTransition(state, { type: Transition.START_NEXT_HAND });
 
@@ -808,7 +808,7 @@ test("GAME_COMPLETE has no available transitions", () => {
   assert.deepEqual(getAvailableActions(state), []);
   assert.throws(
     () => executeTransition(state, { type: Transition.START_NEXT_HAND }),
-    /not allowed/
+    /not allowed/,
   );
 });
 
@@ -830,13 +830,13 @@ test("the big blind retains its option when nobody raises", () => {
   assert.equal(state.phase, GamePhase.BETTING_PREFLOP);
   assert.equal(state.actionPlayerId, 3);
   assert.ok(
-    getAvailableActions(state).some(({ type }) => type === Transition.CHECK)
+    getAvailableActions(state).some(({ type }) => type === Transition.CHECK),
   );
 });
 
 test("pot-limit caps a raise at the size of the pot after calling", () => {
   const state = start(
-    game({ useBigBlind: true, bettingLimit: BettingLimit.POT_LIMIT })
+    game({ useBigBlind: true, bettingLimit: BettingLimit.POT_LIMIT }),
   );
   const actions = getAvailableActions(state);
 
@@ -846,15 +846,15 @@ test("pot-limit caps a raise at the size of the pot after calling", () => {
       type: Transition.BET,
       minAdditionalChips: 20,
       maxAdditionalChips: 35,
-    }
+    },
   );
   assert.equal(
     actions.some(({ type }) => type === Transition.ALL_IN),
-    false
+    false,
   );
   assert.throws(
     () => action(state, Transition.BET, { additionalChips: 36 }),
-    /outside the legal range/
+    /outside the legal range/,
   );
 });
 
@@ -864,7 +864,7 @@ test("fixed-limit uses the configured bet before and on the flop, then doubles i
       useBigBlind: true,
       bettingLimit: BettingLimit.FIXED_LIMIT,
       fixedLimitBet: 15,
-    })
+    }),
   );
   assert.deepEqual(
     getAvailableActions(state).find(({ type }) => type === Transition.BET),
@@ -872,11 +872,11 @@ test("fixed-limit uses the configured bet before and on the flop, then doubles i
       type: Transition.BET,
       minAdditionalChips: 25,
       maxAdditionalChips: 25,
-    }
+    },
   );
   assert.throws(
     () => action(state, Transition.BET, { additionalChips: 24 }),
-    /outside the legal range/
+    /outside the legal range/,
   );
 
   state = action(state, Transition.CALL);
@@ -889,7 +889,7 @@ test("fixed-limit uses the configured bet before and on the flop, then doubles i
       type: Transition.BET,
       minAdditionalChips: 15,
       maxAdditionalChips: 15,
-    }
+    },
   );
 
   state = completeRoundWithChecks(state);
@@ -900,7 +900,7 @@ test("fixed-limit uses the configured bet before and on the flop, then doubles i
       type: Transition.BET,
       minAdditionalChips: 30,
       maxAdditionalChips: 30,
-    }
+    },
   );
 });
 
@@ -920,7 +920,7 @@ test("a short all-in does not reopen raising for a player who already acted", ()
   ]);
   assert.throws(
     () => action(state, Transition.BET, { additionalChips: 70 }),
-    /not reopened/
+    /not reopened/,
   );
   assert.throws(() => action(state, Transition.ALL_IN), /not reopened/);
 });
@@ -935,7 +935,7 @@ test("heads-up gives the dealer the small blind and first preflop action", () =>
       smallBlind: 5,
       dealerId: 1,
       useBigBlind: true,
-    })
+    }),
   );
 
   assert.equal(state.smallBlindPlayerId, 1);
@@ -953,7 +953,7 @@ test("heads-up gives the big blind first action after the flop", () => {
       smallBlind: 5,
       dealerId: 1,
       useBigBlind: true,
-    })
+    }),
   );
   state = action(state, Transition.CALL);
   state = action(state, Transition.CHECK);
@@ -972,14 +972,14 @@ test("heads-up can start with the big blind disabled", () => {
       smallBlind: 5,
       dealerId: 1,
       useBigBlind: false,
-    })
+    }),
   );
 
   assert.equal(state.smallBlindPlayerId, 2);
   assert.equal(state.bigBlindPlayerId, null);
   assert.deepEqual(
     state.players.map((player) => player.chips),
-    [100, 95]
+    [100, 95],
   );
   assert.equal(state.actionPlayerId, 1);
 });
@@ -1023,7 +1023,7 @@ test("a sole player with chips still acts when they owe an all-in call", () => {
   assert.equal(state.phase, GamePhase.BETTING_PREFLOP);
   assert.equal(state.actionPlayerId, 1);
   assert.ok(
-    getAvailableActions(state).some(({ type }) => type === Transition.CALL)
+    getAvailableActions(state).some(({ type }) => type === Transition.CALL),
   );
 });
 
@@ -1039,20 +1039,20 @@ test("the engine posts an ante from every active player before posting blinds", 
       ante: 5,
       dealerId: 1,
     }),
-    { type: Transition.START_HAND }
+    { type: Transition.START_HAND },
   );
 
   assert.deepEqual(
     state.players.map((player) => player.chips),
-    [95, 90, 95]
+    [95, 90, 95],
   );
   assert.deepEqual(
     state.players.map((player) => player.handContribution),
-    [5, 10, 5]
+    [5, 10, 5],
   );
   assert.equal(
     state.pots.reduce((total, pot) => total + pot.amount, 0),
-    20
+    20,
   );
 });
 
@@ -1068,7 +1068,7 @@ test("a short blind pays the ante before using their remaining chips for the bli
       ante: 5,
       dealerId: 1,
     }),
-    { type: Transition.START_HAND }
+    { type: Transition.START_HAND },
   );
   const smallBlind = state.players.find((player) => player.id === 2);
 
@@ -1089,13 +1089,13 @@ test("an ante puts a short player all-in without making their chips negative", (
       ante: 5,
       dealerId: 2,
     }),
-    { type: Transition.START_HAND }
+    { type: Transition.START_HAND },
   );
 
   assert.equal(state.players.find((player) => player.id === 1).chips, 0);
   assert.equal(
     state.players.find((player) => player.id === 1).handContribution,
-    3
+    3,
   );
   assert.ok(state.players.every((player) => player.chips >= 0));
 });
@@ -1133,12 +1133,12 @@ test("antes create a pot even when the configured small blind is zero", () => {
       ante: 5,
       dealerId: 1,
     }),
-    { type: Transition.START_HAND }
+    { type: Transition.START_HAND },
   );
 
   assert.equal(
     state.pots.reduce((total, pot) => total + pot.amount, 0),
-    15
+    15,
   );
 });
 
@@ -1149,7 +1149,7 @@ test("fixed-limit stops raising after one bet and three raises", () => {
       useBigBlind: true,
       bettingLimit: BettingLimit.FIXED_LIMIT,
       fixedLimitBet: 10,
-    })
+    }),
   );
   state = action(state, Transition.CALL);
   state = action(state, Transition.CALL);
@@ -1164,19 +1164,19 @@ test("fixed-limit stops raising after one bet and three raises", () => {
   const actions = getAvailableActions(state);
   assert.equal(
     actions.some(({ type }) => type === Transition.BET),
-    false
+    false,
   );
   assert.ok(actions.some(({ type }) => type === Transition.CALL));
   assert.throws(
     () => action(state, Transition.BET, { additionalChips: 30 }),
-    /fixed-limit raise cap/
+    /fixed-limit raise cap/,
   );
 });
 
 test("an odd split-pot chip goes to the first tied winner left of the dealer", () => {
   const state = createDebugGameState(
     game({ chips: [100, 100, 100] }),
-    "showdown"
+    "showdown",
   );
   state.pots[0].amount = 11;
   const before = state.players.map((player) => player.chips);

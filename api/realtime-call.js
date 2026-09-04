@@ -6,7 +6,7 @@ export default async function handler(request, response) {
     return;
   }
   const result = await createRealtimeTranscriptionClientSecret(
-    process.env.OPENAI_API_KEY
+    process.env.OPENAI_API_KEY,
   );
   response.status(result.status);
   response.setHeader("Content-Type", result.contentType);

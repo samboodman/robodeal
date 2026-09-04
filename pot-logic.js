@@ -16,12 +16,12 @@ export function maximumAdditionalBet(players, playerNumber) {
       (candidate) =>
         candidate.number !== playerNumber &&
         !candidate.folded &&
-        !candidate.eliminated
+        !candidate.eliminated,
     )
     .map(
       (candidate) =>
         (Number(candidate.handContribution) || 0) +
-        (Number(candidate.chips) || 0)
+        (Number(candidate.chips) || 0),
     );
   if (opposingTotals.length === 0) {
     return 0;
@@ -31,7 +31,7 @@ export function maximumAdditionalBet(players, playerNumber) {
   const playerChips = Math.max(0, Number(player.chips) || 0);
   const coverableAmount = Math.max(
     0,
-    Math.max(...opposingTotals) - playerContribution
+    Math.max(...opposingTotals) - playerContribution,
   );
   return Math.min(playerChips, coverableAmount);
 }
@@ -39,11 +39,11 @@ export function maximumAdditionalBet(players, playerNumber) {
 export function calculatePots(players) {
   const totalContributions = players.reduce(
     (total, player) => total + (Number(player.handContribution) || 0),
-    0
+    0,
   );
   const highestContribution = Math.max(
     0,
-    ...players.map((player) => Number(player.handContribution) || 0)
+    ...players.map((player) => Number(player.handContribution) || 0),
   );
   const eligiblePlayerNumbers = players
     .filter((player) => !player.folded && !player.eliminated)
@@ -54,7 +54,7 @@ export function calculatePots(players) {
       !player.folded &&
       !player.eliminated &&
       player.chips === 0 &&
-      player.handContribution > 0
+      player.handContribution > 0,
   );
 
   if (!hasAllInPlayer) {
@@ -73,7 +73,7 @@ export function calculatePots(players) {
     ...new Set(
       players
         .map((player) => Number(player.handContribution) || 0)
-        .filter((amount) => amount > 0)
+        .filter((amount) => amount > 0),
     ),
   ].sort((first, second) => first - second);
   const pots = [];
@@ -81,7 +81,7 @@ export function calculatePots(players) {
 
   contributionLevels.forEach((level) => {
     const contributors = players.filter(
-      (player) => player.handContribution >= level
+      (player) => player.handContribution >= level,
     );
     const amount = (level - previousLevel) * contributors.length;
     const eligiblePlayerNumbers = contributors
@@ -128,7 +128,7 @@ export function potsForBettingDisplay(pots) {
     precedingPot.amount += uncalledLayer.amount;
     precedingPot.contributionCap = Math.max(
       precedingPot.contributionCap,
-      uncalledLayer.contributionCap
+      uncalledLayer.contributionCap,
     );
   }
 
@@ -137,14 +137,14 @@ export function potsForBettingDisplay(pots) {
 
 export function hasBettingRoundFinished(players, highestRoundBet) {
   const playersWhoCanAct = players.filter(
-    (player) => !player.folded && !player.eliminated && player.chips > 0
+    (player) => !player.folded && !player.eliminated && player.chips > 0,
   );
 
   if (playersWhoCanAct.length === 0) {
     return true;
   }
   return playersWhoCanAct.every(
-    (player) => player.hasActedThisRound && player.roundBet === highestRoundBet
+    (player) => player.hasActedThisRound && player.roundBet === highestRoundBet,
   );
 }
 

@@ -48,7 +48,7 @@ export async function handleVoiceApi(body, apiKey) {
     form.append(
       "file",
       new Blob([audioBytes], { type: body.mimeType || "audio/webm" }),
-      body.fileName || "audio.webm"
+      body.fileName || "audio.webm",
     );
     if (body.prompt) {
       form.append("prompt", String(body.prompt).slice(0, 4_000));
@@ -59,12 +59,12 @@ export async function handleVoiceApi(body, apiKey) {
         method: "POST",
         headers: { Authorization: `Bearer ${apiKey}` },
         body: form,
-      }
+      },
     );
     if (!openAIResponse.ok) {
       return errorResult(
         openAIResponse.status,
-        await openAIError(openAIResponse)
+        await openAIError(openAIResponse),
       );
     }
     return {
@@ -96,7 +96,7 @@ export async function handleVoiceApi(body, apiKey) {
     if (!openAIResponse.ok) {
       return errorResult(
         openAIResponse.status,
-        await openAIError(openAIResponse)
+        await openAIError(openAIResponse),
       );
     }
     return {
@@ -126,12 +126,12 @@ export async function handleVoiceApi(body, apiKey) {
           input: text.slice(0, 4_000),
           response_format: "pcm",
         }),
-      }
+      },
     );
     if (!openAIResponse.ok) {
       return errorResult(
         openAIResponse.status,
-        await openAIError(openAIResponse)
+        await openAIError(openAIResponse),
       );
     }
     return {

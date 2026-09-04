@@ -5,7 +5,7 @@ import {
 
 export function fillPrompt(template, values) {
   return template.replace(/\{\{([A-Z_]+)\}\}/g, (placeholder, key) =>
-    Object.hasOwn(values, key) ? String(values[key]) : placeholder
+    Object.hasOwn(values, key) ? String(values[key]) : placeholder,
   );
 }
 
@@ -24,7 +24,7 @@ function bytesToBase64(bytes) {
   const blockSize = 0x8000;
   for (let offset = 0; offset < bytes.length; offset += blockSize) {
     binary += String.fromCharCode(
-      ...bytes.subarray(offset, offset + blockSize)
+      ...bytes.subarray(offset, offset + blockSize),
     );
   }
   return btoa(binary);
@@ -254,7 +254,7 @@ export class VoiceAgent {
       this.peerConnection = new RTCPeerConnection();
       this.dataChannel = this.peerConnection.createDataChannel("oai-events");
       this.dataChannel.addEventListener("message", (event) =>
-        this.handleRealtimeEvent(event)
+        this.handleRealtimeEvent(event),
       );
       this.dataChannel.addEventListener("open", () => this.startClientVad());
       this.dataChannel.addEventListener("close", () => {
@@ -280,13 +280,13 @@ export class VoiceAgent {
       const tokenData = await tokenResponse.json().catch(() => ({}));
       if (!tokenResponse.ok || !tokenData.value) {
         throw new Error(
-          tokenData.error || "Could not create a live transcription key."
+          tokenData.error || "Could not create a live transcription key.",
         );
       }
       const connectionController = new AbortController();
       const connectionTimeout = setTimeout(
         () => connectionController.abort(),
-        12000
+        12000,
       );
       let response;
       try {
@@ -402,7 +402,7 @@ export class VoiceAgent {
         this.processedUtteranceIds.add(utteranceId);
         if (this.processedUtteranceIds.size > 100) {
           this.processedUtteranceIds.delete(
-            this.processedUtteranceIds.values().next().value
+            this.processedUtteranceIds.values().next().value,
           );
         }
       }
@@ -417,7 +417,7 @@ export class VoiceAgent {
           : null;
       this.transcriptQueue = this.transcriptQueue
         .then(() =>
-          this.processLiveTranscript(transcript, preparedCommand, timing)
+          this.processLiveTranscript(transcript, preparedCommand, timing),
         )
         .catch((error) => {
           this.onStatus(`AI error: ${error.message}`);
@@ -426,7 +426,7 @@ export class VoiceAgent {
     }
     if (event.type === "error") {
       this.onStatus(
-        `AI error: ${event.error?.message || "Live transcription failed."}`
+        `AI error: ${event.error?.message || "Live transcription failed."}`,
       );
     }
   }
@@ -456,7 +456,7 @@ export class VoiceAgent {
   async processLiveTranscript(
     transcript,
     preparedCommand = null,
-    timing = null
+    timing = null,
   ) {
     if (!this.connected || !this.recording) {
       return;
@@ -472,7 +472,7 @@ export class VoiceAgent {
         transcript,
         this.activeRequest.signal,
         preparedCommand && (await preparedCommand),
-        timing
+        timing,
       );
     } catch (error) {
       failed = error.name !== "AbortError";
@@ -510,14 +510,14 @@ export class VoiceAgent {
       globalThis.AudioContext || globalThis.webkitAudioContext;
     if (!AudioContextClass) {
       this.onStatus(
-        "Voice unavailable: this browser cannot detect when speech ends."
+        "Voice unavailable: this browser cannot detect when speech ends.",
       );
       return;
     }
     this.vadAudioContext = new AudioContextClass();
     this.vadAudioContext.resume?.().catch(() => {});
     this.vadSource = this.vadAudioContext.createMediaStreamSource(
-      this.microphoneStream
+      this.microphoneStream,
     );
     this.vadAnalyser = this.vadAudioContext.createAnalyser();
     this.vadAnalyser.fftSize = 1024;
@@ -533,7 +533,7 @@ export class VoiceAgent {
     this.vadAnalyser.getFloatTimeDomainData(this.vadSamples);
     const sumOfSquares = this.vadSamples.reduce(
       (sum, sample) => sum + sample * sample,
-      0
+      0,
     );
     const volume = Math.sqrt(sumOfSquares / this.vadSamples.length);
     if (volume >= 0.018) {
@@ -576,7 +576,7 @@ export class VoiceAgent {
     this.currentSpeechTiming.speechStoppedAt = preciseNow();
     this.onStatus("Transcribing…");
     this.dataChannel.send(
-      JSON.stringify({ type: "input_audio_buffer.commit" })
+      JSON.stringify({ type: "input_audio_buffer.commit" }),
     );
   }
 
@@ -652,7 +652,7 @@ export class VoiceAgent {
           fileName,
           prompt: this.prompts.transcription.prompt,
         },
-        this.activeRequest.signal
+        this.activeRequest.signal,
       );
       const transcript = String(transcription.text || "").trim();
       if (!transcript) {
@@ -664,7 +664,7 @@ export class VoiceAgent {
         transcript,
         this.activeRequest.signal,
         null,
-        timing
+        timing,
       );
     } catch (error) {
       failed = error.name !== "AbortError";
@@ -724,12 +724,12 @@ export class VoiceAgent {
         instructions: this.getInstructions(),
         tools: this.tools,
       },
-      signal
+      signal,
     );
 
     for (let turn = 0; turn < 4; turn += 1) {
       const functionCalls = (response.output || []).filter(
-        (item) => item.type === "function_call"
+        (item) => item.type === "function_call",
       );
       if (functionCalls.length === 0) {
         break;
@@ -742,7 +742,7 @@ export class VoiceAgent {
         try {
           result = await this.executeTool(
             call.name,
-            JSON.parse(call.arguments || "{}")
+            JSON.parse(call.arguments || "{}"),
           );
         } catch (error) {
           result = { ok: false, message: error.message };
@@ -770,7 +770,7 @@ export class VoiceAgent {
           instructions: this.getInstructions(),
           tools: this.tools,
         },
-        signal
+        signal,
       );
     }
 
@@ -919,7 +919,7 @@ export class VoiceAgent {
         const sampleView = new DataView(
           combined.buffer,
           combined.byteOffset,
-          playableLength
+          playableLength,
         );
         for (let index = 0; index < sampleCount; index += 1) {
           samples[index] = sampleView.getInt16(index * 2, true) / 32768;
@@ -931,7 +931,7 @@ export class VoiceAgent {
         source.connect(context.destination);
         const startAt = Math.max(
           context.currentTime + 0.02,
-          this.nextAudioStartAt
+          this.nextAudioStartAt,
         );
         this.nextAudioStartAt = startAt + buffer.duration;
         this.outputAudioSources.add(source);
@@ -970,7 +970,7 @@ export class VoiceAgent {
       this.audio.addEventListener(
         "error",
         () => reject(new Error("The generated speech could not play.")),
-        { once: true }
+        { once: true },
       );
       this.audio.play().catch(reject);
     });

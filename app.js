@@ -35,7 +35,7 @@ const debugFeaturesCheckbox = document.querySelector("#debug-features");
 const debugOptions = document.querySelector("#debug-options");
 const debugPresetSelect = document.querySelector("#debug-preset");
 const enableAudioFileInputCheckbox = document.querySelector(
-  "#enable-audio-file-input"
+  "#enable-audio-file-input",
 );
 const useBigBlindCheckbox = document.querySelector("#use-big-blind");
 const useAnteCheckbox = document.querySelector("#use-ante");
@@ -46,10 +46,10 @@ const fixedLimitSetting = document.querySelector("#fixed-limit-setting");
 const fixedLimitBetInput = document.querySelector("#fixed-limit-bet");
 const setupScreen = document.querySelector("#setup-screen");
 const voiceCustomizationScreen = document.querySelector(
-  "#voice-customization-screen"
+  "#voice-customization-screen",
 );
 const chipDenominationsScreen = document.querySelector(
-  "#chip-denominations-screen"
+  "#chip-denominations-screen",
 );
 const gameScreen = document.querySelector("#game-screen");
 const gameWinnerScreen = document.querySelector("#game-winner-screen");
@@ -92,7 +92,7 @@ const joinGameName = document.querySelector("#join-game-name");
 const joinGameChips = document.querySelector("#join-game-chips");
 const cancelJoinGameButton = document.querySelector("#cancel-join-game-button");
 const confirmJoinGameButton = document.querySelector(
-  "#confirm-join-game-button"
+  "#confirm-join-game-button",
 );
 const joinGameStatus = document.querySelector("#join-game-status");
 const buyBackPanel = document.querySelector("#buy-back-panel");
@@ -113,16 +113,16 @@ const seatOrderButton = document.querySelector("#seat-order-button");
 const voiceStatus = document.querySelector("#voice-status");
 const voiceTranscript = document.querySelector("#voice-transcript");
 const startMicrophoneAutomaticallyCheckbox = document.querySelector(
-  "#start-microphone-automatically"
+  "#start-microphone-automatically",
 );
 const showVoiceTranscriptCheckbox = document.querySelector(
-  "#show-voice-transcript"
+  "#show-voice-transcript",
 );
 const voiceCustomizationButton = document.querySelector(
-  "#voice-customization-button"
+  "#voice-customization-button",
 );
 const voiceCustomizationBack = document.querySelector(
-  "#voice-customization-back"
+  "#voice-customization-back",
 );
 const testVoiceButton = document.querySelector("#test-voice-button");
 const voiceChoice = document.querySelector("#voice-choice");
@@ -134,10 +134,10 @@ const voiceAudioFile = document.querySelector("#voice-audio-file");
 const voiceAudioTestButton = document.querySelector("#voice-audio-test-button");
 const voiceAudioTestStatus = document.querySelector("#voice-audio-test-status");
 const chipDenominationsButton = document.querySelector(
-  "#chip-denominations-button"
+  "#chip-denominations-button",
 );
 const chipDenominationsBack = document.querySelector(
-  "#chip-denominations-back"
+  "#chip-denominations-back",
 );
 const chipDisplayModeButton = document.querySelector("#chip-display-mode");
 const resumeGameButton = document.querySelector("#resume-game-button");
@@ -173,7 +173,7 @@ const declinedBuyBackPlayerIds = new Set();
 const lastGameSettingsKey = "robodeal-last-game-settings";
 const currentGameKey = "robodeal-current-game-v1";
 const isLocalDebugEnvironment = ["localhost", "127.0.0.1"].includes(
-  window.location.hostname
+  window.location.hostname,
 );
 const bettingLimitLabels = Object.freeze({
   [BettingLimit.NO_LIMIT]: "No-Limit",
@@ -299,14 +299,16 @@ function viewPots() {
 function viewIsGameWon() {
   return Boolean(
     gameState &&
-    [GamePhase.HAND_COMPLETE, GamePhase.GAME_COMPLETE].includes(gameState.phase)
+    [GamePhase.HAND_COMPLETE, GamePhase.GAME_COMPLETE].includes(
+      gameState.phase,
+    ),
   );
 }
 
 function amountToCallForView(player) {
   return Math.min(
     Math.max(0, viewHighestRoundBet() - player.roundBet),
-    player.chips
+    player.chips,
   );
 }
 
@@ -332,7 +334,7 @@ function isLegalPendingBet(player, amount) {
   return Boolean(
     betAction &&
     amount >= betAction.minAdditionalChips &&
-    amount <= betAction.maxAdditionalChips
+    amount <= betAction.maxAdditionalChips,
   );
 }
 
@@ -367,11 +369,11 @@ function selectedChipDenominations() {
     chipDenominationInputs.map((input) => [
       input.dataset.chipColor,
       chipEnabledCheckboxes.find(
-        (checkbox) => checkbox.dataset.chipEnabled === input.dataset.chipColor
+        (checkbox) => checkbox.dataset.chipEnabled === input.dataset.chipColor,
       )?.checked
         ? Math.max(1, Number(input.value) || 1)
         : null,
-    ])
+    ]),
   );
 }
 
@@ -395,7 +397,7 @@ function restoreChipDenominations(savedDenominations) {
     }
     const savedDenomination = savedDenominations[color];
     const checkbox = chipEnabledCheckboxes.find(
-      (candidate) => candidate.dataset.chipEnabled === color
+      (candidate) => candidate.dataset.chipEnabled === color,
     );
     checkbox.checked =
       savedDenomination !== null && savedDenomination !== false;
@@ -432,7 +434,7 @@ function restoreLastGameSettings() {
 
   const smallBlindInput = document.querySelector("#small-blind");
   const smallBlindIncreaseInput = document.querySelector(
-    "#small-blind-increase"
+    "#small-blind-increase",
   );
   const smallBlind =
     Number.isInteger(settings.smallBlind) && settings.smallBlind >= 0
@@ -456,7 +458,7 @@ function restoreLastGameSettings() {
   }
   updateAnteSetting();
   bettingLimitSelect.value = Object.values(BettingLimit).includes(
-    settings.bettingLimit
+    settings.bettingLimit,
   )
     ? settings.bettingLimit
     : BettingLimit.NO_LIMIT;
@@ -478,7 +480,7 @@ function restoreLastGameSettings() {
   if (settings.voice) {
     if (
       [...voiceChoice.options].some(
-        (option) => option.value === settings.voice.name
+        (option) => option.value === settings.voice.name,
       )
     ) {
       voiceChoice.value = settings.voice.name;
@@ -494,7 +496,7 @@ function saveLastGameSettings() {
   try {
     localStorage.setItem(
       lastGameSettingsKey,
-      JSON.stringify({ settings: gameSettings })
+      JSON.stringify({ settings: gameSettings }),
     );
   } catch {}
 }
@@ -507,7 +509,8 @@ function getSavedCurrentGame() {
       Array.isArray(savedState?.players) &&
       savedState.players.length >= 2 &&
       savedState.players.every(
-        (player) => Number.isInteger(player.id) && Number.isFinite(player.chips)
+        (player) =>
+          Number.isInteger(player.id) && Number.isFinite(player.chips),
       );
     if (
       savedGame?.version !== 1 ||
@@ -547,7 +550,7 @@ function saveCurrentGame() {
         seatAngles,
         lastTurnState,
         lastTurnEndedHandByFold,
-      })
+      }),
     );
   } catch {}
 }
@@ -577,7 +580,7 @@ function resumeSavedGame() {
       : {};
   if (
     !gameState.players.every((player) =>
-      Number.isFinite(Number(seatAngles[player.id]))
+      Number.isFinite(Number(seatAngles[player.id])),
     )
   ) {
     initializeSeatAngles();
@@ -620,7 +623,7 @@ async function keepScreenAwake() {
       () => {
         screenWakeLock = null;
       },
-      { once: true }
+      { once: true },
     );
   } catch (error) {
     console.info("Screen wake lock was not available:", error.message);
@@ -651,7 +654,7 @@ function drawPotLayers(layerCount, animateNewLayer = false) {
     [...sidePotValue.children].map((element) => [
       Number(element.dataset.layerIndex),
       element,
-    ])
+    ]),
   );
 
   archivedLayerIndexes.forEach((layerIndex, stackIndex) => {
@@ -666,7 +669,7 @@ function drawPotLayers(layerCount, animateNewLayer = false) {
     amount.textContent = visibleLayers[layerIndex].amount;
     amount.setAttribute(
       "aria-label",
-      `${potLayerName(layerIndex)}: ${visibleLayers[layerIndex].amount}`
+      `${potLayerName(layerIndex)}: ${visibleLayers[layerIndex].amount}`,
     );
     amount.style.setProperty("--stack-index", stackIndex);
     existingArchivedLayers.delete(layerIndex);
@@ -679,7 +682,7 @@ function drawPotLayers(layerCount, animateNewLayer = false) {
       amount.classList.add("pot-layer-archiving");
       requestAnimationFrame(() => {
         requestAnimationFrame(() =>
-          amount.classList.remove("pot-layer-archiving")
+          amount.classList.remove("pot-layer-archiving"),
         );
       });
     }
@@ -691,7 +694,7 @@ function drawPotLayers(layerCount, animateNewLayer = false) {
     "aria-label",
     archivedLayerIndexes.length === 0
       ? "No completed pots"
-      : `Completed pots: ${archivedLayerIndexes.map((index) => `${potLayerName(index)}, ${visibleLayers[index].amount}`).join(". ")}`
+      : `Completed pots: ${archivedLayerIndexes.map((index) => `${potLayerName(index)}, ${visibleLayers[index].amount}`).join(". ")}`,
   );
 
   const activeLayer = visibleLayers[activeLayerIndex];
@@ -704,7 +707,7 @@ function drawPotLayers(layerCount, animateNewLayer = false) {
   potValue.textContent = animateNewLayer ? 0 : activeLayer.amount;
   potValue.setAttribute(
     "aria-label",
-    `${potLayerName(activeLayerIndex)}: ${activeLayer.amount}`
+    `${potLayerName(activeLayerIndex)}: ${activeLayer.amount}`,
   );
   if (animateNewLayer) {
     potValue.classList.remove("pot-value-entering");
@@ -1055,7 +1058,7 @@ function voiceWinnerResultMessage(selectedPlayers) {
       : `${winnerNames} won the hand.`;
   }
   const winnerNames = formatNameList(
-    selectedPlayers.map((player) => player.name)
+    selectedPlayers.map((player) => player.name),
   );
   return `${winnerNames} won that pot. ${winnerQuestion.textContent}`;
 }
@@ -1080,7 +1083,7 @@ function executeVoiceTool(name, args) {
       return { ok: false, message: "There is no turn available to undo." };
     }
     const restoredPlayerName = lastTurnState.players.find(
-      (player) => player.id === lastTurnState.actionPlayerId
+      (player) => player.id === lastTurnState.actionPlayerId,
     )?.name;
     undoLastTurn(fromShowdown);
     return {
@@ -1126,8 +1129,8 @@ function executeVoiceTool(name, args) {
         : [
             ...new Set(
               (Array.isArray(args.playerNumbers) ? args.playerNumbers : []).map(
-                Number
-              )
+                Number,
+              ),
             ),
           ];
     if (name === "splitPot" && requestedPlayerNumbers.length < 2) {
@@ -1138,18 +1141,18 @@ function executeVoiceTool(name, args) {
     }
 
     const eligiblePlayerNumbers = new Set(
-      showdown.eligiblePlayers.map((player) => player.id)
+      showdown.eligiblePlayers.map((player) => player.id),
     );
     const selectionIsValid =
       requestedPlayerNumbers.length > 0 &&
       requestedPlayerNumbers.every(
         (playerNumber) =>
           Number.isInteger(playerNumber) &&
-          eligiblePlayerNumbers.has(playerNumber)
+          eligiblePlayerNumbers.has(playerNumber),
       );
     if (!selectionIsValid) {
       const eligibleNames = formatNameList(
-        showdown.eligiblePlayers.map((player) => player.name)
+        showdown.eligiblePlayers.map((player) => player.name),
       );
       return {
         ok: false,
@@ -1158,7 +1161,7 @@ function executeVoiceTool(name, args) {
     }
 
     const selectedPlayers = requestedPlayerNumbers.map((playerNumber) =>
-      showdown.eligiblePlayers.find((player) => player.id === playerNumber)
+      showdown.eligiblePlayers.find((player) => player.id === playerNumber),
     );
     suppressAutomaticNarration = true;
     try {
@@ -1385,7 +1388,7 @@ async function connectVoiceAgent() {
     onTranscript: setVoiceTranscript,
     onLatency: (latency) => {
       window.dispatchEvent(
-        new CustomEvent("robodeal:voice-latency", { detail: latency })
+        new CustomEvent("robodeal:voice-latency", { detail: latency }),
       );
     },
     onStatus: (status) => {
@@ -1488,7 +1491,7 @@ async function testVoiceWithAudioFile() {
 
 function drawPlayerNames() {
   const existingNames = [...playerNames.querySelectorAll("input")].map(
-    (input) => input.value
+    (input) => input.value,
   );
   const selectedDealer = dealerSelect.value || "1";
   playerNames.replaceChildren();
@@ -1552,14 +1555,14 @@ function makePlayerChipPiles(amount) {
   container.className = "player-chip-piles";
   container.setAttribute("aria-hidden", "true");
   const allowedColors = new Set(
-    chipDenominationInputs.map((input) => input.dataset.chipColor)
+    chipDenominationInputs.map((input) => input.dataset.chipColor),
   );
   const denominations = Object.entries(gameSettings.chipDenominations || {})
     .filter(
       ([color, value]) =>
         allowedColors.has(color) &&
         Number.isFinite(Number(value)) &&
-        Number(value) > 0
+        Number(value) > 0,
     )
     .map(([color, value]) => ({ color, value: Number(value) }))
     .sort((first, second) => second.value - first.value);
@@ -1601,7 +1604,7 @@ function initializeSeatAngles() {
     viewPlayers().map((player, index, players) => [
       player.id,
       (index / players.length) * Math.PI * 2 + Math.PI / 2,
-    ])
+    ]),
   );
 }
 
@@ -1690,7 +1693,7 @@ function moveSeatToSnappedAngle(seat, playerId, requestedAngle) {
     requestedAngle,
     viewPlayers().length,
     Math.PI / 2,
-    seatSnapDistance
+    seatSnapDistance,
   );
   if (Math.abs(normalizeSeatAngle(targetAngle - currentAngle)) < 0.0001) {
     return;
@@ -1699,13 +1702,13 @@ function moveSeatToSnappedAngle(seat, playerId, requestedAngle) {
   const occupiedSeat = Object.entries(seatAngles).find(
     ([candidateId, candidateAngle]) =>
       String(candidateId) !== String(playerId) &&
-      Math.abs(normalizeSeatAngle(targetAngle - candidateAngle)) < 0.0001
+      Math.abs(normalizeSeatAngle(targetAngle - candidateAngle)) < 0.0001,
   );
   if (occupiedSeat) {
     const [occupiedPlayerId] = occupiedSeat;
     seatAngles[occupiedPlayerId] = currentAngle;
     const occupiedElement = [...playerSeats.children].find(
-      (candidate) => candidate.dataset.playerId === String(occupiedPlayerId)
+      (candidate) => candidate.dataset.playerId === String(occupiedPlayerId),
     );
     if (occupiedElement) {
       positionSeatElement(occupiedElement, occupiedPlayerId);
@@ -1757,17 +1760,17 @@ function makeSeatDraggable(seat, playerId) {
     moveSeatToSnappedAngle(
       seat,
       playerId,
-      seatAngles[playerId] + (direction * Math.PI * 2) / viewPlayers().length
+      seatAngles[playerId] + (direction * Math.PI * 2) / viewPlayers().length,
     );
   });
 }
 
 function lockClockwiseSeatOrder() {
   const playersById = new Map(
-    viewPlayers().map((player) => [player.id, player])
+    viewPlayers().map((player) => [player.id, player]),
   );
   const players = clockwisePlayerIds(viewPlayers(), seatAngles).map(
-    (playerId) => playersById.get(playerId)
+    (playerId) => playersById.get(playerId),
   );
   gameState = createGameState({
     players,
@@ -1786,10 +1789,10 @@ function reorderStatePlayersClockwise(state) {
     return;
   }
   const playersById = new Map(
-    state.players.map((player) => [player.id, player])
+    state.players.map((player) => [player.id, player]),
   );
   state.players = clockwisePlayerIds(state.players, seatAngles).map(
-    (playerId) => playersById.get(playerId)
+    (playerId) => playersById.get(playerId),
   );
 }
 
@@ -1894,7 +1897,7 @@ function drawPlayerSeats() {
       "aria-label",
       seatingMode
         ? `${player.name}, drag around the table to choose this seat`
-        : `${player.name}${player.eliminated ? ", out of the game" : `: ${player.chips} chips`}${isDealer ? ", dealer" : ""}${isCurrentPlayer ? ", current turn" : ""}${player.folded ? ", folded" : ""}`
+        : `${player.name}${player.eliminated ? ", out of the game" : `: ${player.chips} chips`}${isDealer ? ", dealer" : ""}${isCurrentPlayer ? ", current turn" : ""}${player.folded ? ", folded" : ""}`,
     );
     seat.setAttribute("role", seatingMode ? "button" : "status");
     seat.tabIndex = seatingMode ? 0 : -1;
@@ -1908,7 +1911,7 @@ function drawPlayerSeats() {
   if (Number.isFinite(activeAngle)) {
     turnControl.style.setProperty(
       "--rotation",
-      `${activeAngle - Math.PI / 2}rad`
+      `${activeAngle - Math.PI / 2}rad`,
     );
   }
   if (seatingMode) {
@@ -1917,7 +1920,7 @@ function drawPlayerSeats() {
   updatePotDisplay();
   turnIndicator.setAttribute(
     "aria-label",
-    `Your bet: ${pendingBet}. Total pot: ${totalPotAmount()}`
+    `Your bet: ${pendingBet}. Total pot: ${totalPotAmount()}`,
   );
   updateBetControls();
   voiceAgent?.updateContext();
@@ -1935,7 +1938,7 @@ function updateBetControls() {
   const legalActions = currentGameActions();
   const betAction = legalActions.find(({ type }) => type === Transition.BET);
   const allInAction = legalActions.find(
-    ({ type }) => type === Transition.ALL_IN
+    ({ type }) => type === Transition.ALL_IN,
   );
   const minimumAllowedBet = Math.min(minimumBet, maximumBet);
   const minimumRaiseBet = bounds.minRaiseAdditionalChips;
@@ -2021,14 +2024,14 @@ function setRaiseTotal(total) {
 
   const requestedAdditional = Math.max(
     minimumRaiseBet,
-    Math.min(requestedTotal - player.roundBet, maximumBet)
+    Math.min(requestedTotal - player.roundBet, maximumBet),
   );
   if (
     gameState.bettingLimit === BettingLimit.FIXED_LIMIT &&
     requestedAdditional > minimumBet
   ) {
     const fixedBet = currentGameActions().find(
-      ({ type }) => type === Transition.BET
+      ({ type }) => type === Transition.BET,
     );
     pendingBet = fixedBet?.maxAdditionalChips ?? minimumBet;
   } else {
@@ -2045,7 +2048,7 @@ function adjustRaiseBy(amount) {
   if (gameState.bettingLimit === BettingLimit.FIXED_LIMIT) {
     const callAmount = amountToCallForView(player);
     const fixedBet = currentGameActions().find(
-      ({ type }) => type === Transition.BET
+      ({ type }) => type === Transition.BET,
     );
     pendingBet =
       amount < 0 ? callAmount : (fixedBet?.maxAdditionalChips ?? callAmount);
@@ -2063,13 +2066,13 @@ function playerNeedingBuyBackDecision() {
   if (
     !gameState ||
     ![GamePhase.HAND_COMPLETE, GamePhase.GAME_COMPLETE].includes(
-      gameState.phase
+      gameState.phase,
     )
   ) {
     return null;
   }
   return gameState.players.find(
-    (player) => player.eliminated && !declinedBuyBackPlayerIds.has(player.id)
+    (player) => player.eliminated && !declinedBuyBackPlayerIds.has(player.id),
   );
 }
 
@@ -2259,7 +2262,7 @@ function renderGameState() {
 
   if (
     [GamePhase.DEAL_FLOP, GamePhase.DEAL_TURN, GamePhase.DEAL_RIVER].includes(
-      phase
+      phase,
     )
   ) {
     const instruction = {
@@ -2277,7 +2280,7 @@ function renderGameState() {
   if (phase === GamePhase.ALL_IN_RUNOUT) {
     const cards = remainingCommunityCards();
     const instructions = cards.map(
-      (card) => `burn one card, then deal ${card}`
+      (card) => `burn one card, then deal ${card}`,
     );
     dealMessage.textContent = `${formatCardList(instructions)}. Press OK for showdown.`;
     dealMessage.textContent =
@@ -2303,7 +2306,7 @@ function renderGameState() {
   } else if (phase === GamePhase.GAME_COMPLETE) {
     showGameWinner(
       viewPlayer(gameState.handWinnerIds[0]) ||
-        gameState.players.find((player) => player.chips > 0)
+        gameState.players.find((player) => player.chips > 0),
     );
   }
 }
@@ -2359,7 +2362,7 @@ function showGameStatePotWinnerPicker() {
       : `Who wins side pot ${potIndex}?`,
     eligiblePlayers.map((player) => ({ ...player, number: player.id })),
     (winnerNumber) => awardPot(potIndex, winnerNumber),
-    (winnerNumbers) => awardSplitPot(potIndex, winnerNumbers)
+    (winnerNumbers) => awardSplitPot(potIndex, winnerNumbers),
   );
 }
 
@@ -2367,7 +2370,7 @@ function showPotWinnerPicker(
   question,
   players,
   awardFunction,
-  splitFunction = null
+  splitFunction = null,
 ) {
   turnIndicator.hidden = true;
   winnerQuestion.textContent = question;
@@ -2434,7 +2437,7 @@ function showPotWinnerPicker(
       confirmSplitButton.disabled = true;
     });
     confirmSplitButton.addEventListener("click", () =>
-      splitFunction([...selectedWinnerNumbers])
+      splitFunction([...selectedWinnerNumbers]),
     );
     winnerOptions.append(splitButton, confirmSplitButton);
   }
@@ -2657,7 +2660,7 @@ chipDisplayModeButton.addEventListener("click", () => {
 });
 chipEnabledCheckboxes.forEach((checkbox) => {
   checkbox.addEventListener("change", () =>
-    updateChipDenominationAvailability(checkbox)
+    updateChipDenominationAvailability(checkbox),
   );
   updateChipDenominationAvailability(checkbox);
 });
@@ -2733,7 +2736,7 @@ raiseShortcutButtons.forEach((button) => {
   });
 });
 raiseTotalValue.addEventListener("change", () =>
-  setRaiseTotal(raiseTotalValue.value)
+  setRaiseTotal(raiseTotalValue.value),
 );
 raiseTotalValue.addEventListener("keydown", (event) => {
   if (event.key !== "Enter") {
@@ -2882,7 +2885,7 @@ form.addEventListener("submit", (event) => {
     startingMoney: Number(document.querySelector("#starting-money").value),
     smallBlind: Number(document.querySelector("#small-blind").value),
     smallBlindIncrease: Number(
-      document.querySelector("#small-blind-increase").value
+      document.querySelector("#small-blind-increase").value,
     ),
     useBigBlind: useBigBlindCheckbox.checked,
     useAnte: useAnteCheckbox.checked,
@@ -2891,7 +2894,7 @@ form.addEventListener("submit", (event) => {
     fixedLimitBet: Number(fixedLimitBetInput.value),
     dealerNumber: Number(dealerSelect.value),
     playerNames: [...playerNames.querySelectorAll("input")].map(
-      (input) => input.value
+      (input) => input.value,
     ),
     startMicrophoneAutomatically: startMicrophoneAutomaticallyCheckbox.checked,
     showVoiceTranscript: showVoiceTranscriptCheckbox.checked,
