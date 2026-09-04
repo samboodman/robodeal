@@ -40,6 +40,22 @@ body {
   width: min(100%, 680px);
   min-height: min(100svh, 680px);
 }
+.chip-flight-layer {
+  position: absolute;
+  z-index: 6;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.flying-chip {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border: 3px solid var(--chip-trim);
+  border-radius: 50%;
+  background: var(--chip-color);
+  box-shadow: 0 2px 3px #04160f88;
+}
 .voice-controls {
   position: fixed;
   z-index: 4;
@@ -475,6 +491,39 @@ body {
   color: #101010;
   font-size: clamp(2.5rem, 11vw, 5.2rem);
   font-weight: 850;
+  line-height: 1;
+}
+.pot-chip-pile {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.pot-chip-stack {
+  display: flex;
+  width: 24px;
+  flex-direction: column-reverse;
+  align-items: center;
+}
+.pot-chip {
+  display: block;
+  width: 24px;
+  height: 8px;
+  margin-top: -3px;
+  border: 2px solid var(--chip-trim);
+  border-radius: 3px;
+  background: var(--chip-color);
+  box-shadow: 0 1px 1px #04160f66;
+}
+.pot-chip:first-child {
+  margin-top: 0;
+}
+.pot-chip-stack b,
+.pot-chip-remainder {
+  color: #173329;
+  font-size: 0.7rem;
   line-height: 1;
 }
 .button-help,

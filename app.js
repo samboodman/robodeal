@@ -69,6 +69,7 @@ const gameWinnerScreen = document.querySelector("#game-winner-screen");
 const gameWinnerMessage = document.querySelector("#game-winner-message");
 const playerSeats = document.querySelector("#player-seats");
 const playerSeatEffects = document.querySelector("#player-seat-effects");
+const chipFlightLayer = document.querySelector("#chip-flight-layer");
 const lockSeatsButton = document.querySelector("#lock-seats-button");
 const turnControl = document.querySelector("#turn-control");
 const turnIndicator = document.querySelector("#turn-indicator");
@@ -172,6 +173,7 @@ let pendingBet = 0;
 let pendingFold = false;
 let renderedPotLayerCount = 0;
 let potAnimationTimer = null;
+let pendingChipFlights = [];
 let lastTurnState = null;
 let lastTurnEndedHandByFold = false;
 let chipDisplayMode = "value";
@@ -213,6 +215,12 @@ const gamePhaseLabels = Object.freeze({
   [GamePhase.HAND_COMPLETE]: "Hand complete",
   [GamePhase.GAME_COMPLETE]: "Game complete",
 });
+const bettingGamePhases = new Set([
+  GamePhase.BETTING_PREFLOP,
+  GamePhase.BETTING_FLOP,
+  GamePhase.BETTING_TURN,
+  GamePhase.BETTING_RIVER,
+]);
 const seatSnapDistance = Math.PI / 36;
 
 function updateFixedLimitSetting() {
@@ -699,6 +707,55 @@ function totalPotAmount() {
   return viewPots().reduce((total, potLayer) => total + potLayer.amount, 0);
 }
 
+function makePotChipPile(amount) {
+  const container = document.createElement("div");
+  container.className = "pot-chip-pile";
+  const denominations = Object.entries(gameSettings.chipDenominations || {})
+    .filter(
+      ([, value]) => Number.isFinite(Number(value)) && Number(value) > 0,
+    )
+    .map(([color, value]) => ({ color, value: Number(value) }))
+    .sort((first, second) => second.value - first.value);
+  let remaining = Math.max(0, Math.floor(amount));
+
+  denominations.forEach(({ color, value }) => {
+    const count = Math.floor(remaining / value);
+    remaining %= value;
+    if (count === 0) {
+      return;
+    }
+    const stack = document.createElement("span");
+    stack.className = "pot-chip-stack";
+    for (let index = 0; index < Math.min(count, 12); index += 1) {
+      const chip = document.createElement("i");
+      chip.className = `pot-chip chip-${color}`;
+      stack.append(chip);
+    }
+    if (count > 12) {
+      const countLabel = document.createElement("b");
+      countLabel.textContent = `×${count}`;
+      stack.append(countLabel);
+    }
+    container.append(stack);
+  });
+
+  if (remaining > 0 || denominations.length === 0) {
+    const remainder = document.createElement("b");
+    remainder.className = "pot-chip-remainder";
+    remainder.textContent = denominations.length === 0 ? amount : `+${remaining}`;
+    container.append(remainder);
+  }
+  return container;
+}
+
+function showPotValue(amount) {
+  if (chipDisplayMode === "pile") {
+    potValue.replaceChildren(makePotChipPile(amount));
+  } else {
+    potValue.textContent = amount;
+  }
+}
+
 function potLayerName(index) {
   return index === 0 ? "Main pot" : `Side pot ${index}`;
 }
@@ -759,12 +816,12 @@ function drawPotLayers(layerCount, animateNewLayer = false) {
 
   const activeLayer = visibleLayers[activeLayerIndex];
   if (!activeLayer) {
-    potValue.textContent = 0;
+    showPotValue(0);
     potValue.setAttribute("aria-label", "Pot: 0");
     return;
   }
 
-  potValue.textContent = animateNewLayer ? 0 : activeLayer.amount;
+  showPotValue(animateNewLayer ? 0 : activeLayer.amount);
   potValue.setAttribute(
     "aria-label",
     `${potLayerName(activeLayerIndex)}: ${activeLayer.amount}`,
@@ -1668,6 +1725,82 @@ function makePlayerChipPiles(amount) {
   return container;
 }
 
+function chipColorsForAmount(amount) {
+  const denominations = Object.entries(gameSettings.chipDenominations || {})
+    .filter(
+      ([, value]) => Number.isFinite(Number(value)) && Number(value) > 0,
+    )
+    .map(([color, value]) => ({ color, value: Number(value) }))
+    .sort((first, second) => second.value - first.value);
+  let remaining = Math.max(0, Math.floor(amount));
+  return denominations.flatMap(({ color, value }) => {
+    const count = Math.floor(remaining / value);
+    remaining %= value;
+    return Array.from({ length: Math.min(count, 12) }, () => color);
+  });
+}
+
+function animateChipsToPot(playerId, amount) {
+  if (amount <= 0) {
+    return;
+  }
+  const source = playerSeats.querySelector(`[data-player-id="${playerId}"]`);
+  const tableBox = gameScreen.getBoundingClientRect();
+  const hasPot = gameState.players.filter(
+    (player) => !player.leftGame && player.handContribution > 0,
+  ).length >= 2;
+  const target = hasPot ? document.querySelector("#pot-display") : gameScreen;
+  if (!source || !target) {
+    return;
+  }
+  const sourceBox = source.getBoundingClientRect();
+  const targetBox = target.getBoundingClientRect();
+  const sourceX = sourceBox.left + sourceBox.width / 2 - tableBox.left;
+  const sourceY = sourceBox.top + sourceBox.height / 2 - tableBox.top;
+  const targetX = targetBox.left + targetBox.width / 2 - tableBox.left;
+  const targetY = targetBox.top + targetBox.height / 2 - tableBox.top;
+
+  chipColorsForAmount(amount)
+    .slice(0, 36)
+    .forEach((color, index) => {
+      const chip = document.createElement("i");
+      chip.className = `flying-chip chip-${color}`;
+      chip.style.left = `${sourceX - 11}px`;
+      chip.style.top = `${sourceY - 11}px`;
+      chipFlightLayer.append(chip);
+      const animation = chip.animate(
+        [
+          { opacity: 0, transform: "scale(0.5) rotate(0deg)" },
+          { opacity: 1, offset: 0.2 },
+          {
+            opacity: 1,
+            transform: `translate(${targetX - sourceX}px, ${targetY - sourceY}px) scale(0.72) rotate(300deg)`,
+          },
+        ],
+        {
+          duration: 760,
+          delay: index * 24,
+          easing: "cubic-bezier(0.22, 0.78, 0.28, 1)",
+          fill: "both",
+        },
+      );
+      animation.finished.then(() => chip.remove());
+    });
+}
+
+function playPendingChipFlights() {
+  if (!bettingGamePhases.has(gameState?.phase) || pendingChipFlights.length === 0) {
+    return;
+  }
+  const flights = pendingChipFlights;
+  pendingChipFlights = [];
+  requestAnimationFrame(() => {
+    flights.forEach(({ playerId, amount }, index) => {
+      setTimeout(() => animateChipsToPot(playerId, amount), index * 140);
+    });
+  });
+}
+
 function initializeSeatAngles() {
   seatAngles = Object.fromEntries(
     viewPlayers().map((player, index, players) => [
@@ -2355,12 +2488,7 @@ function renderGameState() {
   joinGameButton.disabled = false;
   const phase = gameState.phase;
   gamePhaseLabel.textContent = gamePhaseLabels[phase] || "";
-  const betting = [
-    GamePhase.BETTING_PREFLOP,
-    GamePhase.BETTING_FLOP,
-    GamePhase.BETTING_TURN,
-    GamePhase.BETTING_RIVER,
-  ].includes(phase);
+  const betting = bettingGamePhases.has(phase);
 
   if (betting) {
     dealPrompt.hidden = true;
@@ -2370,6 +2498,7 @@ function renderGameState() {
     pendingBet = player ? amountToCallForView(player) : 0;
     pendingFold = false;
     drawPlayerSeats();
+    playPendingChipFlights();
     return;
   }
 
@@ -2686,6 +2815,7 @@ function lockSeatsAndStartGame() {
 function confirmTurn() {
   const currentPlayerNumber = gameState.actionPlayerId;
   const player = viewPlayer(currentPlayerNumber);
+  const chipsBeforeAction = player.chips;
   lastTurnState = captureTurnState();
   const amountToCall = amountToCallForView(player);
   const legalActions = currentGameActions();
@@ -2709,11 +2839,18 @@ function confirmTurn() {
     };
   }
   invokeGame(action);
+  const chipsPaid =
+    action.type === Transition.FOLD
+      ? 0
+      : chipsBeforeAction - viewPlayer(currentPlayerNumber).chips;
   lastTurnEndedHandByFold =
     action.type === Transition.FOLD &&
     gameState.phase === GamePhase.HAND_COMPLETE;
   pendingFold = false;
   pendingVoiceAction = null;
+  if (chipsPaid > 0) {
+    pendingChipFlights.push({ playerId: currentPlayerNumber, amount: chipsPaid });
+  }
   renderGameState();
 }
 
@@ -2795,6 +2932,7 @@ chipDenominationsBack.addEventListener("click", () => {
 chipDisplayModeButton.addEventListener("click", () => {
   chipDisplayMode = chipDisplayMode === "value" ? "pile" : "value";
   updateChipDisplayModeButton();
+  updatePotDisplay();
 });
 chipEnabledCheckboxes.forEach((checkbox) => {
   checkbox.addEventListener("change", () =>
