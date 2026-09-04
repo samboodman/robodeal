@@ -70,6 +70,9 @@ const gameWinnerScreen = document.querySelector("#game-winner-screen");
 const gameWinnerMessage = document.querySelector("#game-winner-message");
 const playerSeats = document.querySelector("#player-seats");
 const playerSeatEffects = document.querySelector("#player-seat-effects");
+const dealerMarker = document.querySelector("#dealer-marker");
+const smallBlindMarker = document.querySelector("#small-blind-marker");
+const bigBlindMarker = document.querySelector("#big-blind-marker");
 const chipFlightLayer = document.querySelector("#chip-flight-layer");
 const buyBackChipFlightLayer = document.querySelector(
   "#buy-back-chip-flight-layer",
@@ -183,6 +186,8 @@ let potChipContributions = {};
 let potChipHandNumber = null;
 let lastTurnState = null;
 let lastTurnPotChipRecord = null;
+const displayedMarkerPlayerIds = {};
+const markerPositions = {};
 let lastTurnEndedHandByFold = false;
 let chipDisplayMode = "value";
 let screenWakeLock = null;
@@ -2176,6 +2181,115 @@ function toggleInGameSeatPositioning() {
   }
 }
 
+function updateTableMarker(marker, role, playerId, sideOffset) {
+  if (!playerId) {
+    marker.hidden = true;
+    return;
+  }
+  const playerSeat = playerSeats.querySelector(
+    `[data-player-id="${playerId}"]`,
+  );
+  if (!playerSeat) {
+    marker.hidden = true;
+    return;
+  }
+
+  const gameBox = gameScreen.getBoundingClientRect();
+  const seatBox = playerSeat.getBoundingClientRect();
+  const centerX = gameBox.width / 2;
+  const centerY = gameBox.height / 2;
+  const seatX = seatBox.left + seatBox.width / 2 - gameBox.left;
+  const seatY = seatBox.top + seatBox.height / 2 - gameBox.top;
+  const markerRadius = Math.max(
+    0,
+    Math.min(gameBox.width, gameBox.height) * 0.4 - 42,
+  );
+  const seatAngle = Math.atan2(seatY - centerY, seatX - centerX);
+  const markerAngle = seatAngle + sideOffset / Math.max(markerRadius, 1);
+  const targetPosition = {
+    x: centerX + Math.cos(markerAngle) * markerRadius,
+    y: centerY + Math.sin(markerAngle) * markerRadius,
+  };
+  const shouldAnimate =
+    displayedMarkerPlayerIds[role] !== undefined &&
+    displayedMarkerPlayerIds[role] !== playerId;
+
+  marker.getAnimations().forEach((animation) => animation.cancel());
+  marker.hidden = false;
+  if (shouldAnimate && markerPositions[role]) {
+    const startPosition = markerPositions[role];
+    const startAngle = Math.atan2(
+      startPosition.y - centerY,
+      startPosition.x - centerX,
+    );
+    const endAngle = Math.atan2(
+      targetPosition.y - centerY,
+      targetPosition.x - centerX,
+    );
+    const travelAngle = (endAngle - startAngle + Math.PI * 2) % (Math.PI * 2);
+    const animationFrames = Array.from({ length: 7 }, (_, index) => {
+      const progress = index / 6;
+      const angle = startAngle + travelAngle * progress;
+      return {
+        left: `${centerX + Math.cos(angle) * markerRadius}px`,
+        top: `${centerY + Math.sin(angle) * markerRadius}px`,
+      };
+    });
+    animationFrames[0] = {
+      left: `${startPosition.x}px`,
+      top: `${startPosition.y}px`,
+    };
+    animationFrames[animationFrames.length - 1] = {
+      left: `${targetPosition.x}px`,
+      top: `${targetPosition.y}px`,
+    };
+    marker.animate(animationFrames, {
+      duration: 900,
+      easing: "ease-in-out",
+      fill: "forwards",
+    });
+  }
+  marker.style.left = `${targetPosition.x}px`;
+  marker.style.top = `${targetPosition.y}px`;
+  displayedMarkerPlayerIds[role] = playerId;
+  markerPositions[role] = targetPosition;
+}
+
+function updateTableMarkers() {
+  if (seatingMode) {
+    dealerMarker.hidden = true;
+    smallBlindMarker.hidden = true;
+    bigBlindMarker.hidden = true;
+    return;
+  }
+  const markers = [
+    { marker: dealerMarker, role: "dealer", playerId: gameState.dealerId },
+    {
+      marker: smallBlindMarker,
+      role: "smallBlind",
+      playerId: gameState.smallBlindPlayerId,
+    },
+    {
+      marker: bigBlindMarker,
+      role: "bigBlind",
+      playerId: gameState.bigBlindPlayerId,
+    },
+  ];
+
+  markers.forEach((entry) => {
+    const markersAtSeat = markers.filter(
+      (otherEntry) => otherEntry.playerId === entry.playerId,
+    );
+    const markerIndex = markersAtSeat.indexOf(entry);
+    updateTableMarker(
+      entry.marker,
+      entry.role,
+      entry.playerId,
+      (markerIndex - (markersAtSeat.length - 1) / 2) * 26,
+    );
+  });
+}
+
 function drawPlayerSeats() {
   playerSeats.replaceChildren();
   const players = viewPlayers();
@@ -2192,9 +2306,6 @@ function drawPlayerSeats() {
     const isCurrentPlayer = playerNumber === currentPlayerNumber;
     if (isCurrentPlayer) {
       seat.classList.add("current-player");
-    }
-    if (!seatingMode && player.id === gameState.dealerId) {
-      seat.classList.add("dealer");
     }
     if (player.folded) {
       seat.classList.add("folded");
@@ -2241,8 +2352,10 @@ function drawPlayerSeats() {
     );
   }
   if (seatingMode) {
+    updateTableMarkers();
     return;
   }
+  updateTableMarkers();
   updatePotDisplay();
   turnIndicator.setAttribute(
     "aria-label",

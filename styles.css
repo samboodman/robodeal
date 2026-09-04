@@ -268,6 +268,34 @@ body {
   inset: 0;
   pointer-events: none;
 }
+.table-marker {
+  position: absolute;
+  z-index: 5;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-content: center;
+  border: 3px solid #fffdf6;
+  border-radius: 50%;
+  color: #16130f;
+  font-size: 0.55rem;
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+.dealer-marker {
+  background: #fffdf6;
+  box-shadow: 0 2px 0 #aaa69c, 0 0 10px #fffdf699;
+}
+.small-blind-marker {
+  background: #2875c7;
+  box-shadow: 0 2px 0 #174f91, 0 0 10px #2875c799;
+}
+.big-blind-marker {
+  background: #e5ba22;
+  box-shadow: 0 2px 0 #9b7511, 0 0 10px #e5ba2299;
+}
 .player-seat.disintegrating {
   animation: seat-disintegrate 2.8s ease-in forwards;
 }
@@ -826,15 +854,6 @@ body {
   box-shadow:
     0 0 0 5px #ffe18a77,
     0 4px 0 #8c2b1b;
-}
-.player-seat.dealer {
-  background: #2875c7;
-  box-shadow: 0 3px 0 #174f91;
-}
-.player-seat.dealer.current-player {
-  box-shadow:
-    0 0 0 5px #ffe18a77,
-    0 4px 0 #174f91;
 }
 .player-seat.folded {
   background: #7f2526;
