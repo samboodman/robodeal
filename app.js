@@ -178,7 +178,11 @@ let pendingFold = false;
 let renderedPotLayerCount = 0;
 let potAnimationTimer = null;
 let pendingChipFlights = [];
+let potChipCounts = {};
+let potChipContributions = {};
+let potChipHandNumber = null;
 let lastTurnState = null;
+let lastTurnPotChipRecord = null;
 let lastTurnEndedHandByFold = false;
 let chipDisplayMode = "value";
 let screenWakeLock = null;
@@ -513,7 +517,10 @@ function restoreLastGameSettings() {
     ? settings.anteMode
     : "everyone";
   useStraddleCheckbox.checked = settings.useStraddle === true;
-  if (Number.isInteger(settings.straddleAmount) && settings.straddleAmount > 0) {
+  if (
+    Number.isInteger(settings.straddleAmount) &&
+    settings.straddleAmount > 0
+  ) {
     straddleAmountInput.value = settings.straddleAmount;
   }
   useBombPotCheckbox.checked = settings.useBombPot === true;
@@ -621,6 +628,10 @@ function saveCurrentGame() {
         gameState,
         seatAngles,
         lastTurnState,
+        potChipCounts,
+        potChipContributions,
+        potChipHandNumber,
+        lastTurnPotChipRecord,
         lastTurnEndedHandByFold,
       }),
     );
@@ -645,6 +656,10 @@ function resumeSavedGame() {
   gameSettings = savedGame.gameSettings;
   gameState = savedGame.gameState;
   lastTurnState = savedGame.lastTurnState || null;
+  potChipCounts = savedGame.potChipCounts || {};
+  potChipContributions = savedGame.potChipContributions || {};
+  potChipHandNumber = savedGame.potChipHandNumber ?? null;
+  lastTurnPotChipRecord = savedGame.lastTurnPotChipRecord || null;
   lastTurnEndedHandByFold = savedGame.lastTurnEndedHandByFold === true;
   seatAngles =
     savedGame.seatAngles && typeof savedGame.seatAngles === "object"
@@ -711,20 +726,51 @@ function totalPotAmount() {
   return viewPots().reduce((total, potLayer) => total + potLayer.amount, 0);
 }
 
+function resetPotChipRecord() {
+  potChipCounts = {};
+  potChipContributions = {};
+  potChipHandNumber = gameState?.handNumber ?? null;
+}
+
+function syncPotChipRecord() {
+  if (potChipHandNumber !== gameState.handNumber) {
+    resetPotChipRecord();
+  }
+
+  gameState.players.forEach((player) => {
+    const contribution = Math.max(0, Number(player.handContribution) || 0);
+    const recordedContribution = potChipContributions[player.id] || 0;
+    const addedAmount = contribution - recordedContribution;
+    if (addedAmount <= 0) {
+      return;
+    }
+    playerChipBreakdown(addedAmount).denominations.forEach(
+      ({ color, count }) => {
+        potChipCounts[color] = (potChipCounts[color] || 0) + count;
+      },
+    );
+    potChipContributions[player.id] = contribution;
+  });
+}
+
 function makePotChipPile(amount) {
   const container = document.createElement("div");
   container.className = "pot-chip-pile";
   const denominations = Object.entries(gameSettings.chipDenominations || {})
     .filter(
-      ([, value]) => Number.isFinite(Number(value)) && Number(value) > 0,
+      ([color, value]) =>
+        Number.isFinite(Number(value)) &&
+        Number(value) > 0 &&
+        (potChipCounts[color] || 0) > 0,
     )
-    .map(([color, value]) => ({ color, value: Number(value) }))
+    .map(([color, value]) => ({
+      color,
+      value: Number(value),
+      count: potChipCounts[color],
+    }))
     .sort((first, second) => second.value - first.value);
-  let remaining = Math.max(0, Math.floor(amount));
 
-  denominations.forEach(({ color, value }) => {
-    const count = Math.floor(remaining / value);
-    remaining %= value;
+  denominations.forEach(({ color, count }) => {
     if (count === 0) {
       return;
     }
@@ -743,10 +789,10 @@ function makePotChipPile(amount) {
     container.append(stack);
   });
 
-  if (remaining > 0 || denominations.length === 0) {
+  if (denominations.length === 0) {
     const remainder = document.createElement("b");
     remainder.className = "pot-chip-remainder";
-    remainder.textContent = denominations.length === 0 ? amount : `+${remaining}`;
+    remainder.textContent = amount;
     container.append(remainder);
   }
   return container;
@@ -1680,27 +1726,64 @@ function makePlayers() {
   });
 }
 
+function playerChipBreakdown(amount) {
+  const denominations = Object.entries(gameSettings.chipDenominations || {})
+    .filter(([, value]) => Number.isFinite(Number(value)) && Number(value) > 0)
+    .map(([color, value]) => ({ color, value: Number(value), count: 0 }))
+    .sort((first, second) => first.value - second.value);
+  let remaining = Math.max(0, Math.floor(amount));
+  let mainChipIndex = 0;
+  denominations.forEach((denomination, index) => {
+    if (denomination.value <= amount / 10) {
+      mainChipIndex = index;
+    }
+  });
+  const supportingDenominations = denominations.slice(
+    Math.max(1, mainChipIndex - 2),
+    mainChipIndex + 1,
+  );
+  const supportingChipPercentages = [0.1, 0.25, 0.1];
+  const supportingChipCaps = [15, 15, 5];
+
+  supportingDenominations.forEach((denomination, index) => {
+    const minimumCount =
+      index === supportingDenominations.length - 1 &&
+      amount >= denomination.value * 4
+        ? 1
+        : 0;
+    const count = Math.min(
+      Math.max(
+        minimumCount,
+        Math.floor(
+          (amount * supportingChipPercentages[index]) / denomination.value,
+        ),
+      ),
+      supportingChipCaps[index],
+      Math.floor(remaining / denomination.value),
+    );
+    denomination.count += count;
+    remaining -= count * denomination.value;
+  });
+
+  [...denominations].reverse().forEach((denomination) => {
+    const count = Math.floor(remaining / denomination.value);
+    denomination.count += count;
+    remaining -= count * denomination.value;
+  });
+
+  return {
+    denominations: [...denominations].reverse(),
+    remaining,
+  };
+}
+
 function makePlayerChipPiles(amount) {
   const container = document.createElement("div");
   container.className = "player-chip-piles";
   container.setAttribute("aria-hidden", "true");
-  const allowedColors = new Set(
-    chipDenominationInputs.map((input) => input.dataset.chipColor),
-  );
-  const denominations = Object.entries(gameSettings.chipDenominations || {})
-    .filter(
-      ([color, value]) =>
-        allowedColors.has(color) &&
-        Number.isFinite(Number(value)) &&
-        Number(value) > 0,
-    )
-    .map(([color, value]) => ({ color, value: Number(value) }))
-    .sort((first, second) => second.value - first.value);
-  let remaining = Math.max(0, Math.floor(amount));
+  const { denominations, remaining } = playerChipBreakdown(amount);
 
-  denominations.forEach(({ color, value }) => {
-    const chipCount = Math.floor(remaining / value);
-    remaining %= value;
+  denominations.forEach(({ color, count: chipCount }) => {
     if (chipCount === 0) {
       return;
     }
@@ -1730,16 +1813,8 @@ function makePlayerChipPiles(amount) {
 }
 
 function chipColorsForAmount(amount) {
-  const denominations = Object.entries(gameSettings.chipDenominations || {})
-    .filter(
-      ([, value]) => Number.isFinite(Number(value)) && Number(value) > 0,
-    )
-    .map(([color, value]) => ({ color, value: Number(value) }))
-    .sort((first, second) => second.value - first.value);
-  let remaining = Math.max(0, Math.floor(amount));
-  return denominations.flatMap(({ color, value }) => {
-    const count = Math.floor(remaining / value);
-    remaining %= value;
+  const { denominations } = playerChipBreakdown(amount);
+  return denominations.flatMap(({ color, count }) => {
     return Array.from({ length: Math.min(count, 12) }, () => color);
   });
 }
@@ -1750,9 +1825,10 @@ function animateChipsToPot(playerId, amount) {
   }
   const source = playerSeats.querySelector(`[data-player-id="${playerId}"]`);
   const tableBox = gameScreen.getBoundingClientRect();
-  const hasPot = gameState.players.filter(
-    (player) => !player.leftGame && player.handContribution > 0,
-  ).length >= 2;
+  const hasPot =
+    gameState.players.filter(
+      (player) => !player.leftGame && player.handContribution > 0,
+    ).length >= 2;
   const target = hasPot ? document.querySelector("#pot-display") : gameScreen;
   if (!source || !target) {
     return;
@@ -1767,31 +1843,30 @@ function animateChipsToPot(playerId, amount) {
   const chipColors = chipColorsForAmount(amount).slice(0, 36);
   const chipDelay = Math.min(90, 42 + chipColors.length * 2);
   const flightDuration = Math.min(1400, 560 + chipColors.length * 20);
-  chipColors
-    .forEach((color, index) => {
-      const chip = document.createElement("i");
-      chip.className = `flying-chip chip-${color}`;
-      chip.style.left = `${sourceX - 11}px`;
-      chip.style.top = `${sourceY - 11}px`;
-      chipFlightLayer.append(chip);
-      const animation = chip.animate(
-        [
-          { opacity: 0, transform: "scale(0.5) rotate(0deg)" },
-          { opacity: 1, offset: 0.2 },
-          {
-            opacity: 1,
-            transform: `translate(${targetX - sourceX}px, ${targetY - sourceY}px) scale(0.72) rotate(300deg)`,
-          },
-        ],
+  chipColors.forEach((color, index) => {
+    const chip = document.createElement("i");
+    chip.className = `flying-chip chip-${color}`;
+    chip.style.left = `${sourceX - 11}px`;
+    chip.style.top = `${sourceY - 11}px`;
+    chipFlightLayer.append(chip);
+    const animation = chip.animate(
+      [
+        { opacity: 0, transform: "scale(0.5) rotate(0deg)" },
+        { opacity: 1, offset: 0.2 },
         {
-          duration: flightDuration,
-          delay: index * chipDelay,
-          easing: "cubic-bezier(0.22, 0.78, 0.28, 1)",
-          fill: "both",
+          opacity: 1,
+          transform: `translate(${targetX - sourceX}px, ${targetY - sourceY}px) scale(0.72) rotate(300deg)`,
         },
-      );
-      animation.finished.then(() => chip.remove());
-    });
+      ],
+      {
+        duration: flightDuration,
+        delay: index * chipDelay,
+        easing: "cubic-bezier(0.22, 0.78, 0.28, 1)",
+        fill: "both",
+      },
+    );
+    animation.finished.then(() => chip.remove());
+  });
 }
 
 function animateBuyBackChipsToPlayer(playerId, amount) {
@@ -1835,7 +1910,10 @@ function animateBuyBackChipsToPlayer(playerId, amount) {
 }
 
 function playPendingChipFlights() {
-  if (!bettingGamePhases.has(gameState?.phase) || pendingChipFlights.length === 0) {
+  if (
+    !bettingGamePhases.has(gameState?.phase) ||
+    pendingChipFlights.length === 0
+  ) {
     return;
   }
   const flights = pendingChipFlights;
@@ -2485,11 +2563,17 @@ function undoLastTurn(fromShowdown = false) {
 
   raiseMode = false;
   gameState = structuredClone(lastTurnState);
+  potChipCounts = structuredClone(lastTurnPotChipRecord?.counts || {});
+  potChipContributions = structuredClone(
+    lastTurnPotChipRecord?.contributions || {},
+  );
+  potChipHandNumber = lastTurnPotChipRecord?.handNumber ?? gameState.handNumber;
   const player = viewPlayer(viewActionPlayerNumber());
   pendingBet = player ? amountToCallForView(player) : 0;
   pendingFold = false;
   pendingVoiceAction = null;
   lastTurnState = null;
+  lastTurnPotChipRecord = null;
   lastTurnEndedHandByFold = false;
   renderGameState();
   log.push({
@@ -2526,6 +2610,7 @@ function renderGameState() {
   if (!gameState) {
     return;
   }
+  syncPotChipRecord();
   const playerNeedingBuyBack = playerNeedingBuyBackDecision();
   if (gameState.phase === GamePhase.GAME_COMPLETE && !playerNeedingBuyBack) {
     clearSavedCurrentGame();
@@ -2785,6 +2870,7 @@ function showGameWinner(winner) {
 function startHand() {
   declinedBuyBackPlayerIds.clear();
   lastTurnState = null;
+  lastTurnPotChipRecord = null;
   lastTurnEndedHandByFold = false;
   pendingBet = 0;
   pendingFold = false;
@@ -2797,6 +2883,7 @@ function startNewHand() {
   declinedBuyBackPlayerIds.clear();
   joinGameStatus.hidden = true;
   lastTurnState = null;
+  lastTurnPotChipRecord = null;
   lastTurnEndedHandByFold = false;
   pendingBet = 0;
   pendingFold = false;
@@ -2865,6 +2952,11 @@ function confirmTurn() {
   const player = viewPlayer(currentPlayerNumber);
   const chipsBeforeAction = player.chips;
   lastTurnState = captureTurnState();
+  lastTurnPotChipRecord = structuredClone({
+    counts: potChipCounts,
+    contributions: potChipContributions,
+    handNumber: potChipHandNumber,
+  });
   const amountToCall = amountToCallForView(player);
   const legalActions = currentGameActions();
   let action;
@@ -2897,7 +2989,10 @@ function confirmTurn() {
   pendingFold = false;
   pendingVoiceAction = null;
   if (chipsPaid > 0) {
-    pendingChipFlights.push({ playerId: currentPlayerNumber, amount: chipsPaid });
+    pendingChipFlights.push({
+      playerId: currentPlayerNumber,
+      amount: chipsPaid,
+    });
   }
   renderGameState();
 }
@@ -3102,7 +3197,10 @@ buyBackButton.addEventListener("click", () => {
 leaveGameButton.addEventListener("click", () => {
   openOtherPlayerPicker("leave-game");
 });
-cancelOtherPlayerPickerButton.addEventListener("click", cancelOtherPlayerPicker);
+cancelOtherPlayerPickerButton.addEventListener(
+  "click",
+  cancelOtherPlayerPicker,
+);
 joinGameButton.addEventListener("click", () => {
   if (!gameState) {
     return;
@@ -3190,6 +3288,10 @@ form.addEventListener("submit", (event) => {
   event.preventDefault();
   clearSavedCurrentGame();
   clearLog();
+  potChipCounts = {};
+  potChipContributions = {};
+  potChipHandNumber = null;
+  lastTurnPotChipRecord = null;
   gameSettings = {
     playerCount: Number(playerCount.value),
     startingMoney: Number(document.querySelector("#starting-money").value),
