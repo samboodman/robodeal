@@ -52,22 +52,37 @@ test("voice selection excludes Marin and defaults to Cedar", () => {
   );
 });
 
-test("help and other share a row and other returns to the game", () => {
+test("other is a large right-side control that replaces the action menu", () => {
   assert.match(
     indexSource,
-    /id="help-button"[\s\S]*?id="other-button"[\s\S]*?id="other-page"[\s\S]*?id="close-other-button"[^>]*>Back to game/,
+    /id="other-button"[^>]*class="other-button"[^>]*>Other<\/button>[\s\S]*?id="other-action-menu"[^>]*hidden[\s\S]*?id="other-buy-back-button"[^>]*>Buy back[\s\S]*?id="other-add-player-button"[^>]*>Add player/,
   );
   assert.match(
     stylesSource,
-    /\.action-menu \.help-button,[\s\S]*?\.action-menu \.other-button/,
+    /#other-button \{[\s\S]*?position: fixed;[\s\S]*?right: 0;[\s\S]*?width: 84px;[\s\S]*?min-height: 92px/,
   );
   assert.match(
     appSource,
-    /otherButton\.addEventListener\("click"[\s\S]*?otherPage\.hidden = false[\s\S]*?closeOtherButton\.focus\(\)/,
+    /otherButton\.addEventListener\("click"[\s\S]*?otherPage\.hidden = true;[\s\S]*?openOtherMenu\(\)/,
   );
   assert.match(
     appSource,
-    /closeOtherButton\.addEventListener\("click", closeOtherPage\)/,
+    /function openOtherMenu\(\)[\s\S]*?otherButton\.textContent = "Back";[\s\S]*?actionMenu\.hidden = true;[\s\S]*?otherActionMenu\.hidden = false/,
+  );
+});
+
+test("help is in the other menu and other becomes back while it is open", () => {
+  assert.match(
+    indexSource,
+    /id="other-action-menu"[\s\S]*?id="other-add-player-button"[^>]*>Add player<\/button>[\s\S]*?id="help-button"[^>]*>Help<\/button>/,
+  );
+  assert.match(
+    stylesSource,
+    /\.action-menu \.help-button \{[\s\S]*?background: #2875c7/,
+  );
+  assert.match(
+    appSource,
+    /function closeOtherMenu\(\)[\s\S]*?otherButton\.textContent = "Other"/,
   );
 });
 
@@ -191,6 +206,96 @@ test("in-game seat controls hide play controls and preserve the current game whi
   assert.match(
     appSource,
     /function lockInGameSeats\(\)[\s\S]*?reorderStatePlayersClockwise\(gameState\)[\s\S]*?renderGameState\(\)/,
+  );
+});
+
+test("dealer and blind markers use the engine's table roles", () => {
+  assert.match(
+    indexSource,
+    /id="dealer-marker"[^>]*class="table-marker dealer-marker"[^>]*>D<\/div>[\s\S]*?id="small-blind-marker"[^>]*>SB<\/div>[\s\S]*?id="big-blind-marker"[^>]*>BB<\/div>/,
+  );
+  assert.match(
+    appSource,
+    /function updateTableMarkers\(\)[\s\S]*?playerId: gameState\.dealerId[\s\S]*?playerId: gameState\.smallBlindPlayerId[\s\S]*?playerId: gameState\.bigBlindPlayerId/,
+  );
+  assert.match(
+    appSource,
+    /const markersAtSeat = markers\.filter\([\s\S]*?otherEntry\.playerId === entry\.playerId[\s\S]*?\(markerIndex - \(markersAtSeat\.length - 1\) \/ 2\) \* 26/,
+  );
+  assert.match(stylesSource, /\.dealer-marker \{[\s\S]*?background: #fffdf6/);
+  assert.match(
+    stylesSource,
+    /\.small-blind-marker \{[\s\S]*?background: #2875c7/,
+  );
+  assert.match(
+    stylesSource,
+    /\.big-blind-marker \{[\s\S]*?background: #e5ba22/,
+  );
+});
+
+test("table markers travel on a circular track instead of across the table", () => {
+  assert.match(
+    appSource,
+    /const markerRadius = Math\.max\([\s\S]*?Math\.min\(gameBox\.width, gameBox\.height\) \* 0\.4 \+ \(outside \? 44 : -42\)/,
+  );
+  assert.match(
+    appSource,
+    /left: `\$\{centerX \+ Math\.cos\(angle\) \* markerRadius\}px`,[\s\S]*?top: `\$\{centerY \+ Math\.sin\(angle\) \* markerRadius\}px`/,
+  );
+  assert.match(
+    appSource,
+    /const travelAngle = \(endAngle - startAngle \+ Math\.PI \* 2\) % \(Math\.PI \* 2\)/,
+  );
+});
+
+test("the current-player marker stays on the outside of the table", () => {
+  assert.match(
+    indexSource,
+    /id="current-player-marker"[^>]*class="table-marker current-player-marker"[^>]*>TURN<\/div>/,
+  );
+  assert.match(
+    stylesSource,
+    /\.current-player-marker \{[\s\S]*?width: 48px;[\s\S]*?background: #e34d2f/,
+  );
+  assert.match(
+    appSource,
+    /updateTableMarker\([\s\S]*?currentPlayerMarker,[\s\S]*?"currentPlayer",[\s\S]*?gameState\.actionPlayerId,[\s\S]*?true,/,
+  );
+  assert.match(
+    appSource,
+    /Math\.min\(gameBox\.width, gameBox\.height\) \* 0\.4 \+ \(outside \? 44 : -42\)/,
+  );
+});
+
+test("undo is a large left-side control outside the action menu", () => {
+  assert.match(
+    indexSource,
+    /id="undo-button"[^>]*class="undo-button"[^>]*disabled>Undo<\/button>[\s\S]*?<div id="turn-control"/,
+  );
+  assert.doesNotMatch(
+    indexSource,
+    /<div id="action-menu"[\s\S]*?id="undo-button"/,
+  );
+  assert.match(
+    stylesSource,
+    /#undo-button \{[\s\S]*?position: fixed;[\s\S]*?left: 0;[\s\S]*?width: 84px;[\s\S]*?min-height: 92px;[\s\S]*?border-left: 0/,
+  );
+  assert.match(appSource, /undoButton\.addEventListener\("click", \(\) => undoLastTurn\(\)\)/);
+});
+
+test("one primary button changes between check and call", () => {
+  assert.match(
+    indexSource,
+    /id="primary-action-button"[^>]*>Check<\/button>/,
+  );
+  assert.doesNotMatch(indexSource, /id="call-action-button"|id="check-action-button"/);
+  assert.match(
+    appSource,
+    /primaryActionButton\.textContent = callIsAllIn[\s\S]*?minimumAllowedBet > 0[\s\S]*?"Check"/,
+  );
+  assert.match(
+    appSource,
+    /primaryActionButton\.addEventListener\("click"[\s\S]*?pendingBet = amountToCallForView\(player\)[\s\S]*?confirm\(\)/,
   );
 });
 

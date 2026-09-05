@@ -73,6 +73,7 @@ const playerSeatEffects = document.querySelector("#player-seat-effects");
 const dealerMarker = document.querySelector("#dealer-marker");
 const smallBlindMarker = document.querySelector("#small-blind-marker");
 const bigBlindMarker = document.querySelector("#big-blind-marker");
+const currentPlayerMarker = document.querySelector("#current-player-marker");
 const chipFlightLayer = document.querySelector("#chip-flight-layer");
 const buyBackChipFlightLayer = document.querySelector(
   "#buy-back-chip-flight-layer",
@@ -83,14 +84,14 @@ const turnIndicator = document.querySelector("#turn-indicator");
 const gamePhaseLabel = document.querySelector("#game-phase-label");
 const undoButton = document.querySelector("#undo-button");
 const actionMenu = document.querySelector("#action-menu");
-const callActionButton = document.querySelector("#call-action-button");
-const checkActionButton = document.querySelector("#check-action-button");
+const otherActionMenu = document.querySelector("#other-action-menu");
+const otherBuyBackButton = document.querySelector("#other-buy-back-button");
+const otherLeaveGameButton = document.querySelector("#other-leave-game-button");
+const otherAddPlayerButton = document.querySelector("#other-add-player-button");
+const primaryActionButton = document.querySelector("#primary-action-button");
 const foldActionButton = document.querySelector("#fold-action-button");
-const allInActionButton = document.querySelector("#all-in-action-button");
 const raiseActionButton = document.querySelector("#raise-action-button");
 const raisePanel = document.querySelector("#raise-panel");
-const raiseDecreaseButton = document.querySelector("#raise-decrease-button");
-const raiseIncreaseButton = document.querySelector("#raise-increase-button");
 const raiseTotalValue = document.querySelector("#raise-total-value");
 const raiseShortcutButtons = [
   ...document.querySelectorAll("[data-raise-adjustment]"),
@@ -198,6 +199,7 @@ let startMicrophoneAfterSpeech = false;
 let pendingVoiceAction = null;
 let suppressAutomaticNarration = false;
 let raiseMode = false;
+let otherMenuOpen = false;
 let seatingMode = false;
 let seatAngles = {};
 let joiningPlayerAnimationId = null;
@@ -2181,7 +2183,7 @@ function toggleInGameSeatPositioning() {
   }
 }
 
-function updateTableMarker(marker, role, playerId, sideOffset) {
+function updateTableMarker(marker, role, playerId, sideOffset, outside = false) {
   if (!playerId) {
     marker.hidden = true;
     return;
@@ -2202,7 +2204,7 @@ function updateTableMarker(marker, role, playerId, sideOffset) {
   const seatY = seatBox.top + seatBox.height / 2 - gameBox.top;
   const markerRadius = Math.max(
     0,
-    Math.min(gameBox.width, gameBox.height) * 0.4 - 42,
+    Math.min(gameBox.width, gameBox.height) * 0.4 + (outside ? 44 : -42),
   );
   const seatAngle = Math.atan2(seatY - centerY, seatX - centerX);
   const markerAngle = seatAngle + sideOffset / Math.max(markerRadius, 1);
@@ -2260,6 +2262,7 @@ function updateTableMarkers() {
     dealerMarker.hidden = true;
     smallBlindMarker.hidden = true;
     bigBlindMarker.hidden = true;
+    currentPlayerMarker.hidden = true;
     return;
   }
   const markers = [
@@ -2288,6 +2291,13 @@ function updateTableMarkers() {
       (markerIndex - (markersAtSeat.length - 1) / 2) * 26,
     );
   });
+  updateTableMarker(
+    currentPlayerMarker,
+    "currentPlayer",
+    gameState.actionPlayerId,
+    0,
+    true,
+  );
 }
 
 function drawPlayerSeats() {
@@ -2376,9 +2386,6 @@ function updateBetControls() {
   const maximumBet = bounds.maxAdditionalChips;
   const legalActions = currentGameActions();
   const betAction = legalActions.find(({ type }) => type === Transition.BET);
-  const allInAction = legalActions.find(
-    ({ type }) => type === Transition.ALL_IN,
-  );
   const minimumAllowedBet = Math.min(minimumBet, maximumBet);
   const minimumRaiseBet = bounds.minRaiseAdditionalChips;
   const canRaise = Boolean(betAction);
@@ -2386,32 +2393,22 @@ function updateBetControls() {
     minimumAllowedBet > 0 && minimumAllowedBet === player.chips;
   const minimumPendingBet = raiseMode ? minimumRaiseBet : minimumAllowedBet;
   pendingBet = Math.max(minimumPendingBet, Math.min(pendingBet, maximumBet));
-  callActionButton.textContent = callIsAllIn
+  primaryActionButton.textContent = callIsAllIn
     ? `Call ${minimumAllowedBet} (all in)`
     : minimumAllowedBet > 0
       ? `Call ${minimumAllowedBet}`
-      : "Call";
-  callActionButton.disabled = minimumAllowedBet === 0;
-  checkActionButton.disabled = minimumBet > 0;
-  allInActionButton.disabled = callIsAllIn || !allInAction;
-  allInActionButton.title = callIsAllIn
-    ? "Calling already uses all your remaining chips."
-    : !allInAction && player.chips > maximumBet
-      ? `${bettingLimitLabels[gameState.bettingLimit]} limits this bet to ${maximumBet}.`
-      : "";
+      : "Check";
+  primaryActionButton.disabled = false;
   raiseActionButton.disabled = callIsAllIn || !canRaise;
-  raiseTotalValue.value = String(player.roundBet + pendingBet);
-  raiseTotalValue.min = String(player.roundBet + minimumRaiseBet);
-  raiseTotalValue.max = String(player.roundBet + maximumBet);
-  raiseDecreaseButton.disabled = pendingBet <= minimumRaiseBet;
-  raiseIncreaseButton.disabled = pendingBet >= maximumBet;
+  raiseTotalValue.textContent = String(pendingBet);
   raiseShortcutButtons.forEach((button) => {
     const adjustment = Number(button.dataset.raiseAdjustment);
     button.disabled =
       adjustment < 0 ? pendingBet <= minimumRaiseBet : pendingBet >= maximumBet;
   });
   confirmRaiseButton.disabled = !isLegalPendingBet(player, pendingBet);
-  actionMenu.hidden = raiseMode;
+  actionMenu.hidden = raiseMode || otherMenuOpen;
+  otherActionMenu.hidden = !otherMenuOpen;
   raisePanel.hidden = !raiseMode;
   const undoIsAvailable = canUndoLastTurn();
   undoButton.disabled = !undoIsAvailable;
@@ -2463,7 +2460,7 @@ function setRaiseTotal(total) {
 
   const requestedAdditional = Math.max(
     minimumRaiseBet,
-    Math.min(requestedTotal - player.roundBet, maximumBet),
+    Math.min(requestedTotal, maximumBet),
   );
   if (
     gameState.bettingLimit === BettingLimit.FIXED_LIMIT &&
@@ -2494,11 +2491,27 @@ function adjustRaiseBy(amount) {
     updateBetControls();
     return;
   }
-  setRaiseTotal(player.roundBet + pendingBet + amount);
+  setRaiseTotal(pendingBet + amount);
 }
 
 function closeButtonHelp() {
   buttonHelp.hidden = true;
+}
+
+function openOtherMenu() {
+  closeButtonHelp();
+  otherMenuOpen = true;
+  otherButton.textContent = "Back";
+  actionMenu.hidden = true;
+  otherActionMenu.hidden = false;
+  raisePanel.hidden = true;
+}
+
+function closeOtherMenu() {
+  otherMenuOpen = false;
+  otherButton.textContent = "Other";
+  actionMenu.hidden = raiseMode;
+  otherActionMenu.hidden = true;
 }
 
 function playerNeedingBuyBackDecision() {
@@ -2652,6 +2665,7 @@ function closeOtherPage() {
   cancelOtherPlayerPicker();
   cancelJoinGame();
   otherPage.hidden = true;
+  closeOtherMenu();
   if (declinedAutomaticBuyBack && declinedPlayerId !== null) {
     declinedBuyBackPlayerIds.add(declinedPlayerId);
     renderGameState();
@@ -3211,8 +3225,8 @@ document.addEventListener("visibilitychange", () => {
     keepScreenAwake();
   }
 });
-callActionButton.addEventListener("click", () => {
-  if (callActionButton.disabled) {
+primaryActionButton.addEventListener("click", () => {
+  if (primaryActionButton.disabled) {
     return;
   }
   const player = viewPlayer(viewActionPlayerNumber());
@@ -3221,14 +3235,6 @@ callActionButton.addEventListener("click", () => {
   }
   raiseMode = false;
   pendingBet = amountToCallForView(player);
-  confirm();
-});
-checkActionButton.addEventListener("click", () => {
-  if (checkActionButton.disabled) {
-    return;
-  }
-  raiseMode = false;
-  pendingBet = 0;
   pendingFold = false;
   confirm();
 });
@@ -3237,46 +3243,13 @@ foldActionButton.addEventListener("click", () => {
   pendingFold = true;
   confirm();
 });
-allInActionButton.addEventListener("click", () => {
-  if (allInActionButton.disabled) {
-    return;
-  }
-  const player = viewPlayer(viewActionPlayerNumber());
-  if (!player) {
-    return;
-  }
-  raiseMode = false;
-  betCurrentPlayer(player.chips);
-  confirm();
-});
 raiseActionButton.addEventListener("click", enterRaiseMode);
-raiseDecreaseButton.addEventListener("click", () => {
-  if (!raiseDecreaseButton.disabled) {
-    adjustRaiseBy(-1);
-  }
-});
-raiseIncreaseButton.addEventListener("click", () => {
-  if (!raiseIncreaseButton.disabled) {
-    adjustRaiseBy(1);
-  }
-});
 raiseShortcutButtons.forEach((button) => {
   button.addEventListener("click", () => {
     if (!button.disabled) {
       adjustRaiseBy(Number(button.dataset.raiseAdjustment));
     }
   });
-});
-raiseTotalValue.addEventListener("change", () =>
-  setRaiseTotal(raiseTotalValue.value),
-);
-raiseTotalValue.addEventListener("keydown", (event) => {
-  if (event.key !== "Enter") {
-    return;
-  }
-  event.preventDefault();
-  setRaiseTotal(raiseTotalValue.value);
-  raiseTotalValue.blur();
 });
 confirmRaiseButton.addEventListener("click", () => {
   if (confirmRaiseButton.disabled) {
@@ -3293,7 +3266,10 @@ helpButton.addEventListener("click", () => {
 });
 closeHelpButton.addEventListener("click", closeButtonHelp);
 otherButton.addEventListener("click", () => {
-  closeButtonHelp();
+  if (otherMenuOpen) {
+    closeOtherMenu();
+    return;
+  }
   buyBackPlayerId = null;
   buyBackWasAutomatic = false;
   otherPageTitle.textContent = "Other";
@@ -3301,8 +3277,23 @@ otherButton.addEventListener("click", () => {
   cancelBuyBack();
   cancelJoinGame();
   cancelOtherPlayerPicker();
+  otherPage.hidden = true;
+  openOtherMenu();
+});
+otherBuyBackButton.addEventListener("click", () => {
+  closeOtherMenu();
   otherPage.hidden = false;
-  closeOtherButton.focus();
+  openOtherPlayerPicker("buy-back");
+});
+otherLeaveGameButton.addEventListener("click", () => {
+  closeOtherMenu();
+  otherPage.hidden = false;
+  openOtherPlayerPicker("leave-game");
+});
+otherAddPlayerButton.addEventListener("click", () => {
+  closeOtherMenu();
+  otherPage.hidden = false;
+  openJoinGamePanel();
 });
 buyBackButton.addEventListener("click", () => {
   openOtherPlayerPicker("buy-back");

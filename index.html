@@ -247,6 +247,7 @@
         <div id="dealer-marker" class="table-marker dealer-marker" aria-label="Dealer">D</div>
         <div id="small-blind-marker" class="table-marker small-blind-marker" aria-label="Small blind">SB</div>
         <div id="big-blind-marker" class="table-marker big-blind-marker" aria-label="Big blind">BB</div>
+        <div id="current-player-marker" class="table-marker current-player-marker" aria-label="Current player">TURN</div>
         <div id="chip-flight-layer" class="chip-flight-layer" aria-hidden="true"></div>
         <button id="lock-seats-button" class="lock-seats-button" type="button" hidden>Lock seats and start game</button>
         <p id="voice-transcript" class="voice-transcript" aria-live="polite" hidden></p>
@@ -255,35 +256,38 @@
           <button id="recording-button" class="recording-button" type="button" aria-pressed="false">Start recording</button>
           <button id="seat-order-button" class="seat-order-button" type="button" aria-pressed="false" hidden>Move seats</button>
         </div>
+        <button id="undo-button" class="undo-button" type="button" disabled>Undo</button>
+        <button id="other-button" class="other-button" type="button">Other</button>
         <div id="turn-control" class="turn-control">
           <div id="turn-indicator" class="turn-indicator" aria-live="polite">
             <p id="game-phase-label" class="game-phase-label">Preflop</p>
             <section class="action-panel" aria-label="Poker actions">
               <div id="action-menu" class="action-menu">
-                <button id="call-action-button" type="button">Call</button>
-                <button id="check-action-button" type="button">Check</button>
-                <button id="fold-action-button" type="button">Fold</button>
-                <button id="all-in-action-button" type="button">All in</button>
+                <button id="primary-action-button" type="button">Check</button>
                 <button id="raise-action-button" type="button">Raise</button>
-                <button id="undo-button" type="button" disabled>Undo</button>
+                <button id="fold-action-button" type="button">Fold</button>
+              </div>
+              <div id="other-action-menu" class="action-menu other-action-menu" hidden>
+                <button id="other-buy-back-button" type="button">Buy back</button>
+                <button id="other-leave-game-button" type="button">Leave game</button>
+                <button id="other-add-player-button" type="button">Add player</button>
                 <button id="help-button" class="help-button" type="button">Help</button>
-                <button id="other-button" class="other-button" type="button">Other</button>
               </div>
               <div id="raise-panel" class="raise-panel" hidden>
-                <p>Raise total</p>
+                <p>Additional chips</p>
                 <div class="raise-counter">
-                  <button id="raise-decrease-button" type="button" aria-label="Decrease raise">−</button>
-                  <input id="raise-total-value" type="number" inputmode="numeric" min="0" step="1" value="0" aria-label="Raise total">
-                  <button id="raise-increase-button" type="button" aria-label="Increase raise">+</button>
+                  <output id="raise-total-value" aria-label="Additional chips to raise">0</output>
                 </div>
                 <div class="raise-shortcuts" aria-label="Quick raise adjustments">
                   <button type="button" data-raise-adjustment="-25">−25</button>
-                  <button type="button" data-raise-adjustment="-10">−10</button>
-                  <button type="button" data-raise-adjustment="10">+10</button>
                   <button type="button" data-raise-adjustment="25">+25</button>
+                  <button type="button" data-raise-adjustment="-5">−5</button>
+                  <button type="button" data-raise-adjustment="5">+5</button>
+                  <button type="button" data-raise-adjustment="-1">−1</button>
+                  <button type="button" data-raise-adjustment="1">+1</button>
                 </div>
-                <button id="confirm-raise-button" class="confirm-raise-button" type="button">Confirm raise</button>
                 <button id="cancel-raise-button" class="cancel-raise-button" type="button">Cancel raise</button>
+                <button id="confirm-raise-button" class="confirm-raise-button" type="button">Confirm raise</button>
               </div>
             </section>
             <section class="pot-panel" aria-label="Pot total">
