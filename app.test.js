@@ -209,6 +209,13 @@ test("in-game seat controls hide play controls and preserve the current game whi
   );
 });
 
+test("default seats place due left between two equally close players", () => {
+  assert.match(
+    appSource,
+    /function initializeSeatAngles\(\) \{[\s\S]*?const seatStep = \(Math\.PI \* 2\) \/ players\.length;[\s\S]*?const seatJustBeforeLeft = Math\.floor\(\(players\.length - 2\) \/ 4\);[\s\S]*?Math\.PI - \(seatJustBeforeLeft \+ 0\.5\) \* seatStep/,
+  );
+});
+
 test("dealer and blind markers use the engine's table roles", () => {
   assert.match(
     indexSource,
@@ -220,7 +227,7 @@ test("dealer and blind markers use the engine's table roles", () => {
   );
   assert.match(
     appSource,
-    /const markersAtSeat = markers\.filter\([\s\S]*?otherEntry\.playerId === entry\.playerId[\s\S]*?\(markerIndex - \(markersAtSeat\.length - 1\) \/ 2\) \* 26/,
+    /const markersAtSeat = markers\.filter\([\s\S]*?otherEntry\.playerId === entry\.playerId[\s\S]*?markersAtSeat\.length === 1[\s\S]*?-42[\s\S]*?\(markerIndex - \(markersAtSeat\.length - 1\) \/ 2\) \* 84/,
   );
   assert.match(stylesSource, /\.dealer-marker \{[\s\S]*?background: #fffdf6/);
   assert.match(
@@ -233,22 +240,27 @@ test("dealer and blind markers use the engine's table roles", () => {
   );
 });
 
-test("table markers travel on a circular track instead of across the table", () => {
+test("markers follow each player's rotation and names clear their chip piles", () => {
   assert.match(
     appSource,
-    /const markerRadius = Math\.max\([\s\S]*?Math\.min\(gameBox\.width, gameBox\.height\) \* 0\.4 \+ \(outside \? 44 : -42\)/,
+    /const markerPositionAtAngle = \(angle\) => \{[\s\S]*?const seatX = centerX \+ Math\.cos\(angle\) \* seatRadiusX;[\s\S]*?const seatY = centerY \+ Math\.sin\(angle\) \* seatRadiusY;[\s\S]*?x: seatX - Math\.cos\(angle\) \* 58,[\s\S]*?y: seatY - Math\.sin\(angle\) \* 58\s*\}[\s\S]*?x: seatX \+ Math\.sin\(angle\) \* sideOffset,[\s\S]*?y: seatY - Math\.cos\(angle\) \* sideOffset/,
   );
   assert.match(
     appSource,
-    /left: `\$\{centerX \+ Math\.cos\(angle\) \* markerRadius\}px`,[\s\S]*?top: `\$\{centerY \+ Math\.sin\(angle\) \* markerRadius\}px`/,
+    /marker\.style\.transform = `translate\(-50%, -50%\) rotate\(\$\{seatRotation\}rad\)`/,
   );
   assert.match(
     appSource,
-    /const travelAngle = \(endAngle - startAngle \+ Math\.PI \* 2\) % \(Math\.PI \* 2\)/,
+    /const tallestChipStack = Math\.max\([\s\S]*?chipStack\.children\.length[\s\S]*?"--name-bottom"/,
+  );
+  assert.match(stylesSource, /bottom: var\(--name-bottom, calc\(100% \+ 2px\)\)/);
+  assert.match(
+    appSource,
+    /const clockwiseTravelAngle =[\s\S]*?const counterclockwiseTravelAngle =[\s\S]*?const travelAngle = markerMovesCounterclockwise[\s\S]*?\? -counterclockwiseTravelAngle[\s\S]*?const position = markerPositionAtAngle\(angle\)/,
   );
 });
 
-test("the current-player marker stays on the outside of the table", () => {
+test("the current-player marker stays above the current player", () => {
   assert.match(
     indexSource,
     /id="current-player-marker"[^>]*class="table-marker current-player-marker"[^>]*>TURN<\/div>/,
@@ -263,7 +275,52 @@ test("the current-player marker stays on the outside of the table", () => {
   );
   assert.match(
     appSource,
-    /Math\.min\(gameBox\.width, gameBox\.height\) \* 0\.4 \+ \(outside \? 44 : -42\)/,
+    /function updateTableMarker\(marker, role, playerId, sideOffset, abovePlayer = false\)/,
+  );
+});
+
+test("undo reverses marker travel only when it restores a different player", () => {
+  assert.match(
+    appSource,
+    /function undoLastTurn\(fromShowdown = false\) \{[\s\S]*?const actionPlayerIdBeforeUndo = gameState\.actionPlayerId;[\s\S]*?markerMovesCounterclockwise =[\s\S]*?actionPlayerIdBeforeUndo !== gameState\.actionPlayerId/,
+  );
+  assert.match(
+    appSource,
+    /function updateTableMarkers\(\)[\s\S]*?markerMovesCounterclockwise = false/,
+  );
+});
+
+test("undo saves each engine state and can leave the winner screen", () => {
+  assert.match(
+    appSource,
+    /function invokeGame\(action\) \{[\s\S]*?undoStack\.push\([\s\S]*?returnToSetup: gameState\.phase === GamePhase\.SETUP/,
+  );
+  assert.match(
+    appSource,
+    /const snapshot = undoStack\.pop\(\);[\s\S]*?if \(snapshot\.returnToSetup\)[\s\S]*?setupScreen\.hidden = false;[\s\S]*?gameWinnerScreen\.hidden = true;[\s\S]*?gameScreen\.hidden = false/,
+  );
+  assert.match(
+    indexSource,
+    /id="game-winner-undo-button"[^>]*>Undo<\/button>/,
+  );
+  assert.match(
+    indexSource,
+    /id="game-winner-setup-button"[^>]*>Back to setup<\/button>/,
+  );
+});
+
+test("winner and setup exits stop microphone recording", () => {
+  assert.match(
+    appSource,
+    /function stopRecordingForSetupOrWinner\(\) \{[\s\S]*?voiceAgent\?\.stopMicrophone\(\)\.finally\(updateRecordingButton\)/,
+  );
+  assert.match(
+    appSource,
+    /function showGameWinner\(winner\) \{[\s\S]*?stopRecordingForSetupOrWinner\(\)/,
+  );
+  assert.match(
+    appSource,
+    /if \(snapshot\.returnToSetup\) \{[\s\S]*?stopRecordingForSetupOrWinner\(\)/,
   );
 });
 
@@ -296,6 +353,33 @@ test("one primary button changes between check and call", () => {
   assert.match(
     appSource,
     /primaryActionButton\.addEventListener\("click"[\s\S]*?pendingBet = amountToCallForView\(player\)[\s\S]*?confirm\(\)/,
+  );
+});
+
+test("raise panel has a red all-in button above the white panel", () => {
+  assert.match(
+    indexSource,
+    /id="raise-panel"[\s\S]*?id="raise-total-value"[\s\S]*?<button id="all-in-raise-button"[^>]*hidden>All in<\/button>/,
+  );
+  assert.match(
+    stylesSource,
+    /\.turn-indicator \{[\s\S]*?overflow: visible;[\s\S]*?\.all-in-raise-button \{[\s\S]*?position: absolute;[\s\S]*?top: -54px;[\s\S]*?background: #d9272e/,
+  );
+  assert.match(
+    appSource,
+    /allInRaiseButton\.addEventListener\("click", \(\) => \{[\s\S]*?pendingBet = player\.chips;[\s\S]*?confirm\(\)/,
+  );
+  assert.match(appSource, /allInRaiseButton\.hidden = !raiseMode/);
+});
+
+test("raise amount can be typed directly", () => {
+  assert.match(
+    indexSource,
+    /<input id="raise-total-value" type="number"[^>]*inputmode="numeric"/,
+  );
+  assert.match(
+    appSource,
+    /raiseTotalValue\.addEventListener\("change", \(\) => \{[\s\S]*?setRaiseTotal\(Number\(raiseTotalValue\.value\)\)/,
   );
 });
 

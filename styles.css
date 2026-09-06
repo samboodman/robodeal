@@ -258,6 +258,24 @@ body {
   line-height: 0.95;
   text-shadow: 0 3px 14px #000;
 }
+.game-winner-screen button {
+  position: relative;
+  z-index: 1;
+  min-width: 150px;
+  min-height: 52px;
+  border: 3px solid #fffdf6;
+  border-radius: 10px;
+  background: #d9272e;
+  color: #fffdf6;
+  font-size: 1.2rem;
+  font-weight: 900;
+}
+#game-winner-setup-button {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+}
 .player-seats {
   position: absolute;
   inset: 0;
@@ -380,6 +398,7 @@ body {
   box-shadow: 0 9px 26px #04160f66;
   transform: scale(0.75);
   transform-origin: center;
+  overflow: visible;
 }
 .game-phase-label {
   position: absolute;
@@ -525,21 +544,38 @@ body {
   text-align: center;
   text-transform: uppercase;
 }
+.all-in-raise-button {
+  position: absolute;
+  z-index: 2;
+  top: -54px;
+  left: 0;
+  width: 60%;
+  height: 42px;
+  margin: 0;
+  border: 3px solid #fffdf6;
+  border-radius: 9px;
+  background: #d9272e;
+  color: #fffdf6;
+  font-size: clamp(1.1rem, 4.4vw, 1.45rem);
+  font-weight: 900;
+}
 .raise-counter {
   display: grid;
   grid-column: 1 / -1;
   grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
 }
-.raise-counter output {
-  display: grid;
+.raise-counter input {
+  display: block;
   min-width: 0;
   width: 100%;
-  place-items: center;
   padding: 0;
+  border: 1px solid #557066;
+  border-radius: 4px;
+  background: #fffdf6;
   color: #173329;
   font: inherit;
-  font-size: clamp(0.8rem, 2.6vw, 1rem);
+  font-size: clamp(1rem, 4vw, 1.25rem);
   font-weight: 900;
   line-height: 1;
   text-align: center;
@@ -847,12 +883,12 @@ body {
 .player-seat-name {
   display: block;
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: var(--name-bottom, calc(100% + 2px));
   left: 50%;
   max-width: 180px;
   overflow: hidden;
   color: #fffdf6;
-  font-size: 3rem;
+  font-size: 2rem;
   line-height: 1.1;
   text-shadow: 0 2px 4px #000;
   text-overflow: ellipsis;

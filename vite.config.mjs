@@ -129,6 +129,12 @@ function localVoiceApi(apiKey) {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   return {
+    server: {
+      hmr: false,
+      watch: {
+        ignored: ["**/*"],
+      },
+    },
     plugins: [
       localRealtimeApi(env.OPENAI_API_KEY),
       localVoiceApi(env.OPENAI_API_KEY),

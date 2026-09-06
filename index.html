@@ -276,7 +276,7 @@
               <div id="raise-panel" class="raise-panel" hidden>
                 <p>Additional chips</p>
                 <div class="raise-counter">
-                  <output id="raise-total-value" aria-label="Additional chips to raise">0</output>
+                  <input id="raise-total-value" type="number" min="0" step="1" inputmode="numeric" aria-label="Additional chips to raise" value="0" />
                 </div>
                 <div class="raise-shortcuts" aria-label="Quick raise adjustments">
                   <button type="button" data-raise-adjustment="-25">−25</button>
@@ -289,6 +289,7 @@
                 <button id="cancel-raise-button" class="cancel-raise-button" type="button">Cancel raise</button>
                 <button id="confirm-raise-button" class="confirm-raise-button" type="button">Confirm raise</button>
               </div>
+              <button id="all-in-raise-button" class="all-in-raise-button" type="button" hidden>All in</button>
             </section>
             <section class="pot-panel" aria-label="Pot total">
               <p>Pot</p>
@@ -365,7 +366,9 @@
       </section>
       <section id="game-winner-screen" class="game-winner-screen" aria-live="polite" hidden>
         <img src="assets/fireworks.webp" alt="Fireworks" />
+        <button id="game-winner-setup-button" type="button">Back to setup</button>
         <h1 id="game-winner-message"></h1>
+        <button id="game-winner-undo-button" type="button">Undo</button>
       </section>
       <div id="buy-back-chip-flight-layer" class="buy-back-chip-flight-layer" aria-hidden="true"></div>
     </main>

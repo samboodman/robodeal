@@ -68,6 +68,8 @@ const chipDenominationsScreen = document.querySelector(
 const gameScreen = document.querySelector("#game-screen");
 const gameWinnerScreen = document.querySelector("#game-winner-screen");
 const gameWinnerMessage = document.querySelector("#game-winner-message");
+const gameWinnerUndoButton = document.querySelector("#game-winner-undo-button");
+const gameWinnerSetupButton = document.querySelector("#game-winner-setup-button");
 const playerSeats = document.querySelector("#player-seats");
 const playerSeatEffects = document.querySelector("#player-seat-effects");
 const dealerMarker = document.querySelector("#dealer-marker");
@@ -96,6 +98,7 @@ const raiseTotalValue = document.querySelector("#raise-total-value");
 const raiseShortcutButtons = [
   ...document.querySelectorAll("[data-raise-adjustment]"),
 ];
+const allInRaiseButton = document.querySelector("#all-in-raise-button");
 const confirmRaiseButton = document.querySelector("#confirm-raise-button");
 const cancelRaiseButton = document.querySelector("#cancel-raise-button");
 const helpButton = document.querySelector("#help-button");
@@ -187,8 +190,10 @@ let potChipContributions = {};
 let potChipHandNumber = null;
 let lastTurnState = null;
 let lastTurnPotChipRecord = null;
+let undoStack = [];
 const displayedMarkerPlayerIds = {};
 const markerPositions = {};
+let markerMovesCounterclockwise = false;
 let lastTurnEndedHandByFold = false;
 let chipDisplayMode = "value";
 let screenWakeLock = null;
@@ -404,6 +409,16 @@ function invokeGame(action) {
   if (!gameState) {
     throw new Error("The game state has not been initialized.");
   }
+  undoStack.push({
+    gameState: structuredClone(gameState),
+    potChipCounts: structuredClone(potChipCounts),
+    potChipContributions: structuredClone(potChipContributions),
+    potChipHandNumber,
+    lastTurnState: structuredClone(lastTurnState),
+    lastTurnPotChipRecord: structuredClone(lastTurnPotChipRecord),
+    lastTurnEndedHandByFold,
+    returnToSetup: gameState.phase === GamePhase.SETUP,
+  });
   gameState = executeTransition(gameState, action);
   return gameState;
 }
@@ -635,6 +650,7 @@ function saveCurrentGame() {
         gameState,
         seatAngles,
         lastTurnState,
+        undoStack,
         potChipCounts,
         potChipContributions,
         potChipHandNumber,
@@ -663,6 +679,7 @@ function resumeSavedGame() {
   gameSettings = savedGame.gameSettings;
   gameState = savedGame.gameState;
   lastTurnState = savedGame.lastTurnState || null;
+  undoStack = Array.isArray(savedGame.undoStack) ? savedGame.undoStack : [];
   potChipCounts = savedGame.potChipCounts || {};
   potChipContributions = savedGame.potChipContributions || {};
   potChipHandNumber = savedGame.potChipHandNumber ?? null;
@@ -1256,8 +1273,8 @@ function executeVoiceTool(name, args) {
     ) {
       return { ok: false, message: "There is no turn available to undo." };
     }
-    const restoredPlayerName = lastTurnState.players.find(
-      (player) => player.id === lastTurnState.actionPlayerId,
+    const restoredPlayerName = undoStack.at(-1)?.gameState.players.find(
+      (player) => player.id === undoStack.at(-1).gameState.actionPlayerId,
     )?.name;
     undoLastTurn(fromShowdown);
     return {
@@ -1619,6 +1636,11 @@ async function toggleRecording() {
   }
 }
 
+function stopRecordingForSetupOrWinner() {
+  startMicrophoneAfterSpeech = false;
+  voiceAgent?.stopMicrophone().finally(updateRecordingButton);
+}
+
 async function previewVoice() {
   testVoiceButton.disabled = true;
   voicePreviewStatus.textContent = "Loading voice…";
@@ -1933,10 +1955,15 @@ function playPendingChipFlights() {
 }
 
 function initializeSeatAngles() {
+  const players = viewPlayers();
+  const seatStep = (Math.PI * 2) / players.length;
+  const seatJustBeforeLeft = Math.floor((players.length - 2) / 4);
+  const firstSeatAngle =
+    Math.PI - (seatJustBeforeLeft + 0.5) * seatStep;
   seatAngles = Object.fromEntries(
-    viewPlayers().map((player, index, players) => [
+    players.map((player, index) => [
       player.id,
-      (index / players.length) * Math.PI * 2 + Math.PI / 2,
+      firstSeatAngle + index * seatStep,
     ]),
   );
 }
@@ -2183,7 +2210,7 @@ function toggleInGameSeatPositioning() {
   }
 }
 
-function updateTableMarker(marker, role, playerId, sideOffset, outside = false) {
+function updateTableMarker(marker, role, playerId, sideOffset, abovePlayer = false) {
   if (!playerId) {
     marker.hidden = true;
     return;
@@ -2197,21 +2224,23 @@ function updateTableMarker(marker, role, playerId, sideOffset, outside = false) 
   }
 
   const gameBox = gameScreen.getBoundingClientRect();
-  const seatBox = playerSeat.getBoundingClientRect();
   const centerX = gameBox.width / 2;
   const centerY = gameBox.height / 2;
-  const seatX = seatBox.left + seatBox.width / 2 - gameBox.left;
-  const seatY = seatBox.top + seatBox.height / 2 - gameBox.top;
-  const markerRadius = Math.max(
-    0,
-    Math.min(gameBox.width, gameBox.height) * 0.4 + (outside ? 44 : -42),
-  );
-  const seatAngle = Math.atan2(seatY - centerY, seatX - centerX);
-  const markerAngle = seatAngle + sideOffset / Math.max(markerRadius, 1);
-  const targetPosition = {
-    x: centerX + Math.cos(markerAngle) * markerRadius,
-    y: centerY + Math.sin(markerAngle) * markerRadius,
+  const seatRadiusX = gameBox.width * 0.4;
+  const seatRadiusY = gameBox.height * 0.4;
+  const seatAngle = seatAngles[playerId] ?? 0;
+  const seatRotation = seatAngle - Math.PI / 2;
+  const markerPositionAtAngle = (angle) => {
+    const seatX = centerX + Math.cos(angle) * seatRadiusX;
+    const seatY = centerY + Math.sin(angle) * seatRadiusY;
+    return abovePlayer
+      ? { x: seatX - Math.cos(angle) * 58, y: seatY - Math.sin(angle) * 58 }
+      : {
+          x: seatX + Math.sin(angle) * sideOffset,
+          y: seatY - Math.cos(angle) * sideOffset,
+        };
   };
+  const targetPosition = markerPositionAtAngle(seatAngle);
   const shouldAnimate =
     displayedMarkerPlayerIds[role] !== undefined &&
     displayedMarkerPlayerIds[role] !== playerId;
@@ -2219,32 +2248,23 @@ function updateTableMarker(marker, role, playerId, sideOffset, outside = false) 
   marker.getAnimations().forEach((animation) => animation.cancel());
   marker.hidden = false;
   if (shouldAnimate && markerPositions[role]) {
-    const startPosition = markerPositions[role];
-    const startAngle = Math.atan2(
-      startPosition.y - centerY,
-      startPosition.x - centerX,
-    );
-    const endAngle = Math.atan2(
-      targetPosition.y - centerY,
-      targetPosition.x - centerX,
-    );
-    const travelAngle = (endAngle - startAngle + Math.PI * 2) % (Math.PI * 2);
-    const animationFrames = Array.from({ length: 7 }, (_, index) => {
-      const progress = index / 6;
-      const angle = startAngle + travelAngle * progress;
+    const startAngle = seatAngles[displayedMarkerPlayerIds[role]] ?? seatAngle;
+    const clockwiseTravelAngle =
+      (seatAngle - startAngle + Math.PI * 2) % (Math.PI * 2);
+    const counterclockwiseTravelAngle =
+      (startAngle - seatAngle + Math.PI * 2) % (Math.PI * 2);
+    const travelAngle = markerMovesCounterclockwise
+      ? -counterclockwiseTravelAngle
+      : clockwiseTravelAngle;
+    const animationFrames = Array.from({ length: 9 }, (_, index) => {
+      const angle = startAngle + (travelAngle * index) / 8;
+      const position = markerPositionAtAngle(angle);
       return {
-        left: `${centerX + Math.cos(angle) * markerRadius}px`,
-        top: `${centerY + Math.sin(angle) * markerRadius}px`,
+        left: `${position.x}px`,
+        top: `${position.y}px`,
+        transform: `translate(-50%, -50%) rotate(${angle - Math.PI / 2}rad)`,
       };
     });
-    animationFrames[0] = {
-      left: `${startPosition.x}px`,
-      top: `${startPosition.y}px`,
-    };
-    animationFrames[animationFrames.length - 1] = {
-      left: `${targetPosition.x}px`,
-      top: `${targetPosition.y}px`,
-    };
     marker.animate(animationFrames, {
       duration: 900,
       easing: "ease-in-out",
@@ -2253,6 +2273,7 @@ function updateTableMarker(marker, role, playerId, sideOffset, outside = false) 
   }
   marker.style.left = `${targetPosition.x}px`;
   marker.style.top = `${targetPosition.y}px`;
+  marker.style.transform = `translate(-50%, -50%) rotate(${seatRotation}rad)`;
   displayedMarkerPlayerIds[role] = playerId;
   markerPositions[role] = targetPosition;
 }
@@ -2284,11 +2305,15 @@ function updateTableMarkers() {
       (otherEntry) => otherEntry.playerId === entry.playerId,
     );
     const markerIndex = markersAtSeat.indexOf(entry);
+    const sideOffset =
+      markersAtSeat.length === 1
+        ? -42
+        : (markerIndex - (markersAtSeat.length - 1) / 2) * 84;
     updateTableMarker(
       entry.marker,
       entry.role,
       entry.playerId,
-      (markerIndex - (markersAtSeat.length - 1) / 2) * 26,
+      sideOffset,
     );
   });
   updateTableMarker(
@@ -2298,6 +2323,7 @@ function updateTableMarkers() {
     0,
     true,
   );
+  markerMovesCounterclockwise = false;
 }
 
 function drawPlayerSeats() {
@@ -2331,7 +2357,18 @@ function drawPlayerSeats() {
 
     if (!seatingMode && !player.eliminated) {
       if (gameSettings.chipDisplayMode === "pile") {
-        seat.append(makePlayerChipPiles(player.chips));
+        const chipPiles = makePlayerChipPiles(player.chips);
+        const tallestChipStack = Math.max(
+          0,
+          ...[...chipPiles.querySelectorAll(".player-chip-stack")].map(
+            (chipStack) => chipStack.children.length,
+          ),
+        );
+        seat.style.setProperty(
+          "--name-bottom",
+          `${tallestChipStack * 6 + 10}px`,
+        );
+        seat.append(chipPiles);
       } else {
         const chips = document.createElement("span");
         chips.className = "player-seat-chips";
@@ -2400,7 +2437,11 @@ function updateBetControls() {
       : "Check";
   primaryActionButton.disabled = false;
   raiseActionButton.disabled = callIsAllIn || !canRaise;
-  raiseTotalValue.textContent = String(pendingBet);
+  raiseTotalValue.value = String(pendingBet);
+  allInRaiseButton.disabled = !legalActions.some(
+    ({ type }) => type === Transition.ALL_IN,
+  );
+  allInRaiseButton.hidden = !raiseMode;
   raiseShortcutButtons.forEach((button) => {
     const adjustment = Number(button.dataset.raiseAdjustment);
     button.disabled =
@@ -2677,10 +2718,7 @@ function captureTurnState() {
 }
 
 function canUndoLastTurn(fromShowdown = false) {
-  return (
-    lastTurnState !== null &&
-    (fromShowdown || gameState.actionPlayerId !== lastTurnState.actionPlayerId)
-  );
+  return undoStack.length > 0;
 }
 
 function undoLastTurn(fromShowdown = false) {
@@ -2689,19 +2727,31 @@ function undoLastTurn(fromShowdown = false) {
   }
 
   raiseMode = false;
-  gameState = structuredClone(lastTurnState);
-  potChipCounts = structuredClone(lastTurnPotChipRecord?.counts || {});
-  potChipContributions = structuredClone(
-    lastTurnPotChipRecord?.contributions || {},
-  );
-  potChipHandNumber = lastTurnPotChipRecord?.handNumber ?? gameState.handNumber;
+  const snapshot = undoStack.pop();
+  const actionPlayerIdBeforeUndo = gameState.actionPlayerId;
+  gameState = structuredClone(snapshot.gameState);
+  markerMovesCounterclockwise =
+    actionPlayerIdBeforeUndo !== gameState.actionPlayerId;
+  potChipCounts = structuredClone(snapshot.potChipCounts);
+  potChipContributions = structuredClone(snapshot.potChipContributions);
+  potChipHandNumber = snapshot.potChipHandNumber;
   const player = viewPlayer(viewActionPlayerNumber());
   pendingBet = player ? amountToCallForView(player) : 0;
   pendingFold = false;
   pendingVoiceAction = null;
-  lastTurnState = null;
-  lastTurnPotChipRecord = null;
-  lastTurnEndedHandByFold = false;
+  lastTurnState = structuredClone(snapshot.lastTurnState);
+  lastTurnPotChipRecord = structuredClone(snapshot.lastTurnPotChipRecord);
+  lastTurnEndedHandByFold = snapshot.lastTurnEndedHandByFold;
+  if (snapshot.returnToSetup) {
+    stopRecordingForSetupOrWinner();
+    gameScreen.hidden = true;
+    gameWinnerScreen.hidden = true;
+    setupScreen.hidden = false;
+    updateResumeGameButton();
+    return;
+  }
+  gameWinnerScreen.hidden = true;
+  gameScreen.hidden = false;
   renderGameState();
   log.push({
     Milliseconds: Math.max(0, performance.now() - gameStartedAt),
@@ -2988,8 +3038,10 @@ function awardSplitPot(potIndex, winnerNumbers) {
 
 function showGameWinner(winner) {
   allowScreenToSleep();
+  stopRecordingForSetupOrWinner();
   gameScreen.hidden = true;
   gameWinnerMessage.textContent = `${winner.name} wins!`;
+  gameWinnerUndoButton.disabled = !canUndoLastTurn();
   narrate(`${winner.name} won the hand and the game!`);
   gameWinnerScreen.hidden = false;
 }
@@ -3251,6 +3303,31 @@ raiseShortcutButtons.forEach((button) => {
     }
   });
 });
+raiseTotalValue.addEventListener("change", () => {
+  if (raiseTotalValue.value === "") {
+    updateBetControls();
+    return;
+  }
+  setRaiseTotal(Number(raiseTotalValue.value));
+});
+raiseTotalValue.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    raiseTotalValue.blur();
+  }
+});
+allInRaiseButton.addEventListener("click", () => {
+  if (allInRaiseButton.disabled) {
+    return;
+  }
+  const player = viewPlayer(viewActionPlayerNumber());
+  if (!player) {
+    return;
+  }
+  pendingBet = player.chips;
+  raiseMode = false;
+  confirm();
+});
 confirmRaiseButton.addEventListener("click", () => {
   if (confirmRaiseButton.disabled) {
     return;
@@ -3378,6 +3455,14 @@ document.addEventListener("keydown", (event) => {
 });
 undoButton.addEventListener("click", () => undoLastTurn());
 showdownUndoButton.addEventListener("click", () => undoLastTurn(true));
+gameWinnerUndoButton.addEventListener("click", () => undoLastTurn(true));
+gameWinnerSetupButton.addEventListener("click", () => {
+  stopRecordingForSetupOrWinner();
+  gameWinnerScreen.hidden = true;
+  gameScreen.hidden = true;
+  setupScreen.hidden = false;
+  updateResumeGameButton();
+});
 dealOkButton.addEventListener("click", cardsAreDealt);
 recordingButton.addEventListener("click", toggleRecording);
 seatOrderButton.addEventListener("click", toggleInGameSeatPositioning);
