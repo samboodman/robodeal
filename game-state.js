@@ -253,7 +253,9 @@ Object.defineProperty(log, "push", {
   enumerable: false,
   value(...entries) {
     const time = formatTime(
-      gameStartedAt === null ? 0 : Math.max(0, performance.now() - gameStartedAt),
+      gameStartedAt === null
+        ? 0
+        : Math.max(0, performance.now() - gameStartedAt),
     );
     const startingIndex = this.length;
     const differentialEntries = entries.map((entry, entryOffset) => {
@@ -1233,8 +1235,7 @@ export function executeTransition(gameState, action) {
         postBlind(state, state.bigBlindPlayerId, state.smallBlind * 2, false);
       }
       if (state.useStraddle) {
-        const straddleFrom =
-          state.bigBlindPlayerId ?? state.smallBlindPlayerId;
+        const straddleFrom = state.bigBlindPlayerId ?? state.smallBlindPlayerId;
         state.straddlePlayerId = nextPlayerFrom(state, straddleFrom);
         if (state.straddlePlayerId !== null) {
           postBlind(state, state.straddlePlayerId, state.straddleAmount, false);

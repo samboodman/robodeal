@@ -62,6 +62,10 @@ test("other is a large right-side control that replaces the action menu", () => 
     /#other-button \{[\s\S]*?position: fixed;[\s\S]*?right: 0;[\s\S]*?width: 84px;[\s\S]*?min-height: 92px/,
   );
   assert.match(
+    stylesSource,
+    /#other-action-menu \{[\s\S]*?grid-template-columns: 1fr;[\s\S]*?grid-template-rows: repeat\(4, 1fr\)/,
+  );
+  assert.match(
     appSource,
     /otherButton\.addEventListener\("click"[\s\S]*?otherPage\.hidden = true;[\s\S]*?openOtherMenu\(\)/,
   );
@@ -126,7 +130,7 @@ test("other can add a named player with chosen starting chips", () => {
   );
   assert.match(
     appSource,
-    /joinGameStatus\.textContent = .*sitting out this hand.*look folded/,
+    /joinGameStatus\.textContent\s*=\s*[\s\S]*?sitting out this hand[\s\S]*?look folded/,
   );
   assert.match(appSource, /joiningPlayerAnimationId = playerId/);
 });
@@ -253,7 +257,10 @@ test("markers follow each player's rotation and names clear their chip piles", (
     appSource,
     /const tallestChipStack = Math\.max\([\s\S]*?chipStack\.children\.length[\s\S]*?"--name-bottom"/,
   );
-  assert.match(stylesSource, /bottom: var\(--name-bottom, calc\(100% \+ 2px\)\)/);
+  assert.match(
+    stylesSource,
+    /bottom: var\(--name-bottom, calc\(100% \+ 2px\)\)/,
+  );
   assert.match(
     appSource,
     /const clockwiseTravelAngle =[\s\S]*?const counterclockwiseTravelAngle =[\s\S]*?const travelAngle = markerMovesCounterclockwise[\s\S]*?\? -counterclockwiseTravelAngle[\s\S]*?const position = markerPositionAtAngle\(angle\)/,
@@ -275,7 +282,7 @@ test("the current-player marker stays above the current player", () => {
   );
   assert.match(
     appSource,
-    /function updateTableMarker\(marker, role, playerId, sideOffset, abovePlayer = false\)/,
+    /function updateTableMarker\(\s*marker,\s*role,\s*playerId,\s*sideOffset,\s*abovePlayer = false,?\s*\)/,
   );
 });
 
@@ -299,10 +306,7 @@ test("undo saves each engine state and can leave the winner screen", () => {
     appSource,
     /const snapshot = undoStack\.pop\(\);[\s\S]*?if \(snapshot\.returnToSetup\)[\s\S]*?setupScreen\.hidden = false;[\s\S]*?gameWinnerScreen\.hidden = true;[\s\S]*?gameScreen\.hidden = false/,
   );
-  assert.match(
-    indexSource,
-    /id="game-winner-undo-button"[^>]*>Undo<\/button>/,
-  );
+  assert.match(indexSource, /id="game-winner-undo-button"[^>]*>Undo<\/button>/);
   assert.match(
     indexSource,
     /id="game-winner-setup-button"[^>]*>Back to setup<\/button>/,
@@ -337,15 +341,18 @@ test("undo is a large left-side control outside the action menu", () => {
     stylesSource,
     /#undo-button \{[\s\S]*?position: fixed;[\s\S]*?left: 0;[\s\S]*?width: 84px;[\s\S]*?min-height: 92px;[\s\S]*?border-left: 0/,
   );
-  assert.match(appSource, /undoButton\.addEventListener\("click", \(\) => undoLastTurn\(\)\)/);
+  assert.match(
+    appSource,
+    /undoButton\.addEventListener\("click", \(\) => undoLastTurn\(\)\)/,
+  );
 });
 
 test("one primary button changes between check and call", () => {
-  assert.match(
+  assert.match(indexSource, /id="primary-action-button"[^>]*>Check<\/button>/);
+  assert.doesNotMatch(
     indexSource,
-    /id="primary-action-button"[^>]*>Check<\/button>/,
+    /id="call-action-button"|id="check-action-button"/,
   );
-  assert.doesNotMatch(indexSource, /id="call-action-button"|id="check-action-button"/);
   assert.match(
     appSource,
     /primaryActionButton\.textContent = callIsAllIn[\s\S]*?minimumAllowedBet > 0[\s\S]*?"Check"/,

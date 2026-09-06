@@ -69,7 +69,9 @@ const gameScreen = document.querySelector("#game-screen");
 const gameWinnerScreen = document.querySelector("#game-winner-screen");
 const gameWinnerMessage = document.querySelector("#game-winner-message");
 const gameWinnerUndoButton = document.querySelector("#game-winner-undo-button");
-const gameWinnerSetupButton = document.querySelector("#game-winner-setup-button");
+const gameWinnerSetupButton = document.querySelector(
+  "#game-winner-setup-button",
+);
 const playerSeats = document.querySelector("#player-seats");
 const playerSeatEffects = document.querySelector("#player-seat-effects");
 const dealerMarker = document.querySelector("#dealer-marker");
@@ -1273,9 +1275,11 @@ function executeVoiceTool(name, args) {
     ) {
       return { ok: false, message: "There is no turn available to undo." };
     }
-    const restoredPlayerName = undoStack.at(-1)?.gameState.players.find(
-      (player) => player.id === undoStack.at(-1).gameState.actionPlayerId,
-    )?.name;
+    const restoredPlayerName = undoStack
+      .at(-1)
+      ?.gameState.players.find(
+        (player) => player.id === undoStack.at(-1).gameState.actionPlayerId,
+      )?.name;
     undoLastTurn(fromShowdown);
     return {
       ok: true,
@@ -1958,8 +1962,7 @@ function initializeSeatAngles() {
   const players = viewPlayers();
   const seatStep = (Math.PI * 2) / players.length;
   const seatJustBeforeLeft = Math.floor((players.length - 2) / 4);
-  const firstSeatAngle =
-    Math.PI - (seatJustBeforeLeft + 0.5) * seatStep;
+  const firstSeatAngle = Math.PI - (seatJustBeforeLeft + 0.5) * seatStep;
   seatAngles = Object.fromEntries(
     players.map((player, index) => [
       player.id,
@@ -2210,7 +2213,13 @@ function toggleInGameSeatPositioning() {
   }
 }
 
-function updateTableMarker(marker, role, playerId, sideOffset, abovePlayer = false) {
+function updateTableMarker(
+  marker,
+  role,
+  playerId,
+  sideOffset,
+  abovePlayer = false,
+) {
   if (!playerId) {
     marker.hidden = true;
     return;
@@ -2309,12 +2318,7 @@ function updateTableMarkers() {
       markersAtSeat.length === 1
         ? -42
         : (markerIndex - (markersAtSeat.length - 1) / 2) * 84;
-    updateTableMarker(
-      entry.marker,
-      entry.role,
-      entry.playerId,
-      sideOffset,
-    );
+    updateTableMarker(entry.marker, entry.role, entry.playerId, sideOffset);
   });
   updateTableMarker(
     currentPlayerMarker,
@@ -3418,7 +3422,9 @@ confirmJoinGameButton.addEventListener("click", () => {
   renderGameState();
   animatePlayerJoining(playerId);
   if (joiningDuringHand) {
-    joinGameStatus.textContent = name + " is sitting out this hand, so they look folded. They play next hand.";
+    joinGameStatus.textContent =
+      name +
+      " is sitting out this hand, so they look folded. They play next hand.";
     joinGameStatus.hidden = false;
   }
 });
