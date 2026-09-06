@@ -20,6 +20,7 @@ function game({
   useBigBlind = false,
   bettingLimit = BettingLimit.NO_LIMIT,
   fixedLimitBet = 10,
+  timer = 0,
 } = {}) {
   return createGameState({
     players: [
@@ -33,6 +34,7 @@ function game({
     useBigBlind,
     bettingLimit,
     fixedLimitBet,
+    timer,
   });
 }
 
@@ -202,6 +204,24 @@ test("GameState creation validates the immutable table configuration", () => {
         fixedLimitBet: 0,
       }),
     /Fixed-limit bet/,
+  );
+});
+
+test("GameState preserves a turn timer and rejects invalid timer values", () => {
+  assert.equal(game({ timer: 30 }).timer, 30);
+  assert.equal(game().timer, 0);
+  assert.throws(
+    () =>
+      createGameState({
+        players: [
+          { id: 1, chips: 1 },
+          { id: 2, chips: 1 },
+        ],
+        smallBlind: 1,
+        dealerId: 1,
+        timer: -1,
+      }),
+    /Turn timer/,
   );
 });
 

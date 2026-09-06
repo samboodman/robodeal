@@ -40,6 +40,72 @@ body {
   width: min(100%, 680px);
   min-height: min(100svh, 680px);
 }
+.game-summary {
+  position: absolute;
+  z-index: 6;
+  top: max(10px, env(safe-area-inset-top));
+  left: 50%;
+  max-width: calc(100% - 32px);
+  margin: 0;
+  padding: 6px 10px;
+  border: 2px solid #d4dfd8;
+  border-radius: 999px;
+  background: #fffdf6e8;
+  color: #173329;
+  font-size: clamp(0.68rem, 2.5vw, 0.86rem);
+  font-weight: 850;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px #04160f44;
+  transform: translateX(-50%);
+}
+.turn-timer-display {
+  position: fixed;
+  z-index: 7;
+  top: 0;
+  left: 0;
+  display: grid;
+  justify-items: center;
+  width: clamp(110px, 22vw, 180px);
+  pointer-events: none;
+}
+.turn-timer-hourglass {
+  width: 100%;
+  aspect-ratio: 1;
+  background-image: none;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+.turn-timer-seconds {
+  margin-top: -3px;
+  font-size: clamp(1rem, 3.8vw, 1.55rem);
+  font-weight: 900;
+  line-height: 1;
+  text-shadow: 0 2px 3px #04160fcc;
+}
+.turn-timer-seconds.is-expiring {
+  animation: turn-timer-seconds-flash 0.3s steps(2, end) infinite;
+}
+.turn-timer-action {
+  margin-top: 4px;
+  color: #fffdf6;
+  font-size: clamp(0.56rem, 2.2vw, 0.76rem);
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  line-height: 1;
+  text-shadow: 0 2px 3px #04160fcc;
+}
+@keyframes turn-timer-seconds-flash {
+  0%,
+  100% {
+    color: #e31b23;
+  }
+  50% {
+    color: #fffdf6;
+  }
+}
 .chip-flight-layer {
   position: absolute;
   z-index: 6;

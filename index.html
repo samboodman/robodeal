@@ -2,44 +2,111 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <title>Table Poker</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="app-shell">
-      <section id="setup-screen" class="setup-card" aria-labelledby="page-title">
+      <section
+        id="setup-screen"
+        class="setup-card"
+        aria-labelledby="page-title"
+      >
         <p class="eyebrow">Poker night</p>
         <h1 id="page-title">Set up the table</h1>
 
         <form id="setup-form">
           <label for="player-count">Number of players</label>
-          <input id="player-count" name="playerCount" type="number" min="2" step="1" value="2" inputmode="numeric" required />
+          <input
+            id="player-count"
+            name="playerCount"
+            type="number"
+            min="2"
+            step="1"
+            value="2"
+            inputmode="numeric"
+            required
+          />
           <div class="money-grid">
             <div>
               <label for="starting-money">Starting money</label>
-              <input id="starting-money" name="startingMoney" type="number" min="1" value="250" inputmode="numeric" required />
+              <input
+                id="starting-money"
+                name="startingMoney"
+                type="number"
+                min="1"
+                value="250"
+                inputmode="numeric"
+                required
+              />
             </div>
             <div>
               <label for="small-blind">Small Blind</label>
-              <input id="small-blind" name="smallBlind" type="number" min="0" value="5" inputmode="numeric" required />
+              <input
+                id="small-blind"
+                name="smallBlind"
+                type="number"
+                min="0"
+                value="5"
+                inputmode="numeric"
+                required
+              />
             </div>
             <div class="small-blind-increase-field">
               <label for="small-blind-increase">Small Blind Increase</label>
-              <input id="small-blind-increase" name="smallBlindIncrease" type="number" min="0" value="5" inputmode="numeric" required />
+              <input
+                id="small-blind-increase"
+                name="smallBlindIncrease"
+                type="number"
+                min="0"
+                value="5"
+                inputmode="numeric"
+                required
+              />
             </div>
           </div>
           <label class="checkbox-setting" for="use-big-blind">
             <input id="use-big-blind" name="useBigBlind" type="checkbox" />
             Use big blind (double the small blind)
           </label>
+          <label class="checkbox-setting" for="use-timed-turns">
+            <input id="use-timed-turns" name="useTimedTurns" type="checkbox" />
+            Use timed turns
+          </label>
+          <div id="timed-turns-setting" hidden>
+            <label for="turn-timer">Seconds per turn</label>
+            <input
+              id="turn-timer"
+              name="timer"
+              type="number"
+              min="1"
+              step="1"
+              value="30"
+              inputmode="numeric"
+              required
+              disabled
+            />
+          </div>
           <label class="checkbox-setting" for="use-ante">
             <input id="use-ante" name="useAnte" type="checkbox" />
             Use ante
           </label>
           <div id="ante-setting" hidden>
             <label for="ante">Ante amount</label>
-            <input id="ante" name="ante" type="number" min="1" value="5" inputmode="numeric" required disabled />
+            <input
+              id="ante"
+              name="ante"
+              type="number"
+              min="1"
+              value="5"
+              inputmode="numeric"
+              required
+              disabled
+            />
             <label for="ante-mode">Who pays the ante?</label>
             <select id="ante-mode" name="anteMode" disabled>
               <option value="everyone" selected>Every player</option>
@@ -53,7 +120,16 @@
           </label>
           <div id="straddle-setting" hidden>
             <label for="straddle-amount">Straddle amount</label>
-            <input id="straddle-amount" name="straddleAmount" type="number" min="1" value="20" inputmode="numeric" required disabled />
+            <input
+              id="straddle-amount"
+              name="straddleAmount"
+              type="number"
+              min="1"
+              value="20"
+              inputmode="numeric"
+              required
+              disabled
+            />
             <p class="field-note">Default: two times the big blind.</p>
           </div>
           <label class="checkbox-setting" for="use-bomb-pot">
@@ -62,7 +138,16 @@
           </label>
           <div id="bomb-pot-setting" hidden>
             <label for="bomb-pot-amount">Bomb-pot amount per player</label>
-            <input id="bomb-pot-amount" name="bombPotAmount" type="number" min="1" value="10" inputmode="numeric" required disabled />
+            <input
+              id="bomb-pot-amount"
+              name="bombPotAmount"
+              type="number"
+              min="1"
+              value="10"
+              inputmode="numeric"
+              required
+              disabled
+            />
             <p class="field-note">Default: double the ante.</p>
           </div>
           <label class="checkbox-setting" for="run-it-twice">
@@ -75,15 +160,34 @@
           </label>
           <div id="rake-setting" hidden>
             <label for="rake-amount">Rake per pot</label>
-            <input id="rake-amount" name="rakeAmount" type="number" min="1" value="10" inputmode="numeric" required disabled />
+            <input
+              id="rake-amount"
+              name="rakeAmount"
+              type="number"
+              min="1"
+              value="10"
+              inputmode="numeric"
+              required
+              disabled
+            />
             <p class="field-note">Default: double the ante.</p>
           </div>
           <label class="checkbox-setting" for="allow-add-ons">
-            <input id="allow-add-ons" name="allowAddOns" type="checkbox" checked />
+            <input
+              id="allow-add-ons"
+              name="allowAddOns"
+              type="checkbox"
+              checked
+            />
             Allow add-ons (buy more chips while still in)
           </label>
           <label class="checkbox-setting" for="allow-re-entries">
-            <input id="allow-re-entries" name="allowReEntries" type="checkbox" checked />
+            <input
+              id="allow-re-entries"
+              name="allowReEntries"
+              type="checkbox"
+              checked
+            />
             Allow re-entries after elimination
           </label>
 
@@ -95,8 +199,19 @@
           </select>
           <div id="fixed-limit-setting" hidden>
             <label for="fixed-limit-bet">Fixed-limit bet</label>
-            <input id="fixed-limit-bet" name="fixedLimitBet" type="number" min="1" value="10" inputmode="numeric" required />
-            <p class="field-note">Used before and on the flop. The turn and river use double this amount.</p>
+            <input
+              id="fixed-limit-bet"
+              name="fixedLimitBet"
+              type="number"
+              min="1"
+              value="10"
+              inputmode="numeric"
+              required
+            />
+            <p class="field-note">
+              Used before and on the flop. The turn and river use double this
+              amount.
+            </p>
           </div>
 
           <div class="players-heading">
@@ -108,7 +223,12 @@
           <label for="dealer">Who is dealer?</label>
           <select id="dealer" name="dealer"></select>
 
-          <label id="debug-features-setting" class="checkbox-setting" for="debug-features" hidden>
+          <label
+            id="debug-features-setting"
+            class="checkbox-setting"
+            for="debug-features"
+            hidden
+          >
             <input id="debug-features" name="debugFeatures" type="checkbox" />
             Enable debug features
           </label>
@@ -118,34 +238,73 @@
               <option value="normal" selected>Normal game</option>
               <option value="two-pots">Two pots — river</option>
               <option value="three-pots">Three pots — river</option>
-              <option value="all-in-runout">All-in — deal remaining cards</option>
+              <option value="all-in-runout">
+                All-in — deal remaining cards
+              </option>
               <option value="deal-flop">Waiting to deal the flop</option>
               <option value="showdown">Choose a showdown winner</option>
               <option value="hand-won">Hand won — between hands</option>
               <option value="game-won">Game winner screen</option>
             </select>
             <label class="checkbox-setting" for="enable-audio-file-input">
-              <input id="enable-audio-file-input" name="enableAudioFileInput" type="checkbox" />
+              <input
+                id="enable-audio-file-input"
+                name="enableAudioFileInput"
+                type="checkbox"
+              />
               Allow audio file input while playing
             </label>
           </div>
           <label class="checkbox-setting" for="start-microphone-automatically">
-            <input id="start-microphone-automatically" name="startMicrophoneAutomatically" type="checkbox" checked />
+            <input
+              id="start-microphone-automatically"
+              name="startMicrophoneAutomatically"
+              type="checkbox"
+              checked
+            />
             Start microphone automatically
           </label>
           <label class="checkbox-setting" for="show-voice-transcript">
-            <input id="show-voice-transcript" name="showVoiceTranscript" type="checkbox" />
+            <input
+              id="show-voice-transcript"
+              name="showVoiceTranscript"
+              type="checkbox"
+            />
             Show voice transcript while playing
           </label>
-          <button id="voice-customization-button" class="voice-customization-button" type="button">Voice customization</button>
-          <button id="chip-denominations-button" class="chip-denominations-button" type="button">Chip denominations</button>
-          <button id="resume-game-button" class="resume-game-button" type="button" hidden>Resume saved game</button>
+          <button
+            id="voice-customization-button"
+            class="voice-customization-button"
+            type="button"
+          >
+            Voice customization
+          </button>
+          <button
+            id="chip-denominations-button"
+            class="chip-denominations-button"
+            type="button"
+          >
+            Chip denominations
+          </button>
+          <button
+            id="resume-game-button"
+            class="resume-game-button"
+            type="button"
+            hidden
+          >
+            Resume saved game
+          </button>
           <button type="submit">Start game</button>
           <p id="message" class="message" role="status"></p>
         </form>
       </section>
 
-      <section id="voice-customization-screen" class="setup-card" aria-labelledby="voice-customization-title" hidden>
+      <section
+        id="voice-customization-screen"
+        class="setup-card"
+        aria-labelledby="voice-customization-title"
+        hidden
+      >
         <p class="eyebrow">Poker night</p>
         <h1 id="voice-customization-title">Customize the voice</h1>
         <p class="intro">Choose how the RoboDeal voice should sound.</p>
@@ -179,85 +338,322 @@
           <option value="quick">Quick</option>
         </select>
 
-        <button id="test-voice-button" class="test-voice-button" type="button">Test voice</button>
+        <button id="test-voice-button" class="test-voice-button" type="button">
+          Test voice
+        </button>
         <p id="voice-preview-status" class="message" role="status"></p>
-        <button id="voice-customization-back" class="voice-customization-back" type="button">Back to game setup</button>
+        <button
+          id="voice-customization-back"
+          class="voice-customization-back"
+          type="button"
+        >
+          Back to game setup
+        </button>
       </section>
 
-      <section id="chip-denominations-screen" class="setup-card chip-denominations-screen" aria-labelledby="chip-denominations-title" hidden>
+      <section
+        id="chip-denominations-screen"
+        class="setup-card chip-denominations-screen"
+        aria-labelledby="chip-denominations-title"
+        hidden
+      >
         <p class="eyebrow">Poker night</p>
         <h1 id="chip-denominations-title">Chip denominations</h1>
-        <button id="chip-display-mode" class="chip-display-mode" type="button" aria-pressed="false">Money display: Value</button>
+        <button
+          id="chip-display-mode"
+          class="chip-display-mode"
+          type="button"
+          aria-pressed="false"
+        >
+          Money display: Value
+        </button>
         <div class="chip-denomination-list" aria-label="Chip values">
           <div class="chip-denomination-row">
             <span class="chip-swatch chip-white" aria-hidden="true"></span>
             <span>White</span>
-            <input type="number" min="1" value="1" inputmode="numeric" data-chip-color="white" aria-label="White chip value" />
-            <span class="chip-use-control"><input type="checkbox" data-chip-enabled="white" aria-label="Use white chips" checked /><span>Use</span></span>
+            <input
+              type="number"
+              min="1"
+              value="1"
+              inputmode="numeric"
+              data-chip-color="white"
+              aria-label="White chip value"
+            />
+            <span class="chip-use-control"
+              ><input
+                type="checkbox"
+                data-chip-enabled="white"
+                aria-label="Use white chips"
+                checked
+              /><span>Use</span></span
+            >
           </div>
           <div class="chip-denomination-row">
             <span class="chip-swatch chip-red" aria-hidden="true"></span>
             <span>Red</span>
-            <input type="number" min="1" value="5" inputmode="numeric" data-chip-color="red" aria-label="Red chip value" />
-            <span class="chip-use-control"><input type="checkbox" data-chip-enabled="red" aria-label="Use red chips" checked /><span>Use</span></span>
+            <input
+              type="number"
+              min="1"
+              value="5"
+              inputmode="numeric"
+              data-chip-color="red"
+              aria-label="Red chip value"
+            />
+            <span class="chip-use-control"
+              ><input
+                type="checkbox"
+                data-chip-enabled="red"
+                aria-label="Use red chips"
+                checked
+              /><span>Use</span></span
+            >
           </div>
           <div class="chip-denomination-row">
             <span class="chip-swatch chip-blue" aria-hidden="true"></span>
             <span>Blue</span>
-            <input type="number" min="1" value="10" inputmode="numeric" data-chip-color="blue" aria-label="Blue chip value" />
-            <span class="chip-use-control"><input type="checkbox" data-chip-enabled="blue" aria-label="Use blue chips" checked /><span>Use</span></span>
+            <input
+              type="number"
+              min="1"
+              value="10"
+              inputmode="numeric"
+              data-chip-color="blue"
+              aria-label="Blue chip value"
+            />
+            <span class="chip-use-control"
+              ><input
+                type="checkbox"
+                data-chip-enabled="blue"
+                aria-label="Use blue chips"
+                checked
+              /><span>Use</span></span
+            >
           </div>
           <div class="chip-denomination-row">
             <span class="chip-swatch chip-green" aria-hidden="true"></span>
             <span>Green</span>
-            <input type="number" min="1" value="25" inputmode="numeric" data-chip-color="green" aria-label="Green chip value" />
-            <span class="chip-use-control"><input type="checkbox" data-chip-enabled="green" aria-label="Use green chips" checked /><span>Use</span></span>
+            <input
+              type="number"
+              min="1"
+              value="25"
+              inputmode="numeric"
+              data-chip-color="green"
+              aria-label="Green chip value"
+            />
+            <span class="chip-use-control"
+              ><input
+                type="checkbox"
+                data-chip-enabled="green"
+                aria-label="Use green chips"
+                checked
+              /><span>Use</span></span
+            >
           </div>
           <div class="chip-denomination-row">
             <span class="chip-swatch chip-black" aria-hidden="true"></span>
             <span>Black</span>
-            <input type="number" min="1" value="100" inputmode="numeric" data-chip-color="black" aria-label="Black chip value" />
-            <span class="chip-use-control"><input type="checkbox" data-chip-enabled="black" aria-label="Use black chips" checked /><span>Use</span></span>
+            <input
+              type="number"
+              min="1"
+              value="100"
+              inputmode="numeric"
+              data-chip-color="black"
+              aria-label="Black chip value"
+            />
+            <span class="chip-use-control"
+              ><input
+                type="checkbox"
+                data-chip-enabled="black"
+                aria-label="Use black chips"
+                checked
+              /><span>Use</span></span
+            >
           </div>
           <div class="chip-denomination-row">
             <span class="chip-swatch chip-purple" aria-hidden="true"></span>
             <span>Purple</span>
-            <input type="number" min="1" value="500" inputmode="numeric" data-chip-color="purple" aria-label="Purple chip value" />
-            <span class="chip-use-control"><input type="checkbox" data-chip-enabled="purple" aria-label="Use purple chips" checked /><span>Use</span></span>
+            <input
+              type="number"
+              min="1"
+              value="500"
+              inputmode="numeric"
+              data-chip-color="purple"
+              aria-label="Purple chip value"
+            />
+            <span class="chip-use-control"
+              ><input
+                type="checkbox"
+                data-chip-enabled="purple"
+                aria-label="Use purple chips"
+                checked
+              /><span>Use</span></span
+            >
           </div>
           <div class="chip-denomination-row">
             <span class="chip-swatch chip-yellow" aria-hidden="true"></span>
             <span>Yellow</span>
-            <input type="number" min="1" value="1000" inputmode="numeric" data-chip-color="yellow" aria-label="Yellow chip value" />
-            <span class="chip-use-control"><input type="checkbox" data-chip-enabled="yellow" aria-label="Use yellow chips" checked /><span>Use</span></span>
+            <input
+              type="number"
+              min="1"
+              value="1000"
+              inputmode="numeric"
+              data-chip-color="yellow"
+              aria-label="Yellow chip value"
+            />
+            <span class="chip-use-control"
+              ><input
+                type="checkbox"
+                data-chip-enabled="yellow"
+                aria-label="Use yellow chips"
+                checked
+              /><span>Use</span></span
+            >
           </div>
           <div class="chip-denomination-row">
             <span class="chip-swatch chip-orange" aria-hidden="true"></span>
             <span>Orange</span>
-            <input type="number" min="1" value="5000" inputmode="numeric" data-chip-color="orange" aria-label="Orange chip value" />
-            <span class="chip-use-control"><input type="checkbox" data-chip-enabled="orange" aria-label="Use orange chips" checked /><span>Use</span></span>
+            <input
+              type="number"
+              min="1"
+              value="5000"
+              inputmode="numeric"
+              data-chip-color="orange"
+              aria-label="Orange chip value"
+            />
+            <span class="chip-use-control"
+              ><input
+                type="checkbox"
+                data-chip-enabled="orange"
+                aria-label="Use orange chips"
+                checked
+              /><span>Use</span></span
+            >
           </div>
         </div>
-        <button id="chip-denominations-back" class="chip-denominations-back" type="button">Back to game setup</button>
+        <button
+          id="chip-denominations-back"
+          class="chip-denominations-back"
+          type="button"
+        >
+          Back to game setup
+        </button>
       </section>
 
-      <section id="game-screen" class="game-screen" aria-label="Poker game" hidden>
-        <div id="player-seats" class="player-seats" aria-label="Players around the table"></div>
-        <div id="player-seat-effects" class="player-seat-effects" aria-hidden="true"></div>
-        <div id="dealer-marker" class="table-marker dealer-marker" aria-label="Dealer">D</div>
-        <div id="small-blind-marker" class="table-marker small-blind-marker" aria-label="Small blind">SB</div>
-        <div id="big-blind-marker" class="table-marker big-blind-marker" aria-label="Big blind">BB</div>
-        <div id="current-player-marker" class="table-marker current-player-marker" aria-label="Current player">TURN</div>
-        <div id="chip-flight-layer" class="chip-flight-layer" aria-hidden="true"></div>
-        <button id="lock-seats-button" class="lock-seats-button" type="button" hidden>Lock seats and start game</button>
-        <p id="voice-transcript" class="voice-transcript" aria-live="polite" hidden></p>
-        <p id="voice-status" class="voice-status" role="status" aria-live="polite" data-state="disconnected">Voice disconnected</p>
-        <div class="voice-controls">
-          <button id="recording-button" class="recording-button" type="button" aria-pressed="false">Start recording</button>
-          <button id="seat-order-button" class="seat-order-button" type="button" aria-pressed="false" hidden>Move seats</button>
+      <section
+        id="game-screen"
+        class="game-screen"
+        aria-label="Poker game"
+        hidden
+      >
+        <div
+          id="player-seats"
+          class="player-seats"
+          aria-label="Players around the table"
+        ></div>
+        <div
+          id="player-seat-effects"
+          class="player-seat-effects"
+          aria-hidden="true"
+        ></div>
+        <div
+          id="dealer-marker"
+          class="table-marker dealer-marker"
+          aria-label="Dealer"
+        >
+          D
         </div>
-        <button id="undo-button" class="undo-button" type="button" disabled>Undo</button>
-        <button id="other-button" class="other-button" type="button">Other</button>
+        <div
+          id="small-blind-marker"
+          class="table-marker small-blind-marker"
+          aria-label="Small blind"
+        >
+          SB
+        </div>
+        <div
+          id="big-blind-marker"
+          class="table-marker big-blind-marker"
+          aria-label="Big blind"
+        >
+          BB
+        </div>
+        <div
+          id="current-player-marker"
+          class="table-marker current-player-marker"
+          aria-label="Current player"
+        >
+          TURN
+        </div>
+        <output
+          id="game-summary"
+          class="game-summary"
+          aria-label="Game summary"
+        ></output>
+        <section
+          id="turn-timer-display"
+          class="turn-timer-display"
+          aria-label="Turn timer"
+          hidden
+        >
+          <div
+            id="turn-timer-hourglass"
+            class="turn-timer-hourglass"
+            aria-hidden="true"
+          ></div>
+          <output id="turn-timer-seconds" class="turn-timer-seconds">0</output>
+          <output id="turn-timer-action" class="turn-timer-action"></output>
+        </section>
+        <div
+          id="chip-flight-layer"
+          class="chip-flight-layer"
+          aria-hidden="true"
+        ></div>
+        <button
+          id="lock-seats-button"
+          class="lock-seats-button"
+          type="button"
+          hidden
+        >
+          Lock seats and start game
+        </button>
+        <p
+          id="voice-transcript"
+          class="voice-transcript"
+          aria-live="polite"
+          hidden
+        ></p>
+        <p
+          id="voice-status"
+          class="voice-status"
+          role="status"
+          aria-live="polite"
+          data-state="disconnected"
+        >
+          Voice disconnected
+        </p>
+        <div class="voice-controls">
+          <button
+            id="recording-button"
+            class="recording-button"
+            type="button"
+            aria-pressed="false"
+          >
+            Start recording
+          </button>
+          <button
+            id="seat-order-button"
+            class="seat-order-button"
+            type="button"
+            aria-pressed="false"
+            hidden
+          >
+            Move seats
+          </button>
+        </div>
+        <button id="undo-button" class="undo-button" type="button" disabled>
+          Undo
+        </button>
+        <button id="other-button" class="other-button" type="button">
+          Other
+        </button>
         <div id="turn-control" class="turn-control">
           <div id="turn-indicator" class="turn-indicator" aria-live="polite">
             <p id="game-phase-label" class="game-phase-label">Preflop</p>
@@ -267,18 +663,41 @@
                 <button id="raise-action-button" type="button">Raise</button>
                 <button id="fold-action-button" type="button">Fold</button>
               </div>
-              <div id="other-action-menu" class="action-menu other-action-menu" hidden>
-                <button id="other-buy-back-button" type="button">Buy back</button>
-                <button id="other-leave-game-button" type="button">Leave game</button>
-                <button id="other-add-player-button" type="button">Add player</button>
-                <button id="help-button" class="help-button" type="button">Help</button>
+              <div
+                id="other-action-menu"
+                class="action-menu other-action-menu"
+                hidden
+              >
+                <button id="other-buy-back-button" type="button">
+                  Buy back
+                </button>
+                <button id="other-leave-game-button" type="button">
+                  Leave game
+                </button>
+                <button id="other-add-player-button" type="button">
+                  Add player
+                </button>
+                <button id="help-button" class="help-button" type="button">
+                  Help
+                </button>
               </div>
               <div id="raise-panel" class="raise-panel" hidden>
                 <p>Additional chips</p>
                 <div class="raise-counter">
-                  <input id="raise-total-value" type="number" min="0" step="1" inputmode="numeric" aria-label="Additional chips to raise" value="0" />
+                  <input
+                    id="raise-total-value"
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputmode="numeric"
+                    aria-label="Additional chips to raise"
+                    value="0"
+                  />
                 </div>
-                <div class="raise-shortcuts" aria-label="Quick raise adjustments">
+                <div
+                  class="raise-shortcuts"
+                  aria-label="Quick raise adjustments"
+                >
                   <button type="button" data-raise-adjustment="-25">−25</button>
                   <button type="button" data-raise-adjustment="25">+25</button>
                   <button type="button" data-raise-adjustment="-5">−5</button>
@@ -286,16 +705,43 @@
                   <button type="button" data-raise-adjustment="-1">−1</button>
                   <button type="button" data-raise-adjustment="1">+1</button>
                 </div>
-                <button id="cancel-raise-button" class="cancel-raise-button" type="button">Cancel raise</button>
-                <button id="confirm-raise-button" class="confirm-raise-button" type="button">Confirm raise</button>
+                <button
+                  id="cancel-raise-button"
+                  class="cancel-raise-button"
+                  type="button"
+                >
+                  Cancel raise
+                </button>
+                <button
+                  id="confirm-raise-button"
+                  class="confirm-raise-button"
+                  type="button"
+                >
+                  Confirm raise
+                </button>
               </div>
-              <button id="all-in-raise-button" class="all-in-raise-button" type="button" hidden>All in</button>
+              <button
+                id="all-in-raise-button"
+                class="all-in-raise-button"
+                type="button"
+                hidden
+              >
+                All in
+              </button>
             </section>
             <section class="pot-panel" aria-label="Pot total">
               <p>Pot</p>
               <div id="pot-display" class="pot-display">
-                <output id="pot-value" class="pot-value" aria-label="Pot">0</output>
-                <output id="side-pot-value" class="side-pot-value" aria-label="Side pot" hidden>0</output>
+                <output id="pot-value" class="pot-value" aria-label="Pot"
+                  >0</output
+                >
+                <output
+                  id="side-pot-value"
+                  class="side-pot-value"
+                  aria-label="Side pot"
+                  hidden
+                  >0</output
+                >
               </div>
             </section>
           </div>
@@ -303,33 +749,87 @@
         <div id="voice-audio-test" class="voice-audio-test" hidden>
           <label for="voice-audio-file">Debug voice with an audio file</label>
           <input id="voice-audio-file" type="file" accept="audio/*" />
-          <button id="voice-audio-test-button" type="button" disabled>Send audio to RoboDeal</button>
+          <button id="voice-audio-test-button" type="button" disabled>
+            Send audio to RoboDeal
+          </button>
           <p id="voice-audio-test-status" role="status"></p>
         </div>
-        <section id="winner-picker" class="winner-picker" aria-live="polite" hidden>
+        <section
+          id="winner-picker"
+          class="winner-picker"
+          aria-live="polite"
+          hidden
+        >
           <p id="winner-question">Who had the best cards?</p>
           <div id="winner-options" class="winner-options"></div>
-          <button id="showdown-undo-button" type="button" hidden>Revert to last turn</button>
+          <button id="showdown-undo-button" type="button" hidden>
+            Revert to last turn
+          </button>
         </section>
-        <section id="deal-prompt" class="winner-picker" aria-live="polite" hidden>
+        <section
+          id="deal-prompt"
+          class="winner-picker"
+          aria-live="polite"
+          hidden
+        >
           <p id="deal-message"></p>
           <button id="deal-ok-button" type="button">OK</button>
         </section>
-        <p id="join-game-status" class="join-game-status" role="status" hidden></p>
-        <section id="button-help" class="button-help" aria-labelledby="button-help-title" hidden>
+        <p
+          id="join-game-status"
+          class="join-game-status"
+          role="status"
+          hidden
+        ></p>
+        <section
+          id="button-help"
+          class="button-help"
+          aria-labelledby="button-help-title"
+          hidden
+        >
           <h2 id="button-help-title">Button guide</h2>
           <dl>
-            <div><dt>Call</dt><dd>Match the current highest bet.</dd></div>
-            <div><dt>Check</dt><dd>Stay in without adding chips when nothing is owed.</dd></div>
-            <div><dt>Fold</dt><dd>Leave the current hand.</dd></div>
-            <div><dt>All in</dt><dd>Bet all of your remaining chips when the table can cover them.</dd></div>
-            <div><dt>Raise</dt><dd>Increase the current bet, then confirm the total.</dd></div>
-            <div><dt>Undo</dt><dd>Restore the immediately previous turn when available.</dd></div>
-            <div><dt>Other</dt><dd>Uncommon options such as buying back, leaving mid game, etc</dd></div>
+            <div>
+              <dt>Call</dt>
+              <dd>Match the current highest bet.</dd>
+            </div>
+            <div>
+              <dt>Check</dt>
+              <dd>Stay in without adding chips when nothing is owed.</dd>
+            </div>
+            <div>
+              <dt>Fold</dt>
+              <dd>Leave the current hand.</dd>
+            </div>
+            <div>
+              <dt>All in</dt>
+              <dd>
+                Bet all of your remaining chips when the table can cover them.
+              </dd>
+            </div>
+            <div>
+              <dt>Raise</dt>
+              <dd>Increase the current bet, then confirm the total.</dd>
+            </div>
+            <div>
+              <dt>Undo</dt>
+              <dd>Restore the immediately previous turn when available.</dd>
+            </div>
+            <div>
+              <dt>Other</dt>
+              <dd>
+                Uncommon options such as buying back, leaving mid game, etc
+              </dd>
+            </div>
           </dl>
           <button id="close-help-button" type="button">Back to game</button>
         </section>
-        <section id="other-page" class="other-page" aria-labelledby="other-page-title" hidden>
+        <section
+          id="other-page"
+          class="other-page"
+          aria-labelledby="other-page-title"
+          hidden
+        >
           <h2 id="other-page-title">Other</h2>
           <p id="buy-back-question" class="buy-back-question" hidden></p>
           <div class="other-actions">
@@ -339,38 +839,79 @@
             <div id="other-player-picker" class="join-game-panel" hidden>
               <p id="other-player-question"></p>
               <div id="other-player-options" class="winner-options"></div>
-              <button id="cancel-other-player-picker" type="button">Cancel</button>
+              <button id="cancel-other-player-picker" type="button">
+                Cancel
+              </button>
             </div>
             <div id="join-game-panel" class="join-game-panel" hidden>
               <label for="join-game-name">Player name</label>
-              <input id="join-game-name" type="text" maxlength="40" autocomplete="off" />
+              <input
+                id="join-game-name"
+                type="text"
+                maxlength="40"
+                autocomplete="off"
+              />
               <label for="join-game-chips">Starting chips</label>
-              <input id="join-game-chips" type="number" inputmode="numeric" min="1" step="1" />
-              <p class="join-game-note">During a hand, the new player looks folded because they are waiting for the next hand to play.</p>
+              <input
+                id="join-game-chips"
+                type="number"
+                inputmode="numeric"
+                min="1"
+                step="1"
+              />
+              <p class="join-game-note">
+                During a hand, the new player looks folded because they are
+                waiting for the next hand to play.
+              </p>
               <div class="buy-back-buttons">
-                <button id="cancel-join-game-button" type="button">Cancel</button>
-                <button id="confirm-join-game-button" type="button" disabled>Add player</button>
+                <button id="cancel-join-game-button" type="button">
+                  Cancel
+                </button>
+                <button id="confirm-join-game-button" type="button" disabled>
+                  Add player
+                </button>
               </div>
             </div>
             <div id="buy-back-panel" class="buy-back-panel" hidden>
               <label for="buy-back-amount">Buy back amount</label>
-              <input id="buy-back-amount" type="number" inputmode="numeric" min="1" step="1" />
+              <input
+                id="buy-back-amount"
+                type="number"
+                inputmode="numeric"
+                min="1"
+                step="1"
+              />
               <div class="buy-back-buttons">
-                <button id="cancel-buy-back-button" type="button">Cancel buy back</button>
-                <button id="confirm-buy-back-button" type="button" disabled>Confirm buy back</button>
+                <button id="cancel-buy-back-button" type="button">
+                  Cancel buy back
+                </button>
+                <button id="confirm-buy-back-button" type="button" disabled>
+                  Confirm buy back
+                </button>
               </div>
             </div>
             <button id="close-other-button" type="button">Back to game</button>
           </div>
         </section>
       </section>
-      <section id="game-winner-screen" class="game-winner-screen" aria-live="polite" hidden>
+      <section
+        id="game-winner-screen"
+        class="game-winner-screen"
+        aria-live="polite"
+        hidden
+      >
         <img src="assets/fireworks.webp" alt="Fireworks" />
-        <button id="game-winner-setup-button" type="button">Back to setup</button>
+        <button id="game-winner-setup-button" type="button">
+          Back to setup
+        </button>
         <h1 id="game-winner-message"></h1>
         <button id="game-winner-undo-button" type="button">Undo</button>
       </section>
-      <div id="buy-back-chip-flight-layer" class="buy-back-chip-flight-layer" aria-hidden="true"></div>
+      <div
+        id="buy-back-chip-flight-layer"
+        class="buy-back-chip-flight-layer"
+        aria-hidden="true"
+      ></div>
     </main>
     <script type="module" src="app.js"></script>
   </body>

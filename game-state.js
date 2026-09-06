@@ -733,6 +733,7 @@ export function createGameState({
   anteMode = "everyone",
   dealerId,
   useBigBlind = false,
+  timer = 0,
   useStraddle = false,
   straddleAmount = Math.max(1, smallBlind * 4),
   useBombPot = false,
@@ -758,6 +759,9 @@ export function createGameState({
   }
   if (!Number.isInteger(fixedLimitBet) || fixedLimitBet <= 0) {
     throw new Error("Fixed-limit bet must be a positive integer.");
+  }
+  if (!Number.isInteger(timer) || timer < 0) {
+    throw new Error("Turn timer must be a non-negative integer.");
   }
   if (!["everyone", "big-blind", "button"].includes(anteMode)) {
     throw new Error("Ante payer is not supported.");
@@ -788,6 +792,7 @@ export function createGameState({
     ante,
     anteMode,
     useBigBlind,
+    timer,
     useStraddle,
     straddleAmount,
     useBombPot,

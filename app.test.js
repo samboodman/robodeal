@@ -55,7 +55,7 @@ test("voice selection excludes Marin and defaults to Cedar", () => {
 test("other is a large right-side control that replaces the action menu", () => {
   assert.match(
     indexSource,
-    /id="other-button"[^>]*class="other-button"[^>]*>Other<\/button>[\s\S]*?id="other-action-menu"[^>]*hidden[\s\S]*?id="other-buy-back-button"[^>]*>Buy back[\s\S]*?id="other-add-player-button"[^>]*>Add player/,
+    /id="other-button"[^>]*class="other-button"[^>]*>\s*Other\s*<\/button>[\s\S]*?id="other-action-menu"[^>]*hidden[\s\S]*?id="other-buy-back-button"[^>]*>\s*Buy back[\s\S]*?id="other-add-player-button"[^>]*>\s*Add player/,
   );
   assert.match(
     stylesSource,
@@ -78,7 +78,7 @@ test("other is a large right-side control that replaces the action menu", () => 
 test("help is in the other menu and other becomes back while it is open", () => {
   assert.match(
     indexSource,
-    /id="other-action-menu"[\s\S]*?id="other-add-player-button"[^>]*>Add player<\/button>[\s\S]*?id="help-button"[^>]*>Help<\/button>/,
+    /id="other-action-menu"[\s\S]*?id="other-add-player-button"[^>]*>\s*Add player\s*<\/button>[\s\S]*?id="help-button"[^>]*>\s*Help\s*<\/button>/,
   );
   assert.match(
     stylesSource,
@@ -90,10 +90,76 @@ test("help is in the other menu and other becomes back while it is open", () => 
   );
 });
 
+test("timed turns store zero while disabled and seconds while enabled", () => {
+  assert.match(
+    indexSource,
+    /id="use-timed-turns"[^>]*type="checkbox"[\s\S]*?Use timed turns[\s\S]*?id="turn-timer"[^>]*min="1"[^>]*value="30"/,
+  );
+  assert.match(
+    appSource,
+    /function updateTimedTurnsSetting\(\)[\s\S]*?timedTurnsSetting\.hidden = !useTimedTurnsCheckbox\.checked;[\s\S]*?turnTimerInput\.disabled = !useTimedTurnsCheckbox\.checked/,
+  );
+  assert.match(
+    appSource,
+    /timer: useTimedTurnsCheckbox\.checked \? Number\(turnTimerInput\.value\) : 0/,
+  );
+  assert.match(appSource, /timer: gameSettings\.timer/);
+});
+
+test("timed turns show a top-left hourglass and floored seconds", () => {
+  assert.match(
+    indexSource,
+    /id="turn-timer-display"[\s\S]*?id="turn-timer-hourglass"[\s\S]*?id="turn-timer-seconds"[\s\S]*?id="turn-timer-action"/,
+  );
+  assert.match(
+    stylesSource,
+    /\.turn-timer-display \{[\s\S]*?position: fixed;[\s\S]*?top: 0;[\s\S]*?left: 0;/,
+  );
+  assert.match(
+    stylesSource,
+    /\.turn-timer-hourglass \{[\s\S]*?aspect-ratio: 1;[\s\S]*?background-size: contain/,
+  );
+  assert.match(
+    appSource,
+    /const hourglassImagePaths = Object\.freeze\([\s\S]*?ChatGPT Image Sep 6, 2026, 08_21_13 AM \(10\)\.png[\s\S]*?function updateTurnTimerDisplay\(\)[\s\S]*?Math\.floor\(millisecondsLeft \/ 1000\)[\s\S]*?Math\.floor\(\(1 - timerProgress\) \* 10\)[\s\S]*?hourglassImagePaths\[hourglassFrame\]/,
+  );
+  assert.match(
+    appSource,
+    /const colorProgress = Math\.max\([\s\S]*?millisecondsLeft - 5000[\s\S]*?turnTimerSeconds\.style\.color = `hsl\(\$\{Math\.round\(colorProgress \* 120\)\}deg 85% 48%\)`[\s\S]*?millisecondsLeft <= 5000/,
+  );
+  assert.match(
+    appSource,
+    /turnTimerAction\.textContent =\s*player && amountToCallForView\(player\) > 0 \? "FOLD" : "CHECK"/,
+  );
+  assert.match(
+    stylesSource,
+    /\.turn-timer-seconds\.is-expiring \{[\s\S]*?animation: turn-timer-seconds-flash 0\.3s[\s\S]*?@keyframes turn-timer-seconds-flash[\s\S]*?color: #e31b23[\s\S]*?color: #fffdf6/,
+  );
+});
+
+test("the game table shows a live hand, blinds, and pot summary", () => {
+  assert.match(
+    indexSource,
+    /id="game-summary"[^>]*class="game-summary"[^>]*aria-label="Game summary"/,
+  );
+  assert.match(
+    stylesSource,
+    /\.game-summary \{[\s\S]*?position: absolute;[\s\S]*?top: max\(10px, env\(safe-area-inset-top\)\);[\s\S]*?left: 50%/,
+  );
+  assert.match(
+    appSource,
+    /function updateGameSummary\(\)[\s\S]*?Hand \$\{gameState\.handNumber\}[\s\S]*?Blinds \$\{blindSummary\}[\s\S]*?Pot \$\{totalPotAmount\(\)\}/,
+  );
+  assert.match(
+    appSource,
+    /function renderGameState\(\)[\s\S]*?const phase = gameState\.phase;[\s\S]*?updateGameSummary\(\)/,
+  );
+});
+
 test("the buy back controls open and cancel without changing chips", () => {
   assert.match(
     indexSource,
-    /id="buy-back-button"[^>]*>Buy back[\s\S]*?id="buy-back-panel"[^>]*hidden[\s\S]*?id="buy-back-amount"[^>]*type="number"[\s\S]*?id="cancel-buy-back-button"[^>]*>Cancel buy back/,
+    /id="buy-back-button"[^>]*>\s*Buy back[\s\S]*?id="buy-back-panel"[^>]*hidden[\s\S]*?id="buy-back-amount"[^>]*type="number"[\s\S]*?id="cancel-buy-back-button"[^>]*>\s*Cancel buy back/,
   );
   assert.match(
     appSource,
@@ -154,7 +220,7 @@ test("pressing Enter in setup does not start the game", () => {
 test("buy back confirmation requires a positive amount and restores an eliminated player", () => {
   assert.match(
     indexSource,
-    /id="cancel-buy-back-button"[^>]*>Cancel buy back[\s\S]*?id="confirm-buy-back-button"[^>]*disabled[^>]*>Confirm buy back/,
+    /id="cancel-buy-back-button"[^>]*>\s*Cancel buy back[\s\S]*?id="confirm-buy-back-button"[^>]*disabled[^>]*>\s*Confirm buy back/,
   );
   assert.match(
     stylesSource,
@@ -223,7 +289,7 @@ test("default seats place due left between two equally close players", () => {
 test("dealer and blind markers use the engine's table roles", () => {
   assert.match(
     indexSource,
-    /id="dealer-marker"[^>]*class="table-marker dealer-marker"[^>]*>D<\/div>[\s\S]*?id="small-blind-marker"[^>]*>SB<\/div>[\s\S]*?id="big-blind-marker"[^>]*>BB<\/div>/,
+    /id="dealer-marker"[^>]*class="table-marker dealer-marker"[^>]*>\s*D\s*<\/div>[\s\S]*?id="small-blind-marker"[^>]*>\s*SB\s*<\/div>[\s\S]*?id="big-blind-marker"[^>]*>\s*BB\s*<\/div>/,
   );
   assert.match(
     appSource,
@@ -270,7 +336,7 @@ test("markers follow each player's rotation and names clear their chip piles", (
 test("the current-player marker stays above the current player", () => {
   assert.match(
     indexSource,
-    /id="current-player-marker"[^>]*class="table-marker current-player-marker"[^>]*>TURN<\/div>/,
+    /id="current-player-marker"[^>]*class="table-marker current-player-marker"[^>]*>\s*TURN\s*<\/div>/,
   );
   assert.match(
     stylesSource,
@@ -306,10 +372,13 @@ test("undo saves each engine state and can leave the winner screen", () => {
     appSource,
     /const snapshot = undoStack\.pop\(\);[\s\S]*?if \(snapshot\.returnToSetup\)[\s\S]*?setupScreen\.hidden = false;[\s\S]*?gameWinnerScreen\.hidden = true;[\s\S]*?gameScreen\.hidden = false/,
   );
-  assert.match(indexSource, /id="game-winner-undo-button"[^>]*>Undo<\/button>/);
   assert.match(
     indexSource,
-    /id="game-winner-setup-button"[^>]*>Back to setup<\/button>/,
+    /id="game-winner-undo-button"[^>]*>\s*Undo\s*<\/button>/,
+  );
+  assert.match(
+    indexSource,
+    /id="game-winner-setup-button"[^>]*>\s*Back to setup\s*<\/button>/,
   );
 });
 
@@ -331,7 +400,7 @@ test("winner and setup exits stop microphone recording", () => {
 test("undo is a large left-side control outside the action menu", () => {
   assert.match(
     indexSource,
-    /id="undo-button"[^>]*class="undo-button"[^>]*disabled>Undo<\/button>[\s\S]*?<div id="turn-control"/,
+    /id="undo-button"[^>]*class="undo-button"[^>]*disabled>\s*Undo\s*<\/button>[\s\S]*?<div id="turn-control"/,
   );
   assert.doesNotMatch(
     indexSource,
@@ -366,7 +435,7 @@ test("one primary button changes between check and call", () => {
 test("raise panel has a red all-in button above the white panel", () => {
   assert.match(
     indexSource,
-    /id="raise-panel"[\s\S]*?id="raise-total-value"[\s\S]*?<button id="all-in-raise-button"[^>]*hidden>All in<\/button>/,
+    /id="raise-panel"[\s\S]*?id="raise-total-value"[\s\S]*?<button[\s\S]*?id="all-in-raise-button"[^>]*hidden\s*>\s*All in\s*<\/button>/,
   );
   assert.match(
     stylesSource,
@@ -382,7 +451,7 @@ test("raise panel has a red all-in button above the white panel", () => {
 test("raise amount can be typed directly", () => {
   assert.match(
     indexSource,
-    /<input id="raise-total-value" type="number"[^>]*inputmode="numeric"/,
+    /<input[\s\S]*?id="raise-total-value"[\s\S]*?type="number"[\s\S]*?inputmode="numeric"/,
   );
   assert.match(
     appSource,
@@ -402,7 +471,7 @@ test("locking the initial seats stores the game start time", () => {
 test("live games are saved and can be resumed from setup", () => {
   assert.match(
     indexSource,
-    /id="resume-game-button"[^>]*hidden>Resume saved game/,
+    /id="resume-game-button"[^>]*hidden\s*>\s*Resume saved game/,
   );
   assert.match(appSource, /const currentGameKey = "robodeal-current-game-v1"/);
   assert.match(

@@ -126,22 +126,11 @@ function localVoiceApi(apiKey) {
   };
 }
 
-function noAutomaticReload() {
-  return {
-    name: "robodeal-no-automatic-reload",
-    handleHotUpdate() {
-      return [];
-    },
-  };
-}
-
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   return {
-    server: {
-    },
+    server: {},
     plugins: [
-      noAutomaticReload(),
       localRealtimeApi(env.OPENAI_API_KEY),
       localVoiceApi(env.OPENAI_API_KEY),
       localWordsToNumberApi(),

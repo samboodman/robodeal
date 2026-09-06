@@ -39,6 +39,9 @@ const enableAudioFileInputCheckbox = document.querySelector(
   "#enable-audio-file-input",
 );
 const useBigBlindCheckbox = document.querySelector("#use-big-blind");
+const useTimedTurnsCheckbox = document.querySelector("#use-timed-turns");
+const timedTurnsSetting = document.querySelector("#timed-turns-setting");
+const turnTimerInput = document.querySelector("#turn-timer");
 const useAnteCheckbox = document.querySelector("#use-ante");
 const anteSetting = document.querySelector("#ante-setting");
 const anteInput = document.querySelector("#ante");
@@ -78,6 +81,11 @@ const dealerMarker = document.querySelector("#dealer-marker");
 const smallBlindMarker = document.querySelector("#small-blind-marker");
 const bigBlindMarker = document.querySelector("#big-blind-marker");
 const currentPlayerMarker = document.querySelector("#current-player-marker");
+const gameSummary = document.querySelector("#game-summary");
+const turnTimerDisplay = document.querySelector("#turn-timer-display");
+const turnTimerHourglass = document.querySelector("#turn-timer-hourglass");
+const turnTimerSeconds = document.querySelector("#turn-timer-seconds");
+const turnTimerAction = document.querySelector("#turn-timer-action");
 const chipFlightLayer = document.querySelector("#chip-flight-layer");
 const buyBackChipFlightLayer = document.querySelector(
   "#buy-back-chip-flight-layer",
@@ -212,6 +220,7 @@ let seatAngles = {};
 let joiningPlayerAnimationId = null;
 let buyBackPlayerId = null;
 let buyBackWasAutomatic = false;
+
 const declinedBuyBackPlayerIds = new Set();
 const lastGameSettingsKey = "robodeal-last-game-settings";
 const currentGameKey = "robodeal-current-game-v1";
@@ -243,6 +252,18 @@ const bettingGamePhases = new Set([
   GamePhase.BETTING_TURN,
   GamePhase.BETTING_RIVER,
 ]);
+const hourglassImagePaths = Object.freeze([
+  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_10 AM (1).png",
+  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_11 AM (2).png",
+  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_11 AM (3).png",
+  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_11 AM (4).png",
+  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_12 AM (5).png",
+  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_12 AM (6).png",
+  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_12 AM (7).png",
+  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_13 AM (8).png",
+  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_13 AM (9).png",
+  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_13 AM (10).png",
+]);
 const seatSnapDistance = Math.PI / 36;
 
 function updateFixedLimitSetting() {
@@ -254,6 +275,11 @@ function updateAnteSetting() {
   anteSetting.hidden = !useAnteCheckbox.checked;
   anteInput.disabled = !useAnteCheckbox.checked;
   anteModeSelect.disabled = !useAnteCheckbox.checked;
+}
+
+function updateTimedTurnsSetting() {
+  timedTurnsSetting.hidden = !useTimedTurnsCheckbox.checked;
+  turnTimerInput.disabled = !useTimedTurnsCheckbox.checked;
 }
 
 function updateOptionalPokerRuleSetting(checkbox, setting, input) {
@@ -422,6 +448,39 @@ function invokeGame(action) {
     returnToSetup: gameState.phase === GamePhase.SETUP,
   });
   gameState = executeTransition(gameState, action);
+  gameState.whenTurnStarted =
+    gameSettings.timer > 0 ? performance.now() : "timer is off";
+  clearInterval(gameState.bettingTimerInterval);
+  gameState.bettingTimer = performance.now();
+  gameState.bettingTimerInterval = setInterval(() => {
+    const millisecondsUsed = performance.now() - gameState.bettingTimer;
+    updateTurnTimerDisplay();
+    if (millisecondsUsed >= gameSettings.timer * 1000) {
+      clearInterval(gameState.bettingTimerInterval);
+      gameState.bettingTimerInterval = null;
+      if (amountToCall === 0) {
+        const playerId = gameState.actionPlayerId;
+        const player = viewPlayer(playerId);
+        invokeGame({
+          type:
+            amountToCallForView(player) > 0
+              ? Transition.CALL
+              : Transition.CHECK,
+          playerId,
+        });
+        renderGameState();
+      } else {
+        invokeGame({
+          type: Transition.FOLD,
+          playerId: gameState.actionPlayerId,
+        });
+        renderGameState();
+      }
+    }
+  }, 100);
+
+  updateTurnTimerDisplay();
+
   return gameState;
 }
 
@@ -531,6 +590,11 @@ function restoreLastGameSettings() {
   smallBlindIncreaseInput.value = smallBlindIncrease;
   useBigBlindCheckbox.checked =
     settings.useBigBlind ?? settings.playerCount >= 6;
+  useTimedTurnsCheckbox.checked =
+    Number.isInteger(settings.timer) && settings.timer > 0;
+  if (useTimedTurnsCheckbox.checked) {
+    turnTimerInput.value = settings.timer;
+  }
   useAnteCheckbox.checked = settings.useAnte === true;
   if (Number.isInteger(settings.ante) && settings.ante > 0) {
     anteInput.value = settings.ante;
@@ -558,6 +622,7 @@ function restoreLastGameSettings() {
   }
   allowAddOnsCheckbox.checked = settings.allowAddOns !== false;
   allowReEntriesCheckbox.checked = settings.allowReEntries !== false;
+  updateTimedTurnsSetting();
   updateAnteSetting();
   updatePokerRuleSettings();
   bettingLimitSelect.value = Object.values(BettingLimit).includes(
@@ -750,6 +815,54 @@ async function allowScreenToSleep() {
 
 function totalPotAmount() {
   return viewPots().reduce((total, potLayer) => total + potLayer.amount, 0);
+}
+
+function updateGameSummary() {
+  if (!gameState) {
+    gameSummary.textContent = "";
+    return;
+  }
+
+  const blindSummary = gameState.useBigBlind
+    ? `${gameState.smallBlind} / ${gameState.smallBlind * 2}`
+    : String(gameState.smallBlind);
+  gameSummary.textContent = `Hand ${gameState.handNumber} · Blinds ${blindSummary} · Pot ${totalPotAmount()}`;
+}
+
+function updateTurnTimerDisplay() {
+  const timerMilliseconds = (gameSettings?.timer || 0) * 1000;
+  const isTimedBettingTurn =
+    timerMilliseconds > 0 &&
+    gameState &&
+    bettingGamePhases.has(gameState.phase) &&
+    typeof gameState.whenTurnStarted === "number";
+
+  turnTimerDisplay.hidden = !isTimedBettingTurn;
+  if (!isTimedBettingTurn) {
+    turnTimerSeconds.classList.remove("is-expiring");
+    turnTimerSeconds.style.color = "";
+    turnTimerAction.textContent = "";
+    return;
+  }
+
+  const millisecondsLeft = Math.max(
+    0,
+    timerMilliseconds - (performance.now() - gameState.whenTurnStarted),
+  );
+  const secondsLeft = Math.floor(millisecondsLeft / 1000);
+  const timerProgress = millisecondsLeft / timerMilliseconds;
+  const colorProgress = Math.max(
+    0,
+    (millisecondsLeft - 5000) / Math.max(1, timerMilliseconds - 5000),
+  );
+  const hourglassFrame = Math.min(9, Math.floor((1 - timerProgress) * 10));
+  turnTimerSeconds.textContent = String(secondsLeft);
+  const player = viewPlayer(gameState.actionPlayerId);
+  turnTimerAction.textContent =
+    player && amountToCallForView(player) > 0 ? "FOLD" : "CHECK";
+  turnTimerSeconds.style.color = `hsl(${Math.round(colorProgress * 120)}deg 85% 48%)`;
+  turnTimerSeconds.classList.toggle("is-expiring", millisecondsLeft <= 5000);
+  turnTimerHourglass.style.backgroundImage = `url("${hourglassImagePaths[hourglassFrame]}")`;
 }
 
 function resetPotChipRecord() {
@@ -1746,6 +1859,7 @@ function makePlayers() {
     anteMode: gameSettings.anteMode,
     dealerId: gameSettings.dealerNumber,
     useBigBlind: gameSettings.useBigBlind,
+    timer: gameSettings.timer,
     useStraddle: gameSettings.useStraddle,
     straddleAmount: gameSettings.straddleAmount,
     useBombPot: gameSettings.useBombPot,
@@ -2142,6 +2256,7 @@ function lockClockwiseSeatOrder() {
     ante: gameSettings.ante,
     dealerId: gameSettings.dealerNumber,
     useBigBlind: gameSettings.useBigBlind,
+    timer: gameSettings.timer,
     bettingLimit: gameSettings.bettingLimit,
     fixedLimitBet: gameSettings.fixedLimitBet,
   });
@@ -2801,6 +2916,8 @@ function renderGameState() {
   updateSeatOrderButton();
   joinGameButton.disabled = false;
   const phase = gameState.phase;
+  updateGameSummary();
+  updateTurnTimerDisplay();
   gamePhaseLabel.textContent = gamePhaseLabels[phase] || "";
   const betting = bettingGamePhases.has(phase);
 
@@ -3233,6 +3350,7 @@ playerCount.addEventListener("change", () => {
 });
 bettingLimitSelect.addEventListener("change", updateFixedLimitSetting);
 useAnteCheckbox.addEventListener("change", updateAnteSetting);
+useTimedTurnsCheckbox.addEventListener("change", updateTimedTurnsSetting);
 useStraddleCheckbox.addEventListener("change", updatePokerRuleSettings);
 useBombPotCheckbox.addEventListener("change", updatePokerRuleSettings);
 useRakeCheckbox.addEventListener("change", updatePokerRuleSettings);
@@ -3495,6 +3613,7 @@ form.addEventListener("submit", (event) => {
       document.querySelector("#small-blind-increase").value,
     ),
     useBigBlind: useBigBlindCheckbox.checked,
+    timer: useTimedTurnsCheckbox.checked ? Number(turnTimerInput.value) : 0,
     useAnte: useAnteCheckbox.checked,
     ante: useAnteCheckbox.checked ? Number(anteInput.value) : 0,
     anteMode: anteModeSelect.value,
@@ -3541,6 +3660,7 @@ drawPlayerNames();
 updateChipDisplayModeButton();
 restoreLastGameSettings();
 updateFixedLimitSetting();
+updateTimedTurnsSetting();
 updateAnteSetting();
 updatePokerRuleSettings();
 updateDebugFeatures();
