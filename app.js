@@ -213,6 +213,7 @@ let voiceConnectionPromise = null;
 let startMicrophoneAfterSpeech = false;
 let pendingVoiceAction = null;
 let suppressAutomaticNarration = false;
+let turnTimerPausedAt = null;
 let raiseMode = false;
 let otherMenuOpen = false;
 let seatingMode = false;
@@ -453,29 +454,40 @@ function invokeGame(action) {
   clearInterval(gameState.bettingTimerInterval);
   gameState.bettingTimer = performance.now();
   gameState.bettingTimerInterval = setInterval(() => {
+    if (turnTimerPausedAt !== null) {
+      return;
+    }
     const millisecondsUsed = performance.now() - gameState.bettingTimer;
     updateTurnTimerDisplay();
     if (millisecondsUsed >= gameSettings.timer * 1000) {
       clearInterval(gameState.bettingTimerInterval);
       gameState.bettingTimerInterval = null;
-      if (amountToCall === 0) {
-        const playerId = gameState.actionPlayerId;
-        const player = viewPlayer(playerId);
+      const playerId = gameState.actionPlayerId;
+      const player = viewPlayer(playerId);
+      if (player && amountToCallForView(player) === 0) {
         invokeGame({
-          type:
-            amountToCallForView(player) > 0
-              ? Transition.CALL
-              : Transition.CHECK,
+          type: Transition.CHECK,
           playerId,
         });
         renderGameState();
       } else {
         invokeGame({
           type: Transition.FOLD,
-          playerId: gameState.actionPlayerId,
+          playerId,
         });
         renderGameState();
       }
+      log.push({
+        PlayerId: player.id,
+        Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+        Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
+        TotalTime: gameSettings.timer,
+        State: structuredClone(gameState),
+        Type: "timer ran out",
+        Action: player && amountToCallForView(player) === 0
+        ? "Check"
+        : "Fold"
+      })
     }
   }, 100);
 
@@ -863,6 +875,30 @@ function updateTurnTimerDisplay() {
   turnTimerSeconds.style.color = `hsl(${Math.round(colorProgress * 120)}deg 85% 48%)`;
   turnTimerSeconds.classList.toggle("is-expiring", millisecondsLeft <= 5000);
   turnTimerHourglass.style.backgroundImage = `url("${hourglassImagePaths[hourglassFrame]}")`;
+}
+
+function pauseTurnTimerForInactiveApp() {
+  if (
+    turnTimerPausedAt === null &&
+    gameSettings?.timer > 0 &&
+    gameState &&
+    bettingGamePhases.has(gameState.phase) &&
+    typeof gameState.whenTurnStarted === "number"
+  ) {
+    turnTimerPausedAt = performance.now();
+  }
+}
+
+function resumeTurnTimerForActiveApp() {
+  if (turnTimerPausedAt === null || !gameState) {
+    return;
+  }
+
+  const pausedMilliseconds = performance.now() - turnTimerPausedAt;
+  gameState.bettingTimer += pausedMilliseconds;
+  gameState.whenTurnStarted += pausedMilliseconds;
+  turnTimerPausedAt = null;
+  updateTurnTimerDisplay();
 }
 
 function resetPotChipRecord() {
@@ -3391,14 +3427,17 @@ voiceAudioFile.addEventListener("change", () => {
 });
 voiceAudioTestButton.addEventListener("click", testVoiceWithAudioFile);
 document.addEventListener("visibilitychange", () => {
-  if (
-    document.visibilityState === "visible" &&
-    !gameScreen.hidden &&
-    !viewIsGameWon()
-  ) {
-    keepScreenAwake();
+  if (document.visibilityState === "hidden") {
+    pauseTurnTimerForInactiveApp();
+  } else {
+    resumeTurnTimerForActiveApp();
+    if (!gameScreen.hidden && !viewIsGameWon()) {
+      keepScreenAwake();
+    }
   }
 });
+window.addEventListener("blur", pauseTurnTimerForInactiveApp);
+window.addEventListener("focus", resumeTurnTimerForActiveApp);
 primaryActionButton.addEventListener("click", () => {
   if (primaryActionButton.disabled) {
     return;
