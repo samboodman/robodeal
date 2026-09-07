@@ -452,6 +452,11 @@ function invokeGame(action) {
   gameState.whenTurnStarted =
     gameSettings.timer > 0 ? performance.now() : "timer is off";
   clearInterval(gameState.bettingTimerInterval);
+  if (gameSettings.timer <= 0) {
+    gameState.bettingTimerInterval = null;
+    updateTurnTimerDisplay();
+    return gameState;
+  }
   gameState.bettingTimer = performance.now();
   gameState.bettingTimerInterval = setInterval(() => {
     if (turnTimerPausedAt !== null) {
