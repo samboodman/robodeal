@@ -484,10 +484,8 @@ function invokeGame(action) {
         TotalTime: gameSettings.timer,
         State: structuredClone(gameState),
         Type: "timer ran out",
-        Action: player && amountToCallForView(player) === 0
-        ? "Check"
-        : "Fold"
-      })
+        Action: player && amountToCallForView(player) === 0 ? "Check" : "Fold",
+      });
     }
   }, 100);
 

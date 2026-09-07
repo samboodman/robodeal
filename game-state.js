@@ -1392,12 +1392,11 @@ export function executeTransition(gameState, action) {
     log.push({
       Milliseconds: Math.max(0, performance.now() - gameStartedAt),
       Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
-      Timer: typeof state.whenTurnStarted === "number"
-      ? performance.now() - state.whenTurnStarted
-      : null,
-      TotalTime: typeof state.whenTurnStarted === "number"
-      ? state.timer
-      : null,
+      Timer:
+        typeof state.whenTurnStarted === "number"
+          ? performance.now() - state.whenTurnStarted
+          : null,
+      TotalTime: typeof state.whenTurnStarted === "number" ? state.timer : null,
       PlayerId: player.id,
       State: structuredClone(state),
       Type: "Fold",
@@ -1475,12 +1474,11 @@ export function executeTransition(gameState, action) {
   log.push({
     Milliseconds: Math.max(0, performance.now() - gameStartedAt),
     Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
-    Timer: typeof state.whenTurnStarted === "number"
-    ? performance.now() - state.whenTurnStarted
-    : null,
-    TotalTime: typeof state.whenTurnStarted === "number"
-    ? state.timer
-    : null,
+    Timer:
+      typeof state.whenTurnStarted === "number"
+        ? performance.now() - state.whenTurnStarted
+        : null,
+    TotalTime: typeof state.whenTurnStarted === "number" ? state.timer : null,
     PlayerId: player.id,
     State: structuredClone(state),
     Type:
