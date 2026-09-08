@@ -265,16 +265,46 @@ const bettingGamePhases = new Set([
   GamePhase.BETTING_RIVER,
 ]);
 const hourglassImagePaths = Object.freeze([
-  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_10 AM (1).png",
-  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_11 AM (2).png",
-  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_11 AM (3).png",
-  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_11 AM (4).png",
-  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_12 AM (5).png",
-  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_12 AM (6).png",
-  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_12 AM (7).png",
-  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_13 AM (8).png",
-  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_13 AM (9).png",
-  "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_13 AM (10).png",
+  new URL(
+    "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_10 AM (1).png",
+    import.meta.url,
+  ).href,
+  new URL(
+    "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_11 AM (2).png",
+    import.meta.url,
+  ).href,
+  new URL(
+    "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_11 AM (3).png",
+    import.meta.url,
+  ).href,
+  new URL(
+    "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_11 AM (4).png",
+    import.meta.url,
+  ).href,
+  new URL(
+    "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_12 AM (5).png",
+    import.meta.url,
+  ).href,
+  new URL(
+    "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_12 AM (6).png",
+    import.meta.url,
+  ).href,
+  new URL(
+    "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_12 AM (7).png",
+    import.meta.url,
+  ).href,
+  new URL(
+    "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_13 AM (8).png",
+    import.meta.url,
+  ).href,
+  new URL(
+    "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_13 AM (9).png",
+    import.meta.url,
+  ).href,
+  new URL(
+    "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_13 AM (10).png",
+    import.meta.url,
+  ).href,
 ]);
 
 if (typeof Image !== "undefined") {
