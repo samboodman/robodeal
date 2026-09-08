@@ -19,6 +19,19 @@ export function microphoneAudioConstraints(supported = {}) {
   };
 }
 
+export async function requestMicrophonePermission() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return false;
+  }
+
+  const supported = navigator.mediaDevices.getSupportedConstraints?.() || {};
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: microphoneAudioConstraints(supported),
+  });
+  stream.getTracks().forEach((track) => track.stop());
+  return true;
+}
+
 function bytesToBase64(bytes) {
   let binary = "";
   const blockSize = 0x8000;

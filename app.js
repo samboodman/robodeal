@@ -14,7 +14,11 @@ import {
   Transition,
   log,
 } from "./game-state.js";
-import { fillPrompt, VoiceAgent } from "./voice-agent.js";
+import {
+  fillPrompt,
+  requestMicrophonePermission,
+  VoiceAgent,
+} from "./voice-agent.js";
 import { restoredPlayerName } from "./game-settings.js";
 import {
   clockwisePlayerIds,
@@ -26,6 +30,9 @@ import promptsText from "./Prompts.json?raw";
 export { gameStartedAt };
 
 const prompts = JSON.parse(promptsText);
+
+requestMicrophonePermission().catch(() => {});
+
 const playerCount = document.querySelector("#player-count");
 const playerNames = document.querySelector("#player-names");
 const form = document.querySelector("#setup-form");
