@@ -19,27 +19,27 @@ test("microphone controls stay outside the rotating turn control", () => {
   );
   assert.doesNotMatch(
     indexSource,
-    /<div id="turn-control"[\s\S]*?id="recording-button"[\s\S]*?id="turn-indicator"/,
+    /<div id="turn-control"[\s\S]*?id="recording-button"/,
   );
   assert.match(
     indexSource,
-    /id="voice-status"[\s\S]*?class="voice-controls"[\s\S]*?id="recording-button"/,
+    /class="game-status"[\s\S]*?id="voice-status"[\s\S]*?class="voice-controls"[\s\S]*?id="recording-button"/,
   );
   assert.match(
     stylesSource,
-    /\.voice-controls \{[\s\S]*?position: fixed;[\s\S]*?left: 50%;[\s\S]*?justify-items: center;[\s\S]*?transform: translateX\(-50%\)/,
+    /\.game-status \{[\s\S]*?position: fixed;[\s\S]*?left: 50%;[\s\S]*?justify-items: center;[\s\S]*?transform: translateX\(-50%\)/,
   );
 });
 
-test("voice controls touch the top while transcript and AI status sit at the bottom", () => {
-  assert.match(stylesSource, /\.voice-controls \{[\s\S]*?top: 0;/);
+test("game status is at the top while microphone controls and AI status sit at the bottom", () => {
+  assert.match(stylesSource, /\.game-status \{[\s\S]*?top: 0;/);
   assert.match(
     stylesSource,
-    /\.voice-status \{[\s\S]*?position: fixed;[\s\S]*?bottom: max\(12px, env\(safe-area-inset-bottom\)\)/,
+    /\.recording-button \{[\s\S]*?position: fixed;[\s\S]*?bottom: calc\(max\(12px, env\(safe-area-inset-bottom\)\) \+ 48px\)/,
   );
   assert.match(
     stylesSource,
-    /\.voice-transcript \{[\s\S]*?bottom: calc\(max\(12px, env\(safe-area-inset-bottom\)\) \+ 46px\)/,
+    /\.voice-status \{[\s\S]*?position: static;/,
   );
 });
 
@@ -59,7 +59,7 @@ test("other is a large right-side control that replaces the action menu", () => 
   );
   assert.match(
     stylesSource,
-    /#other-button \{[\s\S]*?position: fixed;[\s\S]*?right: 0;[\s\S]*?width: 84px;[\s\S]*?min-height: 92px/,
+    /#other-button \{[\s\S]*?position: fixed;[\s\S]*?right: 0;[\s\S]*?width: 70px;[\s\S]*?min-height: 84px/,
   );
   assert.match(
     stylesSource,
@@ -263,7 +263,7 @@ test("an eliminated player is automatically asked about buying back", () => {
 test("in-game seat controls hide play controls and preserve the current game while reordering seats", () => {
   assert.match(
     indexSource,
-    /id="recording-button"[\s\S]*?id="seat-order-button"/,
+    /id="recording-button"[\s\S]*?id="seat-order-button"[\s\S]*?<div id="turn-control"/,
   );
   assert.match(
     appSource,
@@ -279,10 +279,10 @@ test("in-game seat controls hide play controls and preserve the current game whi
   );
 });
 
-test("default seats place due left between two equally close players", () => {
+test("default seats keep the closest left and right players equally distant", () => {
   assert.match(
     appSource,
-    /function initializeSeatAngles\(\) \{[\s\S]*?const seatStep = \(Math\.PI \* 2\) \/ players\.length;[\s\S]*?const seatJustBeforeLeft = Math\.floor\(\(players\.length - 2\) \/ 4\);[\s\S]*?Math\.PI - \(seatJustBeforeLeft \+ 0\.5\) \* seatStep/,
+    /function initializeSeatAngles\(\) \{[\s\S]*?const seatStep = \(Math\.PI \* 2\) \/ players\.length;[\s\S]*?seatStep \/ \(players\.length % 2 === 0 \? 2 : 4\)/,
   );
 });
 
@@ -408,7 +408,7 @@ test("undo is a large left-side control outside the action menu", () => {
   );
   assert.match(
     stylesSource,
-    /#undo-button \{[\s\S]*?position: fixed;[\s\S]*?left: 0;[\s\S]*?width: 84px;[\s\S]*?min-height: 92px;[\s\S]*?border-left: 0/,
+    /#undo-button \{[\s\S]*?position: fixed;[\s\S]*?left: 0;[\s\S]*?width: 70px;[\s\S]*?min-height: 84px;[\s\S]*?border-left: 0/,
   );
   assert.match(
     appSource,

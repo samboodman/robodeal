@@ -218,6 +218,7 @@ let raiseMode = false;
 let otherMenuOpen = false;
 let seatingMode = false;
 let seatAngles = {};
+const seatRadiusPercent = 34;
 let joiningPlayerAnimationId = null;
 let buyBackPlayerId = null;
 let buyBackWasAutomatic = false;
@@ -2114,8 +2115,8 @@ function playPendingChipFlights() {
 function initializeSeatAngles() {
   const players = viewPlayers();
   const seatStep = (Math.PI * 2) / players.length;
-  const seatJustBeforeLeft = Math.floor((players.length - 2) / 4);
-  const firstSeatAngle = Math.PI - (seatJustBeforeLeft + 0.5) * seatStep;
+  const firstSeatAngle =
+    seatStep / (players.length % 2 === 0 ? 2 : 4);
   seatAngles = Object.fromEntries(
     players.map((player, index) => [
       player.id,
@@ -2148,15 +2149,21 @@ function addJoiningPlayerSeat(playerId) {
 
 function positionSeatElement(seat, playerId) {
   const angle = seatAngles[playerId] ?? 0;
-  seat.style.setProperty("--x", `${50 + Math.cos(angle) * 40}%`);
-  seat.style.setProperty("--y", `${50 + Math.sin(angle) * 40}%`);
+  seat.style.setProperty(
+    "--x",
+    `${50 + Math.cos(angle) * seatRadiusPercent}%`,
+  );
+  seat.style.setProperty(
+    "--y",
+    `${50 + Math.sin(angle) * seatRadiusPercent}%`,
+  );
   seat.style.setProperty("--rotation", `${angle - Math.PI / 2}rad`);
 }
 
 function animateSeatParticles(playerId, animationClass) {
   const angle = seatAngles[playerId] ?? 0;
-  const x = 50 + Math.cos(angle) * 40;
-  const y = 50 + Math.sin(angle) * 40;
+  const x = 50 + Math.cos(angle) * seatRadiusPercent;
+  const y = 50 + Math.sin(angle) * seatRadiusPercent;
   for (let index = 0; index < 24; index += 1) {
     const direction = Math.random() * Math.PI * 2;
     const distance = 25 + Math.random() * 75;
@@ -2389,8 +2396,9 @@ function updateTableMarker(
   const gameBox = gameScreen.getBoundingClientRect();
   const centerX = gameBox.width / 2;
   const centerY = gameBox.height / 2;
-  const seatRadiusX = gameBox.width * 0.4;
-  const seatRadiusY = gameBox.height * 0.4;
+  const seatRadius = seatRadiusPercent / 100;
+  const seatRadiusX = gameBox.width * seatRadius;
+  const seatRadiusY = gameBox.height * seatRadius;
   const seatAngle = seatAngles[playerId] ?? 0;
   const seatRotation = seatAngle - Math.PI / 2;
   const markerPositionAtAngle = (angle) => {
@@ -3441,6 +3449,11 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("blur", pauseTurnTimerForInactiveApp);
 window.addEventListener("focus", resumeTurnTimerForActiveApp);
+window.addEventListener("resize", () => {
+  if (gameState && !gameScreen.hidden) {
+    drawPlayerSeats();
+  }
+});
 primaryActionButton.addEventListener("click", () => {
   if (primaryActionButton.disabled) {
     return;
