@@ -256,6 +256,20 @@ test("microphone constraints request supported voice isolation", () => {
   assert.equal("voiceIsolation" in microphoneAudioConstraints(), false);
 });
 
+test("microphone pause mutes the stream until the page becomes active again", () => {
+  const track = { enabled: true };
+  const agent = makeAgent();
+  agent.microphoneStream = { getTracks: () => [track] };
+
+  agent.setMicrophonePaused(true);
+  assert.equal(agent.microphoneMuted, true);
+  assert.equal(track.enabled, false);
+
+  agent.setMicrophonePaused(false);
+  assert.equal(agent.microphoneMuted, false);
+  assert.equal(track.enabled, true);
+});
+
 test("connect selects a TTS voice without opening a Realtime connection", async () => {
   const statuses = [];
   const agent = makeAgent({ onStatus: (status) => statuses.push(status) });

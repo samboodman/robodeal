@@ -7,7 +7,9 @@ import {
   executeTransition,
   formatTime,
   gameStartedAt,
+  GameVariant,
   GamePhase,
+  gameVariantLabel,
   getAvailableActions,
   getBettingBounds,
   setGameStartedAt,
@@ -26,14 +28,37 @@ import {
   snapSeatAngle,
 } from "./seat-order.js";
 import promptsText from "./Prompts.json?raw";
+import texasHoldemPopups from "./popups/texas-holdem.json";
+import omahaPopups from "./popups/omaha.json";
+import omahaEightOrBetterPopups from "./popups/omaha-eight-or-better.json";
+import fiveCardDrawPopups from "./popups/five-card-draw.json";
+import sevenCardStudPopups from "./popups/seven-card-stud.json";
+import sevenCardStudEightOrBetterPopups from "./popups/seven-card-stud-eight-or-better.json";
+import razzPopups from "./popups/razz.json";
+import pineapplePopups from "./popups/pineapple.json";
+import crazyPineapplePopups from "./popups/crazy-pineapple.json";
+import lazyPineapplePopups from "./popups/lazy-pineapple.json";
 
 export { gameStartedAt };
 
 const prompts = JSON.parse(promptsText);
+const variantPopups = Object.freeze({
+  [GameVariant.TEXAS_HOLDEM]: texasHoldemPopups,
+  [GameVariant.OMAHA]: omahaPopups,
+  [GameVariant.OMAHA_EIGHT_OR_BETTER]: omahaEightOrBetterPopups,
+  [GameVariant.FIVE_CARD_DRAW]: fiveCardDrawPopups,
+  [GameVariant.SEVEN_CARD_STUD]: sevenCardStudPopups,
+  [GameVariant.SEVEN_CARD_STUD_EIGHT_OR_BETTER]: sevenCardStudEightOrBetterPopups,
+  [GameVariant.RAZZ]: razzPopups,
+  [GameVariant.PINEAPPLE]: pineapplePopups,
+  [GameVariant.CRAZY_PINEAPPLE]: crazyPineapplePopups,
+  [GameVariant.LAZY_PINEAPPLE]: lazyPineapplePopups,
+});
 
 requestMicrophonePermission().catch(() => {});
 
 const playerCount = document.querySelector("#player-count");
+const gameVariantSelect = document.querySelector("#game-variant");
 const playerNames = document.querySelector("#player-names");
 const form = document.querySelector("#setup-form");
 const message = document.querySelector("#message");
@@ -157,6 +182,8 @@ const showdownUndoButton = document.querySelector("#showdown-undo-button");
 const dealPrompt = document.querySelector("#deal-prompt");
 const dealMessage = document.querySelector("#deal-message");
 const dealOkButton = document.querySelector("#deal-ok-button");
+const dealerChoicePicker = document.querySelector("#dealer-choice-picker");
+const dealerChoiceOptions = document.querySelector("#dealer-choice-options");
 const recordingButton = document.querySelector("#recording-button");
 const seatOrderButton = document.querySelector("#seat-order-button");
 const voiceStatus = document.querySelector("#voice-status");
@@ -232,6 +259,7 @@ const twoPlayerSeatRadiusPercent = 22;
 let joiningPlayerAnimationId = null;
 let buyBackPlayerId = null;
 let buyBackWasAutomatic = false;
+let lazyPineappleShowdownDiscardHandNumber = null;
 
 const declinedBuyBackPlayerIds = new Set();
 const lastGameSettingsKey = "robodeal-last-game-settings";
@@ -253,6 +281,8 @@ const gamePhaseLabels = Object.freeze({
   [GamePhase.BETTING_TURN]: "Turn",
   [GamePhase.DEAL_RIVER]: "River",
   [GamePhase.BETTING_RIVER]: "River",
+  [GamePhase.DEAL_VARIANT_STREET]: "Deal",
+  [GamePhase.BETTING_VARIANT_STREET]: "Betting",
   [GamePhase.ALL_IN_RUNOUT]: "All-in runout",
   [GamePhase.SHOWDOWN]: "Showdown",
   [GamePhase.HAND_COMPLETE]: "Hand complete",
@@ -263,6 +293,7 @@ const bettingGamePhases = new Set([
   GamePhase.BETTING_FLOP,
   GamePhase.BETTING_TURN,
   GamePhase.BETTING_RIVER,
+  GamePhase.BETTING_VARIANT_STREET,
 ]);
 const hourglassImagePaths = Object.freeze([
   new URL(
@@ -437,12 +468,7 @@ function viewPots() {
   const pots = gameState?.pots || [];
   const betting =
     gameState &&
-    [
-      GamePhase.BETTING_PREFLOP,
-      GamePhase.BETTING_FLOP,
-      GamePhase.BETTING_TURN,
-      GamePhase.BETTING_RIVER,
-    ].includes(gameState.phase);
+    bettingGamePhases.has(gameState.phase);
   return betting ? potsForBettingDisplay(pots) : pots;
 }
 
@@ -655,6 +681,11 @@ function restoreLastGameSettings() {
       : Number(smallBlindIncreaseInput.value);
 
   playerCount.value = settings.playerCount;
+  gameVariantSelect.value = Object.values(GameVariant).includes(
+    settings.gameVariant,
+  )
+    ? settings.gameVariant
+    : GameVariant.TEXAS_HOLDEM;
   document.querySelector("#starting-money").value = settings.startingMoney;
   smallBlindInput.value = smallBlind;
   smallBlindIncreaseInput.value = smallBlindIncrease;
@@ -816,6 +847,17 @@ function resumeSavedGame() {
 
   gameSettings = savedGame.gameSettings;
   gameState = savedGame.gameState;
+
+  if (gameState.phase === GamePhase.SETUP) {
+    clearSavedCurrentGame();
+    setupScreen.hidden = false;
+    voiceCustomizationScreen.hidden = true;
+    chipDenominationsScreen.hidden = true;
+    gameScreen.hidden = true;
+    gameWinnerScreen.hidden = true;
+    return;
+  }
+
   lastTurnState = savedGame.lastTurnState || null;
   undoStack = Array.isArray(savedGame.undoStack) ? savedGame.undoStack : [];
   redoStack = Array.isArray(savedGame.redoStack) ? savedGame.redoStack : [];
@@ -959,6 +1001,14 @@ function resumeTurnTimerForActiveApp() {
   gameState.whenTurnStarted += pausedMilliseconds;
   turnTimerPausedAt = null;
   updateTurnTimerDisplay();
+}
+
+function pauseMicrophoneForInactiveApp() {
+  voiceAgent?.setMicrophonePaused(true);
+}
+
+function resumeMicrophoneForActiveApp() {
+  voiceAgent?.setMicrophonePaused(false);
 }
 
 function resetPotChipRecord() {
@@ -1968,6 +2018,7 @@ function makePlayers() {
     allowReEntries: gameSettings.allowReEntries,
     bettingLimit: gameSettings.bettingLimit,
     fixedLimitBet: gameSettings.fixedLimitBet,
+    gameVariant: gameSettings.gameVariant,
   });
 }
 
@@ -2365,6 +2416,7 @@ function lockClockwiseSeatOrder() {
     timer: gameSettings.timer,
     bettingLimit: gameSettings.bettingLimit,
     fixedLimitBet: gameSettings.fixedLimitBet,
+    gameVariant: gameSettings.gameVariant,
   });
 }
 
@@ -3120,7 +3172,18 @@ function renderGameState() {
     const blindPlayers = bigBlindPlayer
       ? `${smallBlindPlayer.name} is the small blind, and ${bigBlindPlayer.name} is the big blind.`
       : `${smallBlindPlayer.name} is the small blind.`;
-    dealMessage.textContent = `Game is ${bettingLimit} Texas Hold'em.${fixedLimit} Small blind is ${gameState.smallBlind}. ${blindPlayers} ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK or say "cards are dealt" when done.`;
+    dealMessage.textContent = `Game is ${bettingLimit} Texas Hold'em.${fixedLimit} Small blind is ${gameState.smallBlind}. ${blindPlayers} ${dealer.name}, you're the dealer. ${texasHoldemPopups.streets[0]} Press OK or say "cards are dealt" when done.`;
+    dealPrompt.hidden = false;
+    drawPlayerSeats();
+    narrate(dealMessage.textContent);
+    return;
+  }
+
+  if (phase === GamePhase.DEAL_VARIANT_STREET) {
+    const instruction = variantPopups[gameState.handVariant].streets.at(
+      gameState.variantStreetIndex,
+    );
+    dealMessage.textContent = `${gameVariantLabel(gameState.handVariant)}: ${instruction} Press OK or say "cards are dealt" to continue.`;
     dealPrompt.hidden = false;
     drawPlayerSeats();
     narrate(dealMessage.textContent);
@@ -3132,11 +3195,13 @@ function renderGameState() {
       phase,
     )
   ) {
-    const instruction = {
-      [GamePhase.DEAL_FLOP]: "Burn one card, then deal the flop",
-      [GamePhase.DEAL_TURN]: "Burn one card, then deal the turn",
-      [GamePhase.DEAL_RIVER]: "Burn one card, then deal the river",
-    }[phase];
+    const instruction = texasHoldemPopups.streets[
+      {
+        [GamePhase.DEAL_FLOP]: 1,
+        [GamePhase.DEAL_TURN]: 2,
+        [GamePhase.DEAL_RIVER]: 3,
+      }[phase]
+    ];
     dealMessage.textContent = `${instruction}. Press OK or say "cards are dealt" to continue.`;
     dealPrompt.hidden = false;
     drawPlayerSeats();
@@ -3145,10 +3210,15 @@ function renderGameState() {
   }
 
   if (phase === GamePhase.ALL_IN_RUNOUT) {
-    const cards = remainingCommunityCards();
-    const instructions = cards.map(
-      (card) => `burn one card, then deal ${card}`,
-    );
+    const instructions =
+      gameState.handVariant &&
+      gameState.handVariant !== GameVariant.TEXAS_HOLDEM
+        ? variantPopups[gameState.handVariant].streets.slice(
+            gameState.variantStreetIndex,
+          )
+        : remainingCommunityCards().map(
+            (card) => `burn one card, then deal ${card}`,
+          );
     dealMessage.textContent = `${formatCardList(instructions)}. Press OK for showdown.`;
     dealMessage.textContent =
       dealMessage.textContent[0].toUpperCase() +
@@ -3203,9 +3273,32 @@ function formatNameList(names) {
 }
 
 function showWinnerPicker() {
+  if (
+    gameState.handVariant === GameVariant.LAZY_PINEAPPLE &&
+    lazyPineappleShowdownDiscardHandNumber !== gameState.handNumber
+  ) {
+    showLazyPineappleShowdownDiscard();
+    return;
+  }
   if (gameState.phase === GamePhase.SHOWDOWN) {
     showGameStatePotWinnerPicker();
   }
+}
+
+function showLazyPineappleShowdownDiscard() {
+  const { showdown } = variantPopups[GameVariant.LAZY_PINEAPPLE];
+  winnerQuestion.textContent = showdown;
+  narrate(showdown);
+  winnerOptions.replaceChildren();
+  const continueButton = document.createElement("button");
+  continueButton.type = "button";
+  continueButton.textContent = "Cards are shown";
+  continueButton.addEventListener("click", () => {
+    lazyPineappleShowdownDiscardHandNumber = gameState.handNumber;
+    showGameStatePotWinnerPicker();
+  });
+  winnerOptions.append(continueButton);
+  winnerPicker.hidden = false;
 }
 
 function showGameStatePotWinnerPicker() {
@@ -3349,8 +3442,13 @@ function startHand() {
   pendingBet = 0;
   pendingFold = false;
   pendingVoiceAction = null;
+  if (gameSettings.gameVariant === GameVariant.DEALER_CHOICE) {
+    showDealerChoice(Transition.START_HAND);
+    return false;
+  }
   invokeGame({ type: Transition.START_HAND });
   renderGameState();
+  return true;
 }
 
 function startNewHand() {
@@ -3362,8 +3460,45 @@ function startNewHand() {
   pendingBet = 0;
   pendingFold = false;
   pendingVoiceAction = null;
+  if (gameSettings.gameVariant === GameVariant.DEALER_CHOICE) {
+    showDealerChoice(Transition.START_NEXT_HAND);
+    return false;
+  }
   invokeGame({ type: Transition.START_NEXT_HAND });
   renderGameState();
+  return true;
+}
+
+function showDealerChoice(transitionType) {
+  const choices = [
+    GameVariant.TEXAS_HOLDEM,
+    GameVariant.OMAHA,
+    GameVariant.OMAHA_EIGHT_OR_BETTER,
+    GameVariant.FIVE_CARD_DRAW,
+    GameVariant.SEVEN_CARD_STUD,
+    GameVariant.SEVEN_CARD_STUD_EIGHT_OR_BETTER,
+    GameVariant.RAZZ,
+    GameVariant.PINEAPPLE,
+    GameVariant.CRAZY_PINEAPPLE,
+    GameVariant.LAZY_PINEAPPLE,
+  ];
+  dealerChoiceOptions.replaceChildren();
+  choices.forEach((variant) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = gameVariantLabel(variant);
+    button.addEventListener("click", () => {
+      dealerChoicePicker.hidden = true;
+      turnControl.hidden = false;
+      invokeGame({ type: transitionType, gameVariant: variant });
+      renderGameState();
+    });
+    dealerChoiceOptions.append(button);
+  });
+  winnerPicker.hidden = true;
+  dealPrompt.hidden = true;
+  turnControl.hidden = true;
+  dealerChoicePicker.hidden = false;
 }
 
 function connectVoiceForCurrentGame() {
@@ -3413,7 +3548,9 @@ function lockSeatsAndStartGame() {
   updateSeatOrderButton();
   updateDebugFeatures();
   if (gameSettings.debugPreset === "normal") {
-    startHand();
+    if (!startHand()) {
+      return;
+    }
   } else {
     gameState = createDebugGameState(gameState, gameSettings.debugPreset);
     renderGameState();
@@ -3567,15 +3704,23 @@ voiceAudioTestButton.addEventListener("click", testVoiceWithAudioFile);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
     pauseTurnTimerForInactiveApp();
+    pauseMicrophoneForInactiveApp();
   } else {
     resumeTurnTimerForActiveApp();
+    resumeMicrophoneForActiveApp();
     if (!gameScreen.hidden && !viewIsGameWon()) {
       keepScreenAwake();
     }
   }
 });
-window.addEventListener("blur", pauseTurnTimerForInactiveApp);
-window.addEventListener("focus", resumeTurnTimerForActiveApp);
+window.addEventListener("blur", () => {
+  pauseTurnTimerForInactiveApp();
+  pauseMicrophoneForInactiveApp();
+});
+window.addEventListener("focus", () => {
+  resumeTurnTimerForActiveApp();
+  resumeMicrophoneForActiveApp();
+});
 window.addEventListener("resize", () => {
   if (gameState && !gameScreen.hidden) {
     drawPlayerSeats();
@@ -3790,6 +3935,7 @@ form.addEventListener("submit", (event) => {
   lastTurnPotChipRecord = null;
   gameSettings = {
     playerCount: Number(playerCount.value),
+    gameVariant: gameVariantSelect.value,
     startingMoney: Number(document.querySelector("#starting-money").value),
     smallBlind: Number(document.querySelector("#small-blind").value),
     smallBlindIncrease: Number(
@@ -3848,3 +3994,7 @@ updateAnteSetting();
 updatePokerRuleSettings();
 updateDebugFeatures();
 updateResumeGameButton();
+
+if (!gameScreen.hidden) {
+  resumeSavedGame();
+}

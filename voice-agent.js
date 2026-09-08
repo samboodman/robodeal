@@ -146,6 +146,7 @@ export class VoiceAgent {
     this.vadLastVoiceAt = 0;
     this.latestDeltaItemId = null;
     this.microphoneMuted = false;
+    this.microphonePaused = false;
     this.transcriptDeltas = new Map();
     this.preparedTranscriptCommands = new Map();
     this.processedUtteranceIds = new Set();
@@ -264,6 +265,9 @@ export class VoiceAgent {
       this.microphoneStream = await navigator.mediaDevices.getUserMedia({
         audio: microphoneAudioConstraints(supported),
       });
+      if (this.microphonePaused) {
+        this.setMicrophoneMuted(true);
+      }
       this.peerConnection = new RTCPeerConnection();
       this.dataChannel = this.peerConnection.createDataChannel("oai-events");
       this.dataChannel.addEventListener("message", (event) =>
@@ -509,10 +513,25 @@ export class VoiceAgent {
   }
 
   setMicrophoneMuted(muted) {
-    this.microphoneMuted = muted;
+    this.microphoneMuted = Boolean(muted) || this.microphonePaused;
     this.microphoneStream?.getTracks().forEach((track) => {
-      track.enabled = !muted;
+      track.enabled = !this.microphoneMuted;
     });
+  }
+
+  setMicrophonePaused(paused) {
+    this.microphonePaused = Boolean(paused);
+    if (this.microphonePaused) {
+      this.setMicrophoneMuted(true);
+      return;
+    }
+    if (
+      !this.processingTranscript &&
+      !this.activeRequest &&
+      !this.backgroundSpeech
+    ) {
+      this.setMicrophoneMuted(false);
+    }
   }
 
   startClientVad() {

@@ -11,6 +11,10 @@ const stylesSource = readFileSync(
   new URL("./styles.css", import.meta.url),
   "utf8",
 );
+const texasHoldemPopupSource = readFileSync(
+  new URL("./popups/texas-holdem.json", import.meta.url),
+  "utf8",
+);
 
 test("microphone controls stay outside the rotating turn control", () => {
   assert.match(
@@ -141,6 +145,13 @@ test("timed turns show an hourglass just below Undo and floored seconds", () => 
   );
 });
 
+test("leaving the page pauses both the timer and microphone", () => {
+  assert.match(
+    appSource,
+    /document\.addEventListener\("visibilitychange", \(\) => \{[\s\S]*?pauseTurnTimerForInactiveApp\(\);[\s\S]*?pauseMicrophoneForInactiveApp\(\);[\s\S]*?resumeTurnTimerForActiveApp\(\);[\s\S]*?resumeMicrophoneForActiveApp\(\)/,
+  );
+});
+
 test("the game table shows a live hand, blinds, and pot summary", () => {
   assert.match(
     indexSource,
@@ -218,6 +229,41 @@ test("pressing Enter in setup does not start the game", () => {
   assert.match(
     appSource,
     /form\.addEventListener\("keydown"[\s\S]*?event\.key === "Enter"[\s\S]*?event\.preventDefault\(\)/,
+  );
+});
+
+test("Dealer's Choice opens an in-game variant picker before each hand", () => {
+  assert.match(
+    indexSource,
+    /id="dealer-choice-picker"[\s\S]*?Dealer's Choice — choose this hand's game[\s\S]*?id="dealer-choice-options"/,
+  );
+  assert.match(
+    appSource,
+    /function startHand\(\)[\s\S]*?gameSettings\.gameVariant === GameVariant\.DEALER_CHOICE[\s\S]*?showDealerChoice\(Transition\.START_HAND\)/,
+  );
+  assert.match(
+    appSource,
+    /function startNewHand\(\)[\s\S]*?gameSettings\.gameVariant === GameVariant\.DEALER_CHOICE[\s\S]*?showDealerChoice\(Transition\.START_NEXT_HAND\)/,
+  );
+  assert.match(
+    appSource,
+    /function showDealerChoice\(transitionType\)[\s\S]*?dealerChoicePicker\.hidden = false/,
+  );
+});
+
+test("Lazy Pineapple asks players to discard before the winner picker", () => {
+  const lazyPineapplePopupSource = readFileSync(
+    new URL("./popups/lazy-pineapple.json", import.meta.url),
+    "utf8",
+  );
+  assert.match(lazyPineapplePopupSource, /throw away one card, then show/i);
+  assert.match(
+    appSource,
+    /function showWinnerPicker\(\)[\s\S]*?GameVariant\.LAZY_PINEAPPLE[\s\S]*?showLazyPineappleShowdownDiscard\(\)/,
+  );
+  assert.match(
+    appSource,
+    /function showLazyPineappleShowdownDiscard\(\)[\s\S]*?Cards are shown[\s\S]*?showGameStatePotWinnerPicker\(\)/,
   );
 });
 
@@ -509,9 +555,9 @@ test("live games are saved and can be resumed from setup", () => {
 });
 
 test("community-card instructions tell the dealer to burn a card first", () => {
-  assert.match(appSource, /Burn one card, then deal the flop/i);
-  assert.match(appSource, /Burn one card, then deal the turn/i);
-  assert.match(appSource, /Burn one card, then deal the river/i);
+  assert.match(texasHoldemPopupSource, /Burn one card, then deal the flop/i);
+  assert.match(texasHoldemPopupSource, /Burn one card, then deal the turn/i);
+  assert.match(texasHoldemPopupSource, /Burn one card, then deal the river/i);
 });
 
 test("narrates every deal stage, showdown question, and winner result", () => {

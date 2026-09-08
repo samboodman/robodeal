@@ -31,6 +31,21 @@
             inputmode="numeric"
             required
           />
+          <label for="game-variant">Poker variant</label>
+          <select id="game-variant" name="gameVariant">
+            <option value="texas-holdem" selected>Texas Hold'em</option>
+            <option value="omaha">Omaha</option>
+            <option value="omaha-eight-or-better">Omaha Eight-or-Better</option>
+            <option value="five-card-draw">Five-card Draw</option>
+            <option value="seven-card-stud">Seven-card Stud</option>
+            <option value="seven-card-stud-eight-or-better">Seven-card Stud Eight-or-Better</option>
+            <option value="razz">Razz</option>
+            <option value="pineapple">Pineapple</option>
+            <option value="crazy-pineapple">Crazy Pineapple</option>
+            <option value="lazy-pineapple">Lazy Pineapple</option>
+            <option value="horse">H.O.R.S.E.</option>
+            <option value="dealer-choice">Dealer's Choice</option>
+          </select>
           <div class="money-grid">
             <div>
               <label for="starting-money">Starting money</label>
@@ -793,6 +808,15 @@
         >
           <p id="deal-message"></p>
           <button id="deal-ok-button" type="button">OK</button>
+        </section>
+        <section
+          id="dealer-choice-picker"
+          class="winner-picker"
+          aria-live="polite"
+          hidden
+        >
+          <p>Dealer's Choice — choose this hand's game</p>
+          <div id="dealer-choice-options" class="winner-options"></div>
         </section>
         <p
           id="join-game-status"

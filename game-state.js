@@ -15,11 +15,67 @@ export const GamePhase = Object.freeze({
   BETTING_TURN: "BETTING_TURN",
   DEAL_RIVER: "DEAL_RIVER",
   BETTING_RIVER: "BETTING_RIVER",
+  DEAL_VARIANT_STREET: "DEAL_VARIANT_STREET",
+  BETTING_VARIANT_STREET: "BETTING_VARIANT_STREET",
   ALL_IN_RUNOUT: "ALL_IN_RUNOUT",
   SHOWDOWN: "SHOWDOWN",
   HAND_COMPLETE: "HAND_COMPLETE",
   GAME_COMPLETE: "GAME_COMPLETE",
 });
+
+export const GameVariant = Object.freeze({
+  TEXAS_HOLDEM: "texas-holdem",
+  OMAHA: "omaha",
+  OMAHA_EIGHT_OR_BETTER: "omaha-eight-or-better",
+  FIVE_CARD_DRAW: "five-card-draw",
+  SEVEN_CARD_STUD: "seven-card-stud",
+  SEVEN_CARD_STUD_EIGHT_OR_BETTER: "seven-card-stud-eight-or-better",
+  RAZZ: "razz",
+  PINEAPPLE: "pineapple",
+  CRAZY_PINEAPPLE: "crazy-pineapple",
+  LAZY_PINEAPPLE: "lazy-pineapple",
+  HORSE: "horse",
+  DEALER_CHOICE: "dealer-choice",
+});
+
+const horseVariants = Object.freeze([
+  GameVariant.TEXAS_HOLDEM,
+  GameVariant.OMAHA_EIGHT_OR_BETTER,
+  GameVariant.RAZZ,
+  GameVariant.SEVEN_CARD_STUD,
+  GameVariant.SEVEN_CARD_STUD_EIGHT_OR_BETTER,
+]);
+
+const variantStreetCounts = Object.freeze({
+  [GameVariant.OMAHA]: 4,
+  [GameVariant.OMAHA_EIGHT_OR_BETTER]: 4,
+  [GameVariant.FIVE_CARD_DRAW]: 2,
+  [GameVariant.SEVEN_CARD_STUD]: 5,
+  [GameVariant.SEVEN_CARD_STUD_EIGHT_OR_BETTER]: 5,
+  [GameVariant.RAZZ]: 5,
+  [GameVariant.PINEAPPLE]: 4,
+  [GameVariant.CRAZY_PINEAPPLE]: 4,
+  [GameVariant.LAZY_PINEAPPLE]: 4,
+});
+
+export function gameVariantLabel(variant) {
+  if (variant === GameVariant.TEXAS_HOLDEM) {
+    return "Texas Hold'em";
+  }
+  if (variant === GameVariant.HORSE) {
+    return "H.O.R.S.E.";
+  }
+  if (variant === GameVariant.DEALER_CHOICE) {
+    return "Dealer's Choice";
+  }
+  return variant
+    .replaceAll("-", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+export function variantStreetCount(variant) {
+  return variantStreetCounts[variant] ?? 0;
+}
 
 export function formatTime(totalMilliseconds) {
   const totalCentiseconds = Math.floor(totalMilliseconds / 10);
@@ -70,6 +126,7 @@ const bettingPhases = [
   GamePhase.BETTING_FLOP,
   GamePhase.BETTING_TURN,
   GamePhase.BETTING_RIVER,
+  GamePhase.BETTING_VARIANT_STREET,
 ];
 
 const dealPhaseFor = Object.freeze({
@@ -569,6 +626,16 @@ function postBlind(
 }
 
 function phaseAfterBetting(state) {
+  if (state.phase === GamePhase.BETTING_VARIANT_STREET) {
+    const streetCount = variantStreetCount(state.handVariant);
+    if (state.variantStreetIndex + 1 >= streetCount) {
+      return GamePhase.SHOWDOWN;
+    }
+    state.variantStreetIndex += 1;
+    return playersWhoCanAct(state).length <= 1
+      ? GamePhase.ALL_IN_RUNOUT
+      : GamePhase.DEAL_VARIANT_STREET;
+  }
   const nextPhase = dealPhaseFor[state.phase];
   if (nextPhase === GamePhase.SHOWDOWN) {
     return GamePhase.SHOWDOWN;
@@ -744,6 +811,7 @@ export function createGameState({
   allowReEntries = true,
   bettingLimit = BettingLimit.NO_LIMIT,
   fixedLimitBet = Math.max(1, smallBlind * 2),
+  gameVariant = GameVariant.TEXAS_HOLDEM,
 }) {
   if (!Array.isArray(players) || players.length < 2) {
     throw new Error("At least two players are required.");
@@ -756,6 +824,9 @@ export function createGameState({
   }
   if (!Object.values(BettingLimit).includes(bettingLimit)) {
     throw new Error("Betting limit is not supported.");
+  }
+  if (!Object.values(GameVariant).includes(gameVariant)) {
+    throw new Error("Poker variant is not supported.");
   }
   if (!Number.isInteger(fixedLimitBet) || fixedLimitBet <= 0) {
     throw new Error("Fixed-limit bet must be a positive integer.");
@@ -805,6 +876,9 @@ export function createGameState({
     allowReEntries,
     bettingLimit,
     fixedLimitBet,
+    gameVariant,
+    handVariant: null,
+    variantStreetIndex: 0,
     dealerId,
     firstDealerId: dealerId,
     activeFirstDealerId: dealerId,
@@ -978,6 +1052,7 @@ export function getAvailableActions(state) {
       GamePhase.DEAL_TURN,
       GamePhase.DEAL_RIVER,
       GamePhase.ALL_IN_RUNOUT,
+      GamePhase.DEAL_VARIANT_STREET,
     ].includes(state.phase)
   ) {
     return [makeAction(Transition.CARDS_DEALT)];
@@ -1207,7 +1282,28 @@ export function executeTransition(gameState, action) {
       }
     }
     state.handNumber += 1;
-    state.phase = GamePhase.DEAL_HOLE_CARDS;
+    const horseVariant =
+      horseVariants[(state.handNumber - 1) % horseVariants.length];
+    const selectedVariant =
+      action.gameVariant ??
+      (state.gameVariant === GameVariant.HORSE
+        ? horseVariant
+        : state.gameVariant);
+    if (selectedVariant === GameVariant.DEALER_CHOICE) {
+      throw new Error("Dealer's Choice needs a poker variant before each hand.");
+    }
+    if (
+      !Object.values(GameVariant).includes(selectedVariant) ||
+      selectedVariant === GameVariant.HORSE
+    ) {
+      throw new Error("Poker variant is not supported.");
+    }
+    state.handVariant = selectedVariant;
+    state.variantStreetIndex = 0;
+    state.phase =
+      selectedVariant === GameVariant.TEXAS_HOLDEM
+        ? GamePhase.DEAL_HOLE_CARDS
+        : GamePhase.DEAL_VARIANT_STREET;
     state.highestRoundBet = 0;
     state.fullRaisesThisRound = 0;
     state.round = 1;
@@ -1271,6 +1367,31 @@ export function executeTransition(gameState, action) {
       state.potAwardIndex = 0;
       ensureShowdownPot(state);
       splitPotsForTwoRuns(state);
+      return state;
+    }
+    if (state.phase === GamePhase.DEAL_VARIANT_STREET) {
+      state.phase = GamePhase.BETTING_VARIANT_STREET;
+      if (state.variantStreetIndex === 0) {
+        const actingPlayers = playersWhoCanAct(state);
+        if (
+          actingPlayers.length === 0 ||
+          (actingPlayers.length === 1 &&
+            amountToCall(state, actingPlayers[0]) === 0)
+        ) {
+          state.actionPlayerId = null;
+          state.phase = GamePhase.ALL_IN_RUNOUT;
+        }
+      } else {
+        state.round += 1;
+        prepareNextBettingRound(state);
+      }
+      log.push({
+        Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+        Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
+        State: structuredClone(state),
+        Type: "CardsDealt",
+        Phase: state.phase,
+      });
       return state;
     }
     const nextBettingPhase = bettingPhaseFor[state.phase];

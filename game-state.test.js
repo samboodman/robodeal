@@ -7,6 +7,7 @@ import {
   createGameState,
   executeTransition,
   gameStartedAt,
+  GameVariant,
   GamePhase,
   getAvailableActions,
   log,
@@ -223,6 +224,75 @@ test("GameState preserves a turn timer and rejects invalid timer values", () => 
       }),
     /Turn timer/,
   );
+});
+
+test("common variants use their own deal and betting street sequence", () => {
+  let state = createGameState({
+    players: [
+      { id: 1, chips: 250 },
+      { id: 2, chips: 250 },
+      { id: 3, chips: 250 },
+    ],
+    smallBlind: 5,
+    dealerId: 1,
+    gameVariant: GameVariant.FIVE_CARD_DRAW,
+  });
+
+  state = executeTransition(state, { type: Transition.START_HAND });
+  assert.equal(state.phase, GamePhase.DEAL_VARIANT_STREET);
+  assert.equal(state.handVariant, GameVariant.FIVE_CARD_DRAW);
+  assert.equal(state.variantStreetIndex, 0);
+
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+  assert.equal(state.phase, GamePhase.BETTING_VARIANT_STREET);
+
+  state = action(state, Transition.CALL);
+  state = action(state, Transition.CALL);
+  assert.equal(state.phase, GamePhase.DEAL_VARIANT_STREET);
+  assert.equal(state.variantStreetIndex, 1);
+
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+  state = completeRoundWithChecks(state);
+  assert.equal(state.phase, GamePhase.SHOWDOWN);
+});
+
+test("Lazy Pineapple keeps three hole cards through river", () => {
+  let state = createGameState({
+    players: [
+      { id: 1, chips: 250 },
+      { id: 2, chips: 250 },
+    ],
+    smallBlind: 5,
+    dealerId: 1,
+    gameVariant: GameVariant.LAZY_PINEAPPLE,
+  });
+
+  state = executeTransition(state, { type: Transition.START_HAND });
+  assert.equal(state.handVariant, GameVariant.LAZY_PINEAPPLE);
+  assert.equal(state.phase, GamePhase.DEAL_VARIANT_STREET);
+});
+
+test("Dealer's Choice requires the dealer's selected variant for each hand", () => {
+  const state = createGameState({
+    players: [
+      { id: 1, chips: 250 },
+      { id: 2, chips: 250 },
+    ],
+    smallBlind: 5,
+    dealerId: 1,
+    gameVariant: GameVariant.DEALER_CHOICE,
+  });
+
+  assert.throws(
+    () => executeTransition(state, { type: Transition.START_HAND }),
+    /Dealer's Choice/,
+  );
+  const selectedState = executeTransition(state, {
+    type: Transition.START_HAND,
+    gameVariant: GameVariant.RAZZ,
+  });
+  assert.equal(selectedState.handVariant, GameVariant.RAZZ);
+  assert.equal(selectedState.phase, GamePhase.DEAL_VARIANT_STREET);
 });
 
 test("GameState uses camel case for the active first dealer", () => {
