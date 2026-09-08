@@ -1009,6 +1009,9 @@ export class VoiceAgent {
     }
     this.audioUrl = null;
     this.pendingResponseCount = 0;
+    if (this.recording && this.microphoneMuted) {
+      this.setMicrophoneMuted(false);
+    }
   }
 
   disconnect() {

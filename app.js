@@ -102,6 +102,7 @@ const turnControl = document.querySelector("#turn-control");
 const turnIndicator = document.querySelector("#turn-indicator");
 const gamePhaseLabel = document.querySelector("#game-phase-label");
 const undoButton = document.querySelector("#undo-button");
+const redoButton = document.querySelector("#redo-button");
 const actionMenu = document.querySelector("#action-menu");
 const otherActionMenu = document.querySelector("#other-action-menu");
 const otherBuyBackButton = document.querySelector("#other-buy-back-button");
@@ -208,6 +209,7 @@ let potChipHandNumber = null;
 let lastTurnState = null;
 let lastTurnPotChipRecord = null;
 let undoStack = [];
+let redoStack = [];
 const displayedMarkerPlayerIds = {};
 const markerPositions = {};
 let markerMovesCounterclockwise = false;
@@ -226,6 +228,7 @@ let otherMenuOpen = false;
 let seatingMode = false;
 let seatAngles = {};
 const seatRadiusPercent = 34;
+const twoPlayerSeatRadiusPercent = 22;
 let joiningPlayerAnimationId = null;
 let buyBackPlayerId = null;
 let buyBackWasAutomatic = false;
@@ -372,6 +375,12 @@ function viewPlayers() {
   return gameState?.players.filter((player) => !player.leftGame) || [];
 }
 
+function currentSeatRadiusPercent() {
+  return gameState?.players.length === 2
+    ? twoPlayerSeatRadiusPercent
+    : seatRadiusPercent;
+}
+
 function viewPlayer(playerNumber) {
   return gameState?.players.find((player) => player.id === playerNumber);
 }
@@ -463,6 +472,7 @@ function invokeGame(action) {
     lastTurnEndedHandByFold,
     returnToSetup: gameState.phase === GamePhase.SETUP,
   });
+  redoStack = [];
   gameState = executeTransition(gameState, action);
   gameState.whenTurnStarted =
     gameSettings.timer > 0 ? performance.now() : "timer is off";
@@ -748,6 +758,7 @@ function saveCurrentGame() {
         seatAngles,
         lastTurnState,
         undoStack,
+        redoStack,
         potChipCounts,
         potChipContributions,
         potChipHandNumber,
@@ -777,6 +788,7 @@ function resumeSavedGame() {
   gameState = savedGame.gameState;
   lastTurnState = savedGame.lastTurnState || null;
   undoStack = Array.isArray(savedGame.undoStack) ? savedGame.undoStack : [];
+  redoStack = Array.isArray(savedGame.redoStack) ? savedGame.redoStack : [];
   potChipCounts = savedGame.potChipCounts || {};
   potChipContributions = savedGame.potChipContributions || {};
   potChipHandNumber = savedGame.potChipHandNumber ?? null;
@@ -1905,6 +1917,8 @@ function makePlayers() {
     chips: Number(document.querySelector("#starting-money").value),
   }));
 
+  undoStack = [];
+  redoStack = [];
   gameState = createGameState({
     players,
     smallBlind: gameSettings.smallBlind,
@@ -2163,21 +2177,23 @@ function addJoiningPlayerSeat(playerId) {
 
 function positionSeatElement(seat, playerId) {
   const angle = seatAngles[playerId] ?? 0;
+  const radiusPercent = currentSeatRadiusPercent();
   seat.style.setProperty(
     "--x",
-    `${50 + Math.cos(angle) * seatRadiusPercent}%`,
+    `${50 + Math.cos(angle) * radiusPercent}%`,
   );
   seat.style.setProperty(
     "--y",
-    `${50 + Math.sin(angle) * seatRadiusPercent}%`,
+    `${50 + Math.sin(angle) * radiusPercent}%`,
   );
   seat.style.setProperty("--rotation", `${angle - Math.PI / 2}rad`);
 }
 
 function animateSeatParticles(playerId, animationClass) {
   const angle = seatAngles[playerId] ?? 0;
-  const x = 50 + Math.cos(angle) * seatRadiusPercent;
-  const y = 50 + Math.sin(angle) * seatRadiusPercent;
+  const radiusPercent = currentSeatRadiusPercent();
+  const x = 50 + Math.cos(angle) * radiusPercent;
+  const y = 50 + Math.sin(angle) * radiusPercent;
   for (let index = 0; index < 24; index += 1) {
     const direction = Math.random() * Math.PI * 2;
     const distance = 25 + Math.random() * 75;
@@ -2412,7 +2428,7 @@ function updateTableMarker(
   const gameBox = gameScreen.getBoundingClientRect();
   const centerX = gameBox.width / 2;
   const centerY = gameBox.height / 2;
-  const seatRadius = seatRadiusPercent / 100;
+  const seatRadius = currentSeatRadiusPercent() / 100;
   const seatRadiusX = gameBox.width * seatRadius;
   const seatRadiusY = gameBox.height * seatRadius;
   const seatAngle = seatAngles[playerId] ?? 0;
@@ -2635,6 +2651,7 @@ function updateBetControls() {
   raisePanel.hidden = !raiseMode;
   const undoIsAvailable = canUndoLastTurn();
   undoButton.disabled = !undoIsAvailable;
+  redoButton.disabled = !canRedoLastTurn();
 }
 
 function enterRaiseMode() {
@@ -2903,12 +2920,26 @@ function canUndoLastTurn(fromShowdown = false) {
   return undoStack.length > 0;
 }
 
+function canRedoLastTurn() {
+  return redoStack.length > 0;
+}
+
 function undoLastTurn(fromShowdown = false) {
   if (!canUndoLastTurn(fromShowdown)) {
     return;
   }
 
   raiseMode = false;
+  redoStack.push({
+    gameState: structuredClone(gameState),
+    potChipCounts: structuredClone(potChipCounts),
+    potChipContributions: structuredClone(potChipContributions),
+    potChipHandNumber,
+    lastTurnState: structuredClone(lastTurnState),
+    lastTurnPotChipRecord: structuredClone(lastTurnPotChipRecord),
+    lastTurnEndedHandByFold,
+    returnToSetup: gameState.phase === GamePhase.SETUP,
+  });
   const snapshot = undoStack.pop();
   const actionPlayerIdBeforeUndo = gameState.actionPlayerId;
   gameState = structuredClone(snapshot.gameState);
@@ -2941,6 +2972,56 @@ function undoLastTurn(fromShowdown = false) {
     PlayerId: gameState.actionPlayerId,
     State: structuredClone(gameState),
     Type: "Undo",
+  });
+}
+
+function redoLastTurn() {
+  if (!canRedoLastTurn()) {
+    return;
+  }
+
+  raiseMode = false;
+  undoStack.push({
+    gameState: structuredClone(gameState),
+    potChipCounts: structuredClone(potChipCounts),
+    potChipContributions: structuredClone(potChipContributions),
+    potChipHandNumber,
+    lastTurnState: structuredClone(lastTurnState),
+    lastTurnPotChipRecord: structuredClone(lastTurnPotChipRecord),
+    lastTurnEndedHandByFold,
+    returnToSetup: gameState.phase === GamePhase.SETUP,
+  });
+  const snapshot = redoStack.pop();
+  gameState = structuredClone(snapshot.gameState);
+  markerMovesCounterclockwise = false;
+  potChipCounts = structuredClone(snapshot.potChipCounts);
+  potChipContributions = structuredClone(snapshot.potChipContributions);
+  potChipHandNumber = snapshot.potChipHandNumber;
+  const player = viewPlayer(viewActionPlayerNumber());
+  pendingBet = player ? amountToCallForView(player) : 0;
+  pendingFold = false;
+  pendingVoiceAction = null;
+  lastTurnState = structuredClone(snapshot.lastTurnState);
+  lastTurnPotChipRecord = structuredClone(snapshot.lastTurnPotChipRecord);
+  lastTurnEndedHandByFold = snapshot.lastTurnEndedHandByFold;
+  if (snapshot.returnToSetup) {
+    stopRecordingForSetupOrWinner();
+    gameScreen.hidden = true;
+    gameWinnerScreen.hidden = true;
+    setupScreen.hidden = false;
+    updateResumeGameButton();
+    return;
+  }
+  setupScreen.hidden = true;
+  gameWinnerScreen.hidden = true;
+  gameScreen.hidden = false;
+  renderGameState();
+  log.push({
+    Milliseconds: Math.max(0, performance.now() - gameStartedAt),
+    Time: formatTime(Math.max(0, performance.now() - gameStartedAt)),
+    PlayerId: gameState.actionPlayerId,
+    State: structuredClone(gameState),
+    Type: "Redo",
   });
 }
 
@@ -3649,6 +3730,7 @@ document.addEventListener("keydown", (event) => {
   }
 });
 undoButton.addEventListener("click", () => undoLastTurn());
+redoButton.addEventListener("click", redoLastTurn);
 showdownUndoButton.addEventListener("click", () => undoLastTurn(true));
 gameWinnerUndoButton.addEventListener("click", () => undoLastTurn(true));
 gameWinnerSetupButton.addEventListener("click", () => {

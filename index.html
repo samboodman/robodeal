@@ -650,11 +650,25 @@
             Move seats
           </button>
         </div>
-        <button id="undo-button" class="undo-button" type="button" disabled>
-          Undo
+        <button
+          id="undo-button"
+          class="undo-button"
+          type="button"
+          aria-label="Undo"
+          title="Undo"
+          disabled
+        >
+          <span class="history-arrow" aria-hidden="true">↪</span>
         </button>
-        <button id="other-button" class="other-button" type="button">
-          Other
+        <button
+          id="redo-button"
+          class="redo-button"
+          type="button"
+          aria-label="Redo"
+          title="Redo"
+          disabled
+        >
+          <span class="history-arrow" aria-hidden="true">↩</span>
         </button>
         <div id="turn-control" class="turn-control">
           <div id="turn-indicator" class="turn-indicator" aria-live="polite">
@@ -664,6 +678,9 @@
                 <button id="primary-action-button" type="button">Check</button>
                 <button id="raise-action-button" type="button">Raise</button>
                 <button id="fold-action-button" type="button">Fold</button>
+                <button id="other-button" class="other-button" type="button">
+                  Other
+                </button>
               </div>
               <div
                 id="other-action-menu"

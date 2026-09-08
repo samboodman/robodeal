@@ -63,7 +63,7 @@ body {
 .turn-timer-display {
   position: fixed;
   z-index: 7;
-  top: 0;
+  top: 60px;
   left: 0;
   display: grid;
   justify-items: center;
@@ -501,7 +501,7 @@ body {
 }
 #action-menu {
   grid-template-columns: 1fr;
-  grid-template-rows: repeat(3, 1fr);
+  grid-template-rows: repeat(4, 1fr);
   grid-auto-rows: auto;
 }
 #other-action-menu {
@@ -553,25 +553,25 @@ body {
   position: fixed;
   z-index: 7;
   left: 0;
-  top: 50%;
-  width: 70px;
-  min-height: 84px;
+  top: 0;
+  width: 56px;
+  min-height: 56px;
   margin: 0;
   border: 3px solid #fffdf6;
+  border-top: 0;
   border-left: 0;
-  border-radius: 0 14px 14px 0;
+  border-radius: 0 0 14px 0;
   background: #557066;
   color: #fffdf6;
   font: inherit;
-  font-size: 1rem;
+  font-size: 2rem;
   font-weight: 900;
   box-shadow: 0 4px 0 #31433d, 0 8px 20px #04160f66;
   cursor: pointer;
   touch-action: manipulation;
-  transform: translateY(-50%);
 }
 #undo-button:active:not(:disabled) {
-  transform: translateY(calc(-50% + 3px));
+  transform: translateY(3px);
   box-shadow: 0 1px 0 #31433d, 0 4px 12px #04160f66;
 }
 #undo-button:disabled {
@@ -580,33 +580,46 @@ body {
   box-shadow: 0 4px 0 #929b96;
   cursor: default;
 }
-.action-menu .help-button {
-  background: #2875c7;
-}
-#other-button {
+.redo-button {
   position: fixed;
   z-index: 7;
   right: 0;
-  top: 50%;
-  width: 70px;
-  min-height: 84px;
+  top: 0;
+  width: 56px;
+  min-height: 56px;
   margin: 0;
   border: 3px solid #fffdf6;
+  border-top: 0;
   border-right: 0;
-  border-radius: 14px 0 0 14px;
-  background: #6b4f3b;
+  border-radius: 0 0 0 14px;
+  background: #557066;
   color: #fffdf6;
   font: inherit;
-  font-size: 1rem;
+  font-size: 2rem;
   font-weight: 900;
-  box-shadow: 0 4px 0 #3d2b1f, 0 8px 20px #04160f66;
+  box-shadow: 0 4px 0 #31433d, 0 8px 20px #04160f66;
   cursor: pointer;
   touch-action: manipulation;
-  transform: translateY(-50%);
 }
-#other-button:active {
-  transform: translateY(calc(-50% + 3px));
-  box-shadow: 0 1px 0 #3d2b1f, 0 4px 12px #04160f66;
+.redo-button:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #31433d, 0 4px 12px #04160f66;
+}
+.redo-button:disabled {
+  background: #c8cbc9;
+  color: #6f7773;
+  box-shadow: 0 4px 0 #929b96;
+  cursor: default;
+}
+.history-arrow {
+  display: block;
+  transform: rotate(180deg);
+}
+.action-menu .help-button {
+  background: #2875c7;
+}
+#action-menu #other-button {
+  background: #6b4f3b;
 }
 .raise-panel {
   display: grid;
@@ -967,7 +980,7 @@ body {
 .player-seat-name {
   display: block;
   position: absolute;
-  bottom: var(--name-bottom, calc(100% + 2px));
+  top: calc(100% + 2px);
   left: 50%;
   max-width: 180px;
   overflow: hidden;

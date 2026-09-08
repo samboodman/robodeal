@@ -52,14 +52,18 @@ test("voice selection excludes Marin and defaults to Cedar", () => {
   );
 });
 
-test("other is a large right-side control that replaces the action menu", () => {
+test("other is the fourth main action and replaces the action menu", () => {
   assert.match(
     indexSource,
-    /id="other-button"[^>]*class="other-button"[^>]*>\s*Other\s*<\/button>[\s\S]*?id="other-action-menu"[^>]*hidden[\s\S]*?id="other-buy-back-button"[^>]*>\s*Buy back[\s\S]*?id="other-add-player-button"[^>]*>\s*Add player/,
+    /id="action-menu"[\s\S]*?id="primary-action-button"[\s\S]*?id="raise-action-button"[\s\S]*?id="fold-action-button"[\s\S]*?id="other-button"[^>]*class="other-button"[^>]*>\s*Other\s*<\/button>[\s\S]*?id="other-action-menu"[^>]*hidden[\s\S]*?id="other-buy-back-button"[^>]*>\s*Buy back[\s\S]*?id="other-add-player-button"[^>]*>\s*Add player/,
   );
   assert.match(
     stylesSource,
-    /#other-button \{[\s\S]*?position: fixed;[\s\S]*?right: 0;[\s\S]*?width: 70px;[\s\S]*?min-height: 84px/,
+    /#action-menu \{[\s\S]*?grid-template-rows: repeat\(4, 1fr\)/,
+  );
+  assert.match(
+    stylesSource,
+    /#action-menu #other-button \{[\s\S]*?background: #6b4f3b/,
   );
   assert.match(
     stylesSource,
@@ -106,14 +110,14 @@ test("timed turns store zero while disabled and seconds while enabled", () => {
   assert.match(appSource, /timer: gameSettings\.timer/);
 });
 
-test("timed turns show a top-left hourglass and floored seconds", () => {
+test("timed turns show an hourglass just below Undo and floored seconds", () => {
   assert.match(
     indexSource,
     /id="turn-timer-display"[\s\S]*?id="turn-timer-hourglass"[\s\S]*?id="turn-timer-seconds"[\s\S]*?id="turn-timer-action"/,
   );
   assert.match(
     stylesSource,
-    /\.turn-timer-display \{[\s\S]*?position: fixed;[\s\S]*?top: 0;[\s\S]*?left: 0;/,
+    /\.turn-timer-display \{[\s\S]*?position: fixed;[\s\S]*?top: 60px;[\s\S]*?left: 0;/,
   );
   assert.match(
     stylesSource,
@@ -310,7 +314,7 @@ test("dealer and blind markers use the engine's table roles", () => {
   );
 });
 
-test("markers follow each player's rotation and names clear their chip piles", () => {
+test("markers follow each player's rotation and names sit on the outside edge", () => {
   assert.match(
     appSource,
     /const markerPositionAtAngle = \(angle\) => \{[\s\S]*?const seatX = centerX \+ Math\.cos\(angle\) \* seatRadiusX;[\s\S]*?const seatY = centerY \+ Math\.sin\(angle\) \* seatRadiusY;[\s\S]*?x: seatX - Math\.cos\(angle\) \* 58,[\s\S]*?y: seatY - Math\.sin\(angle\) \* 58\s*\}[\s\S]*?x: seatX \+ Math\.sin\(angle\) \* sideOffset,[\s\S]*?y: seatY - Math\.cos\(angle\) \* sideOffset/,
@@ -320,12 +324,12 @@ test("markers follow each player's rotation and names clear their chip piles", (
     /marker\.style\.transform = `translate\(-50%, -50%\) rotate\(\$\{seatRotation\}rad\)`/,
   );
   assert.match(
-    appSource,
-    /const tallestChipStack = Math\.max\([\s\S]*?chipStack\.children\.length[\s\S]*?"--name-bottom"/,
+    stylesSource,
+    /\.player-seat-name \{[\s\S]*?top: calc\(100% \+ 2px\)/,
   );
   assert.match(
-    stylesSource,
-    /bottom: var\(--name-bottom, calc\(100% \+ 2px\)\)/,
+    appSource,
+    /function currentSeatRadiusPercent\(\) \{[\s\S]*?gameState\?\.players\.length === 2[\s\S]*?twoPlayerSeatRadiusPercent/,
   );
   assert.match(
     appSource,
@@ -397,10 +401,14 @@ test("winner and setup exits stop microphone recording", () => {
   );
 });
 
-test("undo is a large left-side control outside the action menu", () => {
+test("Undo and Redo are curved-arrow controls at the top corners", () => {
   assert.match(
     indexSource,
-    /id="undo-button"[^>]*class="undo-button"[^>]*disabled>\s*Undo\s*<\/button>[\s\S]*?<div id="turn-control"/,
+    /id="undo-button"[^>]*class="undo-button"[^>]*aria-label="Undo"[^>]*>[\s\S]*?class="history-arrow"[^>]*>↪<\/span>/,
+  );
+  assert.match(
+    indexSource,
+    /id="redo-button"[^>]*class="redo-button"[^>]*aria-label="Redo"[^>]*>[\s\S]*?class="history-arrow"[^>]*>↩<\/span>/,
   );
   assert.doesNotMatch(
     indexSource,
@@ -408,11 +416,19 @@ test("undo is a large left-side control outside the action menu", () => {
   );
   assert.match(
     stylesSource,
-    /#undo-button \{[\s\S]*?position: fixed;[\s\S]*?left: 0;[\s\S]*?width: 70px;[\s\S]*?min-height: 84px;[\s\S]*?border-left: 0/,
+    /#undo-button \{[\s\S]*?position: fixed;[\s\S]*?left: 0;[\s\S]*?top: 0;[\s\S]*?font-size: 2rem/,
+  );
+  assert.match(
+    stylesSource,
+    /\.redo-button \{[\s\S]*?position: fixed;[\s\S]*?right: 0;[\s\S]*?top: 0;[\s\S]*?background: #557066/,
   );
   assert.match(
     appSource,
     /undoButton\.addEventListener\("click", \(\) => undoLastTurn\(\)\)/,
+  );
+  assert.match(
+    appSource,
+    /function redoLastTurn\(\) \{[\s\S]*?redoStack\.pop\(\)[\s\S]*?renderGameState\(\)/,
   );
 });
 
