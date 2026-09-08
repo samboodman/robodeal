@@ -273,6 +273,13 @@ const hourglassImagePaths = Object.freeze([
   "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_13 AM (9).png",
   "./assets/hourglass/ChatGPT Image Sep 6, 2026, 08_21_13 AM (10).png",
 ]);
+
+if (typeof Image !== "undefined") {
+  hourglassImagePaths.forEach((imagePath) => {
+    const image = new Image();
+    image.src = imagePath;
+  });
+}
 const seatSnapDistance = Math.PI / 36;
 
 function updateFixedLimitSetting() {
@@ -2350,6 +2357,7 @@ function beginInGameSeatPositioning() {
     return;
   }
   seatingMode = true;
+  pauseTurnTimerForInactiveApp();
   raiseMode = false;
   pendingFold = false;
   pendingVoiceAction = null;
@@ -2370,6 +2378,7 @@ function lockInGameSeats() {
   gameScreen.classList.remove("seating-mode");
   turnControl.hidden = false;
   updateSeatOrderButton();
+  resumeTurnTimerForActiveApp();
   renderGameState();
 }
 
