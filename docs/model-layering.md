@@ -1,80 +1,185 @@
 # RoboDeal model-layering design
 
-## Status
+## Status and audience
 
-This document describes the model and application boundaries used by RoboDeal
-Classic's voice dealer. It records the intended architecture and the invariants
-that future changes should preserve.
+This document explains the architecture of RoboDeal Classic's voice dealer and
+the reasons behind it. It is written for someone learning how to build AI
+systems: the important lesson is not the particular model names, but how to put
+probabilistic models around a deterministic application without giving up
+correctness.
+
+This document uses role names throughout:
+
+- **speech model** for realtime speech input and output;
+- **reasoning model** for language understanding and response composition; and
+- **state machine** for authoritative poker rules and state transitions.
+
+GPT-Live 1 and GPT-5.6 Terra are the current choices for the speech and
+reasoning roles. They can be replaced without changing the responsibilities of
+the roles.
+
+The document describes both the current separation of responsibilities and one
+required concurrency hardening: state revisions. The current source serializes
+reasoning turns, but it does not yet attach and validate a monotonic state
+revision on every AI-requested mutation. That gap is called out explicitly
+below.
 
 ## Goals
 
-RoboDeal should feel like a natural spoken poker dealer while keeping game
-state deterministic and auditable. Players should be able to use ordinary
-poker-table language, ask questions about the game, and hear varied narration.
-No language model is allowed to become the authority on whose turn it is,
-which actions are legal, how many chips move, or what state follows an action.
+### G1. Keep the rules correct
 
-The design separates four concerns:
+Poker is a deterministic rule system. For a given valid state and action, the
+next state is defined: whose turn it is, whether a raise is legal, how many
+chips move, and which street comes next are not matters of interpretation.
 
-1. GPT-Live 1 handles the live audio conversation.
-2. GPT-5.6 Terra interprets language, selects application actions, answers
-   questions, and authors dealer narration.
-3. Browser JavaScript owns game state and executes all poker transitions.
-4. Server API routes keep the OpenAI credential off the client and relay model
-   requests.
+A language model can be impressive and still be wrong occasionally. Speech
+adds another source of uncertainty. Therefore, a model must never be the
+authority for poker state or rules. Deterministic code must validate and apply
+every transition.
 
-## Components and responsibilities
+### G2. Understand how people actually speak
 
-### GPT-Live 1: audio edge
+Mapping human language onto a precise game action is subtle. “Too rich for me,
+I'm out” means fold; a standalone “check” from the current player may be a
+commitment; “Sam, you need to say ‘check’” is coaching or quotation and must
+not execute a check.
 
-GPT-Live is the only model that receives microphone audio and produces spoken
-audio. It:
+This is where a strong reasoning model is valuable. It can use syntax,
+conversation history, current-player context, quotation, address, and poker
+idiom to infer intent. Deterministic code should not try to reproduce this
+open-ended language judgment with a pile of regular expressions.
+
+### G3. Understand and produce speech well
+
+Recognizing speech in a noisy room, detecting utterance boundaries, supporting
+interruptions, and producing responsive natural audio are specialist problems.
+A high-quality realtime speech model should handle them.
+
+Audio competence is not poker competence. The speech model does not get to
+answer poker questions or invent what happened in the game. It transcribes
+input and speaks text approved by the reasoning layer.
+
+### G4. Never act on stale game state
+
+Models take time. During that time a player can press a button and advance the
+game independently. An AI action inferred from an earlier snapshot must never
+be applied to the newer state merely because it happens to still resemble a
+valid action.
+
+Every AI mutation request therefore needs an optimistic-concurrency token: the
+state revision it was based on. JavaScript must atomically compare that token
+with the current revision before validating and applying the action. A mismatch
+is a stale request, not an invitation to reinterpret the old command.
+
+### G5. Narrate every real state change
+
+The table UI can always move the game without speech. Automatic transitions can
+also occur. Players who are not looking at the screen still need to hear what
+happened, so narration cannot be merely a direct response to voice input.
+
+Every successful authoritative state change emits a structured event. Narration
+is generated from that event, whether the change began with speech, a button,
+or the game engine. The initial game announcement is treated the same way: a
+verified game-start event supplies the rules and setup facts to narrate.
+
+### G6. Keep boundaries narrow, inspectable, and replaceable
+
+Each layer should have one kind of authority, exchange structured information
+at its boundaries, and be replaceable without moving responsibilities into the
+wrong layer. This makes failures easier to contain and the architecture easier
+to test, audit, and adapt to future models.
+
+## Architectural stack
+
+This is a responsibility stack, not a literal network diagram. The two message
+flow diagrams below show the direction of individual requests.
+
+```mermaid
+flowchart TB
+    People["Players<br/>speech in, dealer audio out"]
+    UI["Table UI<br/>buttons and visual state"]
+
+    subgraph Stack["Four responsibility layers"]
+        direction TB
+        L1["Layer 1 — Speech model<br/><b>Current choice: GPT-Live 1</b><br/>speech recognition, timing, and voice delivery"]
+        L2["Layer 2 — Reasoning model<br/><b>Current choice: GPT-5.6 Terra</b><br/>intent, questions, tool choice, and narration wording"]
+        L3["Layer 3 — JavaScript state machine and API<br/><b>Deterministic authority</b><br/>rules, validation, revisions, and events"]
+        L4["Layer 4 — Server API<br/><b>Secure transport boundary</b><br/>credentials and normalized model requests"]
+    end
+
+    People <-->|raw audio / spoken delivery| L1
+    L1 <-->|transcript / exact approved text| L2
+    L2 <-->|tool proposal / verified facts| L3
+    UI <-->|commands / rendered state| L3
+    L1 -. session setup through .-> L4
+    L2 -. model calls through .-> L4
+
+    classDef authority fill:#d9f2df,stroke:#176b36,stroke-width:3px,color:#111
+    class L3 authority
+```
+
+The green layer is the trust boundary: it alone decides what actually happened
+in the game. Intelligence increases the quality of interpretation around that
+boundary; it does not replace the boundary.
+
+## Layer responsibilities and how they advance the goals
+
+### Layer 1 — Speech model
+
+The speech model is the only model that receives microphone audio and produces
+spoken audio. The current implementation uses GPT-Live 1. This layer:
 
 - maintains the low-latency WebRTC audio session;
 - turns foreground speech into native transcript deltas;
 - detects when an utterance may require client delegation;
 - forwards transcript and delegation events to the browser;
-- converts Terra-approved commentary into natural speech; and
+- converts application-approved commentary into natural speech; and
 - handles spoken cadence, accent, pace, and interruption.
 
-GPT-Live does not decide poker rules, execute moves, answer questions from its
-own understanding of the table, or invent game narration. While Terra or
-JavaScript is working, it stays silent. The browser's visual processing state
-is the acknowledgment to the player.
+The speech model does not decide poker rules, execute moves, answer questions
+from its own understanding of the table, or invent game narration. It may vary
+delivery and prosody, but not the factual content of approved text. While the
+reasoning model or JavaScript is working, it stays silent; the browser's visual
+processing state acknowledges the delay.
 
-The browser keeps GPT-Live's output muted by default. It opens the output gate
-only after the application has supplied approved commentary and closes it after
-the final output-audio event plus a locally observed playback drain. This gate
-is a second enforcement layer in addition to the live-model prompt.
+The browser keeps speech output muted by default. It opens the output gate only
+after approved commentary is supplied and closes it after the final
+output-audio event and local playback drain.
 
-### GPT-5.6 Terra: language and dealer judgment
+**Why this choice:** It advances G3 by assigning hard realtime audio work to an
+audio specialist, and G6 by preventing that specialist from acquiring semantic
+or game authority.
 
-Terra is the semantic dealer. It receives a fresh envelope containing:
+### Layer 2 — Reasoning model
 
-- the source event, such as a voice transcript or verified UI event;
-- a snapshot of the authoritative game state; and
-- recent user/dealer conversation needed to interpret short utterances and
-  corrections.
+The reasoning model is the semantic dealer. The current implementation uses
+GPT-5.6 Terra. It receives an envelope containing:
 
-Terra:
+- the source event, such as a voice transcript or verified state-change event;
+- a snapshot of authoritative game state and its revision;
+- recent conversation needed to interpret short utterances and corrections;
+  and
+- the tools that JavaScript currently permits it to request.
 
-- distinguishes a committed poker declaration from a question, coaching,
-  quotation, hypothetical, or background discussion;
-- resolves natural and creative poker phrasing into one of the exposed tools;
+The reasoning model:
+
+- distinguishes a committed declaration from a question, coaching, quotation,
+  hypothetical, or background discussion;
+- resolves natural and creative poker phrasing into an exposed tool request;
 - answers questions about the current player, pot, stacks, legal actions, and
-  next required step from the supplied state snapshot;
-- requests an application tool when a game mutation is intended;
-- waits for the JavaScript result before describing a mutation;
+  next required step from supplied state;
 - explains rejected actions using the returned legal state; and
-- writes concise, varied dealer narration grounded in verified facts.
+- writes concise, varied dealer narration grounded in verified event facts.
 
-Terra cannot mutate game state directly. Tool names and arguments express a
-request, not a completed action. A Terra tool call is never evidence that the
-move occurred.
+It cannot mutate game state directly. A tool call is a proposal, never evidence
+that a move occurred. It must wait for JavaScript's result before describing a
+proposed mutation as fact.
 
-### Browser JavaScript: authoritative application
+**Why this choice:** It advances G2 by concentrating nuanced language judgment
+in the strongest language model, G5 by giving narration organic phrasing, and
+G1 by withholding authority from that model.
 
-Browser JavaScript is the sole authority for the poker game.
+### Layer 3 — JavaScript state machine and application API
 
 The state machine in `game-state.js`:
 
@@ -82,206 +187,295 @@ The state machine in `game-state.js`:
   betting round, pots, and hand phase;
 - computes available actions and legal wager bounds;
 - validates every transition;
-- moves chips and advances turns and streets;
-- resolves deterministic outcomes; and
-- returns a new state rather than accepting a model-authored state.
+- moves chips and advances turns and streets; and
+- resolves deterministic outcomes.
 
-The application controller in `app.js`:
+The application API in `app.js`:
 
-- exposes only the supported voice tools;
-- maps each tool call onto state-machine operations;
-- returns a raw structured result containing success or failure, exact action
-  facts, and the authoritative state after execution;
-- creates fresh state snapshots for Terra and GPT-Live;
-- sends verified UI transitions through Terra for narration; and
-- updates the visible table from JavaScript state.
+- exposes only supported actions;
+- accepts action requests, not model-authored replacement state;
+- compares each AI request's `basedOnRevision` with the current revision;
+- atomically validates, executes, and increments the revision;
+- returns structured success or failure facts plus authoritative state; and
+- emits a `StateChangeEvent` after every successful transition, regardless of
+  whether its source was voice, UI, or automation.
 
-The `DealerAgent` orchestration layer:
+The orchestration code serializes reasoning-model turns, supplies fresh
+snapshots and tool schemas, returns tool results to the same reasoning turn,
+and admits only validated structured speech to the output path.
 
-- serializes turns so two utterances cannot race the state machine;
-- sends the source event, state snapshot, recent conversation, and tool schema
-  to Terra;
-- executes at most one state-changing tool for an utterance;
-- returns JavaScript tool output to the same Terra response; and
-- accepts Terra's final structured speech result only after tool processing is
-  complete.
+**Why this choice:** It directly provides G1. Revision checks provide G4;
+serialization alone cannot, because UI actions do not wait for a model turn.
+State-change events provide G5 without coupling narration to any one input
+method.
 
-The `VoiceAgent` transport layer:
-
-- owns the GPT-Live WebRTC connection and event channel;
-- accumulates native transcript fragments;
-- associates a client-delegation ID with the relevant transcript;
-- passes delegated work to `DealerAgent`;
-- appends approved Terra text back to GPT-Live; and
-- enforces the browser-side output gate.
-
-### Server API: credential and transport boundary
+### Layer 4 — Server API
 
 The server routes are intentionally thin:
 
-- `POST /api/live-session` creates the GPT-Live WebRTC session and returns the
-  SDP answer.
-- `POST /api/dealer-turn` sends a Terra Responses request and returns either
+- `POST /api/live-session` creates the speech-model WebRTC session and returns
+  the SDP answer.
+- `POST /api/dealer-turn` sends a reasoning-model request and returns
   normalized tool calls or a validated structured dealer result.
 
 The server holds the OpenAI API key. It does not own poker state and does not
-decide whether a move is legal. Authoritative state remains in the browser for
-the current physical-table game.
+decide whether a move is legal.
 
-## Message flow
+**Why this choice:** It advances G6 by isolating credentials and vendor-specific
+transport while leaving game authority in a locally testable domain layer.
+
+## Input message processing
+
+An incoming utterance passes through perception, interpretation, and
+deterministic validation. These are deliberately separate decisions.
 
 ```mermaid
 sequenceDiagram
-    participant P as Players
-    participant L as GPT-Live 1
-    participant V as VoiceAgent
-    participant D as DealerAgent
-    participant T as GPT-5.6 Terra
-    participant J as JavaScript state machine
+    autonumber
+    actor P as Player
+    participant L as Speech model
+    participant V as Voice / dealer orchestration
+    participant J as JavaScript application API
+    participant A as Server API
+    participant T as Reasoning model
+    participant S as Poker state machine
+    participant O as Output pipeline
 
-    P->>L: Microphone audio
-    L-->>V: Transcript deltas
-    L-->>V: Client delegation ID
-    V->>D: Transcript + recent conversation
-    D->>T: Source event + fresh state + allowed tools
-    alt A legal game action is requested
-        T-->>D: Tool call
-        D->>J: Requested action and arguments
-        J-->>D: Verified result + stateAfter
-        D->>T: Function result
-        T-->>D: Grounded dealer narration
-    else A question or clarification
-        T-->>D: Answer grounded in supplied state
-    else No response is needed
-        T-->>D: Structured silence
+    P->>L: Raw microphone audio
+    L-->>V: Transcript + delegation ID
+    V->>J: Request fresh state snapshot
+    J-->>V: State + currentRevision + allowed tools
+    V->>A: Transcript + context + snapshot
+    A->>T: Semantic dealer turn
+
+    alt State question or conversational reply
+        T-->>A: Grounded answer or silence
+        A-->>V: Approved result
+        V-->>O: Approved answer or silence
+    else Proposed poker action
+        T-->>A: Tool call + basedOnRevision
+        A-->>V: Normalized tool proposal
+        V->>J: Execute proposal if revision still matches
+        J->>J: Compare basedOnRevision to currentRevision
+        alt Revision is stale
+            J-->>V: Reject STALE_GAME_STATE + fresh state
+            V->>A: Tool result: not executed
+            A->>T: Continue with rejection facts
+            T-->>A: Clarification grounded in fresh state
+            A-->>V: Approved clarification
+            V-->>O: Continue through output pipeline
+        else Revision matches
+            J->>S: Validate and apply action atomically
+            S-->>J: Exact result + stateAfter
+            J->>J: Increment revision and emit StateChangeEvent
+            J-->>V: Verified tool result + event
+            V->>A: Tool result: executed
+            A->>T: Continue with verified facts
+            T-->>A: Grounded action acknowledgment
+            A-->>V: Approved result
+            V-->>O: Continue through output pipeline
+        end
     end
-    D-->>V: Approved text or silence
-    V->>L: Commentary append with delegation ID
-    L-->>P: Spoken audio
 ```
 
-### Voice action
+The crucial lesson is that the reasoning model may be correct about what the
+player meant and still be too late to act. Semantic confidence cannot substitute
+for a revision check. A stale request must be rejected and reconsidered against
+fresh state; JavaScript must not silently retarget it to a different turn.
 
-1. GPT-Live produces transcript fragments and a client-delegation event.
-2. `VoiceAgent` collects the fragments and invokes `DealerAgent`.
-3. `DealerAgent` sends Terra the transcript and a state snapshot.
-4. Terra requests one application tool.
-5. JavaScript validates and executes the request.
-6. JavaScript returns raw facts and `stateAfter`.
-7. Terra authors narration using that verified result.
-8. `VoiceAgent` opens the output gate and asks GPT-Live to speak the approved
-   text.
+For a valid action, the resulting `StateChangeEvent`—not the old transcript—is
+the authoritative source for narration.
 
-This action path deliberately includes a Terra continuation after JavaScript.
-That adds latency, but it lets narration describe the outcome rather than the
-model's prediction of the outcome.
+## Output message processing
 
-### State question
+Answers and narration share a controlled speech path, but they have different
+factual origins. A question answer is grounded in a current state snapshot.
+Narration is grounded in a completed state-change event.
 
-1. The transcript and current state are sent to Terra.
-2. Terra answers from the supplied snapshot without calling a mutation tool.
-3. GPT-Live speaks the approved answer.
+```mermaid
+flowchart LR
+    Voice["Voice-requested action"] --> Mutation
+    Button["UI button"] --> Mutation
+    Auto["Automatic transition"] --> Mutation
+    Start["Game start"] --> Event
 
-Questions therefore require no state transition and normally only one Terra
-response.
+    Mutation["JavaScript validates and<br/>commits the mutation"] --> Event["StateChangeEvent<br/>eventId, source, revisionBefore,<br/>revisionAfter, exact facts"]
+    Mutation --> Render["Render authoritative UI immediately"]
 
-### UI or automatic state transition
+    Question["State question +<br/>current state snapshot"] --> Reason
+    Event --> Queue["Ordered narration queue<br/>deduplicate by eventId"]
+    Queue --> Reason["Reasoning model<br/>authors grounded wording"]
+    Reason --> Approved["Approved exact commentary"]
+    Approved --> Gate["Browser output gate"]
+    Gate --> Speech["Speech model<br/>voice delivery only"]
+    Speech --> Hear["Players hear the result"]
+```
 
-1. JavaScript executes or observes a verified application transition.
-2. The application sends Terra a structured event containing the before/after
-   facts needed for narration.
-3. Terra writes the dealer line without repeating the action through a tool.
-4. GPT-Live speaks that line.
+This advances G5 because every mutation source converges on the same event
+path. A button press cannot bypass narration merely because there was no
+transcript. The UI need not wait for narration to render the committed state;
+audio follows asynchronously from immutable event facts.
 
-The opening game announcement follows this path. JavaScript supplies the table
-configuration and immediate deal instruction; Terra turns those facts into a
-natural introduction.
+Events should have stable IDs so retries cannot narrate one transition twice.
+Narration failure must never roll back a committed poker action. The system may
+retry or surface an audio error, but the state remains authoritative.
+
+The opening announcement is a game-start event containing facts such as game
+type, ante or blinds, players, dealer position, and first required action. The
+reasoning model turns those facts into a natural introduction; it does not
+invent the setup.
+
+## Concurrency and event contracts
+
+### State revision contract
+
+To satisfy G4, every state-changing entry point must obey the same rules:
+
+1. Each committed game state has a monotonically increasing revision.
+2. A snapshot given to the reasoning model includes that revision.
+3. A mutation proposal returns it as `basedOnRevision`.
+4. JavaScript compares it with the current revision immediately before
+   execution.
+5. Comparison, validation, mutation, and revision increment occur as one
+   indivisible application operation.
+6. A mismatch produces `STALE_GAME_STATE`, changes nothing, and returns fresh
+   legal state for a new decision.
+
+Queuing reasoning-model turns remains useful: it prevents two AI continuations
+from racing each other. It is not a substitute for revisions because buttons
+and automatic transitions can modify state outside that queue.
+
+### State-change event contract
+
+A successful mutation emits one immutable event with, at minimum:
+
+```text
+eventId
+source: voice | ui | automatic | game-start
+revisionBefore
+revisionAfter
+actionFacts
+stateSummaryAfter
+```
+
+Narration consumes this event. It does not reconstruct facts from the user's
+words, DOM state, or model memory. This makes narration input-independent and
+auditable.
 
 ## Intended guarantees
 
-### Hard application guarantees
+### Deterministic guarantees
 
-- **Single source of truth:** Only JavaScript owns and changes game state.
-- **Legal transitions:** Every requested move is checked by the state machine.
-- **No model-authored state:** Models may request actions but cannot submit the
-  resulting state.
-- **Postcondition-grounded narration:** A mutating action is narrated only
-  after JavaScript returns its result.
-- **Serialized mutation:** Delegated turns are queued, preventing concurrent
-  model responses from racing state transitions.
-- **Credential isolation:** The OpenAI API key remains on the server.
-- **Speech allowlisting:** Browser playback is normally closed and opens only
-  for application-approved commentary.
+When all state-changing entry points implement the contracts above:
 
-### Prompt- and model-level guarantees
+- only JavaScript owns and changes poker state;
+- every move is checked by the state machine;
+- a model cannot author replacement state;
+- an AI action cannot apply after its source snapshot becomes stale;
+- successful transitions emit exactly one narratable event;
+- mutation narration is based on postcondition facts, not predictions;
+- the API key remains on the server; and
+- browser playback opens only for application-approved commentary.
 
-These are design constraints enforced by prompts, schemas, and validation, but
-they remain probabilistic model behavior:
+### Probabilistic behaviors
 
-- GPT-Live should remain silent while the backend is working.
-- GPT-Live should preserve Terra's factual content rather than adding claims.
-- Terra should distinguish declarations from coaching, quotations, questions,
-  and table chatter.
-- Terra should ask for clarification when actor, commitment, action, or amount
-  remains genuinely ambiguous.
-- Terra should vary style without changing verified names, actions, amounts, or
-  outcomes.
+Prompts, schemas, validation, and evaluation can improve these behaviors but
+cannot make them mathematical guarantees:
 
-Structured response validation and the output gate reduce the consequences of
-violations, but they do not make semantic interpretation infallible.
+- the speech model transcribes noisy speech accurately;
+- the reasoning model distinguishes declarations from coaching, quotations,
+  questions, and table chatter;
+- the reasoning model asks for clarification only when ambiguity is material;
+- the reasoning model varies dealer style without changing names, actions,
+  amounts, or outcomes; and
+- the speech model preserves approved content while varying vocal delivery.
+
+The architecture is designed so an occasional model mistake becomes a rejected
+proposal or awkward sentence, not corrupted game state.
 
 ## Explicit non-guarantees
 
-- The system does not identify physical speakers. GPT-Live supplies transcript
-  content, not verified player identity.
-- Transcription can be wrong or incomplete.
-- Textual context can support an actor inference, but it cannot prove who spoke.
-- Natural-language intent classification can produce false positives or false
-  negatives and must be evaluated with real table conversations.
+- The system does not identify physical speakers. Textual and table context can
+  support an actor inference, but cannot prove who spoke.
+- Transcription and semantic interpretation can produce false positives or
+  false negatives and need evaluation with real table conversations.
 - The architecture does not guarantee zero latency. A state-changing voice turn
-  includes turn detection, transcript collection, a Terra tool-selection
-  response, JavaScript execution, a Terra narration continuation, and GPT-Live
-  speech startup.
-- The browser output gate controls what is audible locally; a model event alone
-  does not prove that the user's speakers played every buffered audio frame.
+  includes turn detection, transcription, reasoning-model tool selection,
+  revision validation, state execution, narration, and speech startup.
+- The output gate controls what is audible locally; a model event alone does
+  not prove that every buffered audio frame reached the speakers.
 
 ## Failure behavior
 
-- If Terra requests an illegal action, JavaScript rejects it without changing
-  state and Terra explains the useful valid options.
-- If Terra or the server fails, the state is unchanged and the UI reports the
-  error; GPT-Live receives no invented success narration.
-- If an utterance is unrelated, Terra returns structured silence.
-- If unexpected GPT-Live output occurs without approved commentary, the output
-  gate remains closed.
-- If the browser reconnects, current JavaScript state is resupplied rather than
-  reconstructed from model memory.
+- An illegal proposal is rejected without changing state; the reasoning model
+  may explain the currently valid options.
+- A stale proposal is rejected without changing state and reconsidered only
+  from a fresh snapshot.
+- If the reasoning model or server fails, the game remains usable through the
+  UI.
+- If narration fails after a committed mutation, state stays committed and the
+  event can be retried or marked failed.
+- If an utterance is unrelated, the reasoning model returns structured silence.
+- If unexpected speech-model output occurs, the output gate remains closed.
+- After reconnection, models receive current JavaScript state rather than
+  reconstructing it from conversation memory.
 
 ## Design tradeoffs
 
-The principal tradeoff is latency versus authority. Allowing a model to both
-infer and announce a transition before JavaScript validates it would be faster,
-but could speak an action that never legally happened. RoboDeal chooses the
-slower verified sequence.
+The principal tradeoff is latency versus authority. Letting a model announce
+and apply its prediction immediately would feel faster, but could speak or
+execute an action that never legally happened. RoboDeal chooses the verified
+sequence and exposes processing state in the UI while the models work.
 
-Client delegation also gives the browser explicit control over state snapshots,
-tool execution, result validation, and audible output. A future move to hosted
-Responses delegation may reduce connection and request overhead, but it must
-preserve the same state-machine authority, post-result narration, turn
-serialization, and output-gating invariants.
+The second tradeoff is architectural ceremony. Revisions, structured events,
+tool results, queues, and output gates add code. They are justified because
+they turn fuzzy model behavior into bounded proposals and make independent UI,
+voice, and automatic control paths converge on one authoritative system.
+
+## Lessons to reuse in future AI systems
+
+When designing another AI-assisted application, ask:
+
+1. **What must never be guessed?** Put it in deterministic code with explicit
+   invariants.
+2. **What requires open-ended judgment?** Give that narrow task to the strongest
+   appropriate reasoning model.
+3. **Does the medium need a specialist?** Speech, vision, and other realtime
+   inputs may deserve their own perception/presentation layer.
+4. **Can the world change while a model thinks?** Carry a revision or
+   precondition and reject stale proposals at the authority boundary.
+5. **What should trigger output?** For facts about completed work, react to
+   authoritative state-change events, not merely to the input that requested
+   them.
+6. **What happens when a model is wrong or unavailable?** The core application
+   should stay valid and, where possible, remain usable.
+
+This pattern is broadly useful: let models perceive, interpret, and communicate;
+let deterministic software authorize and commit.
+
+## Current implementation note
+
+The source already separates the speech model, reasoning model, JavaScript
+state authority, and server transport; it serializes reasoning turns and gates
+audio output.
+
+The monotonic `stateRevision` / `basedOnRevision` check and a unified durable
+`StateChangeEvent` path are requirements of this design, but are not fully
+implemented in the current source. Until they are, turn serialization reduces
+races but does not provide the full stale-state guarantee described by G4.
 
 ## Source map
 
-- `Prompts.json`: GPT-Live and Terra role instructions, tool descriptions, and
-  Terra's structured response schema.
-- `voice-agent.js`: GPT-Live WebRTC transport, transcripts, delegation, and
-  output gate.
-- `dealer-agent.js`: serialized Terra tool loop.
+- `Prompts.json`: speech- and reasoning-model role instructions, tool
+  descriptions, and structured response schema.
+- `voice-agent.js`: speech-model WebRTC transport, transcripts, delegation,
+  and output gate.
+- `dealer-agent.js`: serialized reasoning-model tool loop.
 - `app.js`: state snapshots, voice tools, UI events, and tool execution.
 - `game-state.js`: authoritative poker transition engine.
 - `openai-api.js`: OpenAI request construction and response normalization.
-- `api/live-session.js`: server route for GPT-Live session creation.
-- `api/dealer-turn.js`: server route for Terra turns.
+- `api/live-session.js`: server route for speech-model session creation.
+- `api/dealer-turn.js`: server route for reasoning-model turns.
 
 ## Reference
 
