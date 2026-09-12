@@ -794,10 +794,14 @@ async function connectVoiceAgent() {
 
   voiceAgent?.disconnect();
   voiceAgent = new VoiceAgent({
-    onDelegation: ({ transcript, recentConversation }) => getDealerAgent().run({
+    onSpeculativeDelegation: ({ transcript, recentConversation }) => getDealerAgent().prepare({
       type: 'voice_utterance',
       transcript,
     }, recentConversation),
+    onDelegation: ({ transcript, recentConversation, preparedTurn }) => getDealerAgent().run({
+      type: 'voice_utterance',
+      transcript,
+    }, recentConversation, preparedTurn),
     onTranscript: setVoiceTranscript,
     onLatency: recordVoiceLatency,
     onStatus: (status) => {

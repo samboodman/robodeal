@@ -51,6 +51,7 @@ test('releases optimistic narration only after JavaScript accepts the action', a
       return jsonResponse({
         type: 'tool_calls',
         responseId: 'resp_1',
+        serviceTier: 'priority',
         calls: [{
           callId: 'call_1',
           name: 'fold',
@@ -68,10 +69,53 @@ test('releases optimistic narration only after JavaScript accepts the action', a
   assert.equal(timings.length, 1);
   assert.equal(result.timing, timings[0]);
   assert.equal(result.timing.optimisticNarration, true);
+  assert.equal(result.timing.serviceTier, 'priority');
   assert.ok(result.timing.initialTerraMs >= 0);
   assert.ok(result.timing.javascriptMs >= 0);
   assert.equal(result.timing.postToolTerraMs, 0);
   assert.ok(result.timing.totalBackendMs >= 0);
+});
+
+test('prepares Terra work early but waits for the final delegation before executing it', async () => {
+  let releaseTerra;
+  const terraResponse = new Promise((resolve) => { releaseTerra = resolve; });
+  let requestCount = 0;
+  let toolExecutions = 0;
+  const agent = new DealerAgent({
+    getGameState: () => ({ currentPlayer: { name: 'Sam' }, amountToCall: 0 }),
+    tools: [{ type: 'function', name: 'check' }],
+    executeTool: async () => {
+      toolExecutions += 1;
+      return { ok: true, action: { type: 'check', actor: { name: 'Sam' } } };
+    },
+    fetchImplementation: async () => {
+      requestCount += 1;
+      await terraResponse;
+      return jsonResponse({
+        type: 'tool_calls',
+        responseId: 'resp_prepared',
+        calls: [{
+          callId: 'call_prepared',
+          name: 'check',
+          arguments: '{"narration":"Sam checks."}',
+        }],
+      });
+    },
+  });
+  const sourceEvent = { type: 'voice_utterance', transcript: "I'll check" };
+  const conversation = [{ role: 'user', text: "I'll check" }];
+
+  const preparedTurn = agent.prepare(sourceEvent, conversation);
+  assert.equal(requestCount, 1);
+  assert.equal(toolExecutions, 0);
+  releaseTerra();
+  const result = await agent.run(sourceEvent, conversation, preparedTurn);
+
+  assert.equal(requestCount, 1);
+  assert.equal(toolExecutions, 1);
+  assert.equal(result.utterance, 'Sam checks.');
+  assert.ok(result.timing.speculativeTerraLeadMs >= 0);
+  assert.ok(result.timing.initialTerraWaitMs >= 0);
 });
 
 test('uses a second reasoning pass when JavaScript rejects the action', async () => {

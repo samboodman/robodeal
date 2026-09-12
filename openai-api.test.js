@@ -44,6 +44,7 @@ test('builds a Terra Responses request with tools and strict dealer output', () 
   });
 
   assert.equal(request.model, 'gpt-5.6-terra');
+  assert.equal(request.service_tier, 'priority');
   assert.equal(request.reasoning.effort, 'none');
   assert.equal(request.parallel_tool_calls, false);
   assert.equal(request.max_output_tokens, 800);
@@ -84,10 +85,12 @@ test('parses Terra tool calls and final structured dealer speech', () => {
   assert.deepEqual(parseDealerResponse({
     id: 'resp_tools',
     status: 'completed',
+    service_tier: 'priority',
     output: [{ type: 'function_call', call_id: 'call_1', name: 'fold', arguments: '{}' }],
   }), {
     type: 'tool_calls',
     responseId: 'resp_tools',
+    serviceTier: 'priority',
     calls: [{ callId: 'call_1', name: 'fold', arguments: '{}' }],
   });
 
@@ -101,6 +104,7 @@ test('parses Terra tool calls and final structured dealer speech', () => {
   }), {
     type: 'result',
     responseId: 'resp_done',
+    serviceTier: null,
     result: { speak: true, kind: 'action_result', utterance: 'Sam lets it go.' },
   });
 });

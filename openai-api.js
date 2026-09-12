@@ -66,6 +66,7 @@ export function buildDealerResponseRequest({ envelope, previousResponseId = null
 
   return {
     model: 'gpt-5.6-terra',
+    service_tier: 'priority',
     instructions: prompts.terraInstructions,
     input,
     ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
@@ -109,9 +110,10 @@ export function parseDealerResponse(response) {
       name: item.name,
       arguments: item.arguments || '{}',
     }));
+  const serviceTier = response.service_tier || null;
 
   if (calls.length > 0) {
-    return { type: 'tool_calls', responseId: response.id, calls };
+    return { type: 'tool_calls', responseId: response.id, serviceTier, calls };
   }
 
   const text = responseText(response);
@@ -126,7 +128,7 @@ export function parseDealerResponse(response) {
     throw new Error('Terra returned an incomplete dealer response.');
   }
   if (!result.speak) result.utterance = '';
-  return { type: 'result', responseId: response.id, result };
+  return { type: 'result', responseId: response.id, serviceTier, result };
 }
 
 export async function callOpenAI(apiKey, path, body, fetchImplementation = fetch) {

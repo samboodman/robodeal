@@ -28,10 +28,12 @@ function eventId(prefix) {
 export class VoiceAgent {
   constructor({
     onDelegation = async () => ({ speak: false, kind: 'ignored', utterance: '' }),
+    onSpeculativeDelegation = null,
     onTranscript = () => {},
     onStatus = () => {},
     onLatency = () => {},
     delegationDelayMs = 60,
+    speculationDelayMs = 250,
     outputSilenceThreshold = 0.008,
     outputSilenceMs = 180,
     outputDrainMinMs = 350,
@@ -40,10 +42,12 @@ export class VoiceAgent {
     outputDrainPollMs = 30,
   } = {}) {
     this.onDelegation = onDelegation;
+    this.onSpeculativeDelegation = onSpeculativeDelegation;
     this.onTranscript = onTranscript;
     this.onStatus = onStatus;
     this.onLatency = onLatency;
     this.delegationDelayMs = delegationDelayMs;
+    this.speculationDelayMs = speculationDelayMs;
     this.outputSilenceThreshold = outputSilenceThreshold;
     this.outputSilenceMs = outputSilenceMs;
     this.outputDrainMinMs = outputDrainMinMs;
@@ -69,6 +73,8 @@ export class VoiceAgent {
     this.conversation = [];
     this.pendingDelegations = [];
     this.delegationTimer = null;
+    this.speculationTimer = null;
+    this.speculativeTurn = null;
     this.outputTranscriptTimer = null;
     this.outputDrainTimer = null;
     this.outputDrainStartedAt = null;
@@ -257,6 +263,7 @@ export class VoiceAgent {
     this.connection?.close();
     this.audio?.remove();
     clearTimeout(this.delegationTimer);
+    clearTimeout(this.speculationTimer);
     clearTimeout(this.outputTranscriptTimer);
     clearTimeout(this.outputDrainTimer);
     this.channel = null;
@@ -279,6 +286,8 @@ export class VoiceAgent {
     this.conversation = [];
     this.pendingDelegations = [];
     this.delegationTimer = null;
+    this.speculationTimer = null;
+    this.speculativeTurn = null;
     this.outputTranscriptTimer = null;
     this.outputDrainTimer = null;
     this.outputDrainStartedAt = null;
@@ -328,6 +337,20 @@ export class VoiceAgent {
     if (this.audio) this.audio.muted = !open;
   }
 
+  silenceOutputForUserSpeech() {
+    this.pendingSpeechCount = 0;
+    this.pendingSpeechTelemetry = [];
+    this.outputCompletionsAwaitingDrain = 0;
+    this.outputDrainStartedAt = null;
+    this.outputSilenceStartedAt = null;
+    this.outputTranscript = '';
+    clearTimeout(this.outputTranscriptTimer);
+    this.outputTranscriptTimer = null;
+    clearTimeout(this.outputDrainTimer);
+    this.outputDrainTimer = null;
+    this.setOutputGate(false);
+  }
+
   outputIsSilent() {
     if (!this.outputAnalyser || !this.outputAnalyserSamples) return null;
     this.outputAnalyser.getFloatTimeDomainData(this.outputAnalyserSamples);
@@ -339,8 +362,28 @@ export class VoiceAgent {
     this.delegationTimer = setTimeout(() => this.flushDelegation(), this.delegationDelayMs);
   }
 
+  scheduleSpeculation() {
+    if (!this.onSpeculativeDelegation) return;
+    clearTimeout(this.speculationTimer);
+    this.speculationTimer = setTimeout(() => {
+      this.speculationTimer = null;
+      const transcript = this.inputTranscript.trim();
+      if (!transcript) return;
+      const recentConversation = [
+        ...this.conversation,
+        { role: 'user', text: transcript },
+      ].slice(-12);
+      this.speculativeTurn = {
+        transcript,
+        preparedTurn: this.onSpeculativeDelegation({ transcript, recentConversation }),
+      };
+    }, this.speculationDelayMs);
+  }
+
   async flushDelegation() {
     this.delegationTimer = null;
+    clearTimeout(this.speculationTimer);
+    this.speculationTimer = null;
     const delegation = this.pendingDelegations.shift();
     if (!delegation) return;
     const transcript = this.inputTranscript.trim();
@@ -350,6 +393,10 @@ export class VoiceAgent {
       this.conversation = this.conversation.slice(-12);
       this.onTranscript(`Heard: “${transcript}”`);
     }
+    const preparedTurn = this.speculativeTurn?.transcript === transcript
+      ? this.speculativeTurn.preparedTurn
+      : null;
+    this.speculativeTurn = null;
     this.onStatus('Processing…');
     const backendStartedAt = Date.now();
     try {
@@ -358,6 +405,7 @@ export class VoiceAgent {
         transcript,
         recentConversation: this.conversation.slice(-12),
         offsetMs: delegation.offsetMs,
+        preparedTurn,
       });
       result.timing = {
         ...(result.timing || {}),
@@ -452,6 +500,10 @@ export class VoiceAgent {
       return;
     }
     if (event.type === 'session.input_transcript.delta') {
+      // Any new foreground speech revokes the previous output authorization.
+      // This both handles interruption and prevents GPT-Live backchannels from
+      // leaking through while the authoritative dealer is still working.
+      this.silenceOutputForUserSpeech();
       if (
         Number.isFinite(event.start_ms)
         && Number.isFinite(this.lastInputEndMs)
@@ -460,6 +512,7 @@ export class VoiceAgent {
         this.inputTranscript = '';
       }
       this.inputTranscript = `${this.inputTranscript}${event.delta || ''}`.slice(-4_000);
+      this.scheduleSpeculation();
       if (Number.isFinite(event.end_ms)) {
         this.lastInputEndMs = event.end_ms;
         if (this.pendingDelegations.length > 0) {

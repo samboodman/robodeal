@@ -18,11 +18,40 @@ export class DealerAgent {
     this.queue = Promise.resolve();
   }
 
-  run(sourceEvent, recentConversation = []) {
+  run(sourceEvent, recentConversation = [], preparedTurn = null) {
     const queuedAt = Date.now();
-    const turn = this.queue.then(() => this.runTurn(sourceEvent, recentConversation, queuedAt));
+    const turn = this.queue.then(() => this.runTurn(
+      sourceEvent,
+      recentConversation,
+      queuedAt,
+      preparedTurn,
+    ));
     this.queue = turn.catch(() => {});
     return turn;
+  }
+
+  prepare(sourceEvent, recentConversation = []) {
+    const stateSentToDealer = this.getGameState();
+    const preparedAt = Date.now();
+    const request = this.request({
+      envelope: {
+        sourceEvent,
+        gameState: stateSentToDealer,
+        recentConversation: recentConversation.slice(-12),
+      },
+      tools: this.tools,
+    }).then(
+      (response) => ({ response, initialTerraMs: Date.now() - preparedAt }),
+      (error) => ({ error, initialTerraMs: Date.now() - preparedAt }),
+    );
+    return {
+      sourceEvent: JSON.stringify(sourceEvent),
+      recentConversation: JSON.stringify(recentConversation.slice(-12)),
+      stateSentToDealer,
+      stateFingerprint: JSON.stringify(stateSentToDealer),
+      preparedAt,
+      request,
+    };
   }
 
   async request(body) {
@@ -42,7 +71,7 @@ export class DealerAgent {
     return data;
   }
 
-  async runTurn(sourceEvent, recentConversation, queuedAt = Date.now()) {
+  async runTurn(sourceEvent, recentConversation, queuedAt = Date.now(), preparedTurn = null) {
     const startedAt = Date.now();
     const timing = {
       queueMs: startedAt - queuedAt,
@@ -52,17 +81,47 @@ export class DealerAgent {
     };
     this.onStatus('Processing…');
     const initialRequestAt = Date.now();
-    const stateSentToDealer = this.getGameState();
-    const stateFingerprint = JSON.stringify(stateSentToDealer);
-    let response = await this.request({
-      envelope: {
-        sourceEvent,
-        gameState: stateSentToDealer,
-        recentConversation: recentConversation.slice(-12),
-      },
-      tools: this.tools,
-    });
-    timing.initialTerraMs = Date.now() - initialRequestAt;
+    const sourceEventKey = JSON.stringify(sourceEvent);
+    const recentConversationKey = JSON.stringify(recentConversation.slice(-12));
+    const preparedMatches = preparedTurn
+      && preparedTurn.sourceEvent === sourceEventKey
+      && preparedTurn.recentConversation === recentConversationKey;
+    let stateSentToDealer;
+    let stateFingerprint;
+    let response;
+
+    if (preparedMatches) {
+      stateSentToDealer = preparedTurn.stateSentToDealer;
+      stateFingerprint = preparedTurn.stateFingerprint;
+      timing.speculativeTerraLeadMs = Math.max(0, startedAt - preparedTurn.preparedAt);
+      if (JSON.stringify(this.getGameState()) !== stateFingerprint) {
+        timing.initialTerraMs = 0;
+        timing.initialTerraWaitMs = 0;
+        timing.totalBackendMs = Date.now() - startedAt;
+        timing.staleStateIgnored = true;
+        this.onTiming(timing);
+        return { speak: false, kind: 'ignored', utterance: '', timing };
+      }
+      const preparedResult = await preparedTurn.request;
+      timing.initialTerraMs = preparedResult.initialTerraMs;
+      timing.initialTerraWaitMs = Date.now() - initialRequestAt;
+      if (preparedResult.error) throw preparedResult.error;
+      response = preparedResult.response;
+    } else {
+      stateSentToDealer = this.getGameState();
+      stateFingerprint = JSON.stringify(stateSentToDealer);
+      response = await this.request({
+        envelope: {
+          sourceEvent,
+          gameState: stateSentToDealer,
+          recentConversation: recentConversation.slice(-12),
+        },
+        tools: this.tools,
+      });
+      timing.initialTerraMs = Date.now() - initialRequestAt;
+      timing.initialTerraWaitMs = timing.initialTerraMs;
+    }
+    timing.serviceTier = response.serviceTier || null;
 
     for (let round = 0; response.type === 'tool_calls' && round < this.maxToolRounds; round += 1) {
       this.onStatus('Applying action…');
@@ -151,6 +210,7 @@ export class DealerAgent {
         // turn the verified JavaScript result into dealer speech.
         tools: [],
       });
+      timing.serviceTier = response.serviceTier || timing.serviceTier;
       timing.postToolTerraMs += Date.now() - continuationStartedAt;
     }
 

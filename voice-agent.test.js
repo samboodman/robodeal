@@ -58,6 +58,45 @@ test('collects native GPT-Live transcript deltas and sends client delegation to 
   });
 });
 
+test('starts speculative reasoning from stable transcript text without executing the turn', async () => {
+  const preparedTurn = { id: 'prepared_1' };
+  const speculativeCalls = [];
+  const delegations = [];
+  const { agent } = testAgent({
+    speculationDelayMs: 0,
+    onSpeculativeDelegation: (input) => {
+      speculativeCalls.push(input);
+      return preparedTurn;
+    },
+    onDelegation: async (delegation) => {
+      delegations.push(delegation);
+      return { speak: false, kind: 'ignored', utterance: '' };
+    },
+  });
+
+  await agent.handleEvent({
+    type: 'session.input_transcript.delta',
+    delta: "I'll check",
+    start_ms: 1_000,
+    end_ms: 1_400,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+
+  assert.equal(speculativeCalls.length, 1);
+  assert.equal(delegations.length, 0);
+  assert.equal(speculativeCalls[0].transcript, "I'll check");
+
+  await agent.handleEvent({
+    type: 'session.delegation.created',
+    offset_ms: 2_000,
+    delegation: { id: 'item_prepared', target: 'client' },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+
+  assert.equal(delegations.length, 1);
+  assert.equal(delegations[0].preparedTurn, preparedTurn);
+});
+
 test('a silent Terra result resolves the delegation without spoken commentary', async () => {
   const { agent, sent } = testAgent({
     onDelegation: async () => ({ speak: false, kind: 'ignored', utterance: '' }),
@@ -132,6 +171,29 @@ test('mutes any Live speech that was not opened by Terra-approved commentary', a
   assert.equal(agent.audio.muted, true);
   assert.equal(agent.outputTranscript, '');
   assert.deepEqual(agent.conversation, []);
+});
+
+test('incoming user speech immediately closes a previously open output gate', async () => {
+  const { agent } = testAgent();
+  agent.audio = { muted: false };
+  agent.pendingSpeechCount = 1;
+  agent.pendingSpeechTelemetry = [{ speechStarted: true }];
+  agent.outputCompletionsAwaitingDrain = 1;
+  agent.outputTranscript = 'Mm-hmm.';
+
+  await agent.handleEvent({
+    type: 'session.input_transcript.delta',
+    delta: "I'll check",
+    start_ms: 1_000,
+    end_ms: 1_400,
+  });
+
+  assert.equal(agent.audio.muted, true);
+  assert.equal(agent.pendingSpeechCount, 0);
+  assert.deepEqual(agent.pendingSpeechTelemetry, []);
+  assert.equal(agent.outputCompletionsAwaitingDrain, 0);
+  assert.equal(agent.outputTranscript, '');
+  assert.equal(agent.inputTranscript, "I'll check");
 });
 
 test('output transcript deltas are retained as conversation history', async () => {
