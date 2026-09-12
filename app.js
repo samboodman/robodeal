@@ -9,7 +9,8 @@ import {
   getBettingBounds,
   Transition,
 } from './game-state.js';
-import { fillPrompt, VoiceAgent } from './voice-agent.js';
+import { DealerAgent } from './dealer-agent.js';
+import { VoiceAgent } from './voice-agent.js';
 import { restoredPlayerName } from './game-settings.js';
 import { clockwisePlayerIds, normalizeSeatAngle, snapSeatAngle } from './seat-order.js';
 import promptsText from './Prompts.json?raw';
@@ -102,6 +103,7 @@ let screenWakeLock = null;
 let voiceAgent = null;
 let voicePreviewAgent = null;
 let voiceConnectionPromise = null;
+let dealerAgent = null;
 let startMicrophoneAfterSpeech = false;
 let pendingVoiceAction = null;
 let raiseMode = false;
@@ -227,9 +229,24 @@ function isLegalPendingBet(player, amount) {
   );
 }
 
-function invokeGame(action) {
+function invokeGame(action, { narrate = false, origin = 'ui' } = {}) {
   if (!gameState) throw new Error('The game state has not been initialized.');
+  const stateBefore = narrate ? getVoiceSnapshot() : null;
   gameState = executeTransition(gameState, action);
+  if (narrate && voiceAgent?.connected) {
+    const stateAfter = getVoiceSnapshot();
+    queueMicrotask(() => {
+      requestDealerNarration({
+        type: 'state_transition',
+        origin,
+        action,
+        stateBefore,
+        stateAfter,
+      }).catch((error) => {
+        setVoiceStatus(`AI error: ${error.message}`);
+      });
+    });
+  }
   return gameState;
 }
 
@@ -481,7 +498,7 @@ function setVoiceTranscript(text) {
 function setVoiceStatus(text) {
   const normalizedText = String(text || '').toLowerCase();
   let state = 'connected';
-  if (normalizedText.includes('thinking')) state = 'thinking';
+  if (normalizedText.includes('thinking') || normalizedText.includes('processing')) state = 'thinking';
   else if (normalizedText.includes('applying') || normalizedText.includes('action')) state = 'acting';
   else if (normalizedText.includes('speaking')) state = 'speaking';
   else if (normalizedText.includes('listening')) state = 'listening';
@@ -505,6 +522,26 @@ function getVoiceSnapshot() {
   const maximumBet = bettingBoundsForView(player).maxAdditionalChips;
   const undoFromShowdown = !winnerPicker.hidden;
   return {
+    game: {
+      variant: "Texas Hold'em",
+      startingStack: gameSettings?.startingMoney ?? null,
+      ante: {
+        enabled: Boolean(gameSettings?.useAnte),
+        amount: gameSettings?.useAnte ? gameSettings.ante : 0,
+      },
+      smallBlind: gameState?.smallBlind ?? gameSettings?.smallBlind ?? null,
+      bigBlind: {
+        enabled: Boolean(gameState?.useBigBlind ?? gameSettings?.useBigBlind),
+        amount: (gameState?.useBigBlind ?? gameSettings?.useBigBlind)
+          ? (gameState?.smallBlind ?? gameSettings?.smallBlind ?? 0) * 2
+          : 0,
+      },
+      smallBlindIncrease: gameState?.smallBlindIncrease ?? gameSettings?.smallBlindIncrease ?? 0,
+      handNumber: gameState?.handNumber ?? 0,
+      dealer: viewPlayer(gameState?.dealerId) || null,
+      smallBlindPlayer: viewPlayer(gameState?.smallBlindPlayerId) || null,
+      bigBlindPlayer: viewPlayer(gameState?.bigBlindPlayerId) || null,
+    },
     phase: gameState?.phase || (gameScreen.hidden ? 'setup' : !dealPrompt.hidden ? 'waiting for cards' : !winnerPicker.hidden ? 'choosing winner' : 'betting'),
     round: ['preflop', 'flop', 'turn', 'river'][viewRoundNumber() - 1] || 'between hands',
     bettingLimit: gameState?.bettingLimit || gameSettings?.bettingLimit || BettingLimit.NO_LIMIT,
@@ -542,18 +579,7 @@ function getVoiceSnapshot() {
   };
 }
 
-function getVoiceInstructions() {
-  const voice = gameSettings?.voice || selectedVoiceSettings();
-  const instructions = fillPrompt(prompts.mainVoiceInstructions, {
-    GAME_STATE: JSON.stringify(getVoiceSnapshot()),
-    ACCENT: voice.accent,
-    PACE: voice.pace,
-  });
-  return instructions;
-}
-
 const voiceTools = [
-  { type: 'function', name: 'ignoreSpeech', description: prompts.toolDescriptions.ignoreSpeech, parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'check', description: prompts.toolDescriptions.check, parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'call', description: prompts.toolDescriptions.call, parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'bet', description: prompts.toolDescriptions.bet, parameters: { type: 'object', properties: { total: { type: 'number', description: prompts.toolDescriptions.betTotal } }, required: ['total'], additionalProperties: false } },
@@ -563,77 +589,75 @@ const voiceTools = [
   { type: 'function', name: 'confirmAction', description: prompts.toolDescriptions.confirmAction, parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'cancelAction', description: prompts.toolDescriptions.cancelAction, parameters: { type: 'object', properties: {}, additionalProperties: false } },
   { type: 'function', name: 'cardsDealt', description: prompts.toolDescriptions.cardsDealt, parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'undo', description: 'Restore the most recently confirmed poker turn when the player asks to undo it.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { type: 'function', name: 'undo', description: prompts.toolDescriptions.undo, parameters: { type: 'object', properties: {}, additionalProperties: false } },
 ];
 
 function executeVoiceTool(name, args) {
-  if (name === 'ignoreSpeech') return { ok: true, silent: true };
+  const finish = (result) => ({ ...result, stateAfter: getVoiceSnapshot() });
+  const actor = (player) => ({ id: player.id, name: player.name });
 
   if (name === 'undo') {
     const fromShowdown = !winnerPicker.hidden;
     if (gameScreen.hidden || !dealPrompt.hidden || !gameWinnerScreen.hidden || viewIsGameWon() || !canUndoLastTurn(fromShowdown)) {
-      return { ok: false, message: 'There is no turn available to undo.' };
+      return finish({ ok: false, errorCode: 'NOTHING_TO_UNDO' });
     }
-    const restoredPlayerName = lastTurnState.players
-      .find((player) => player.id === lastTurnState.actionPlayerId)?.name;
-    undoLastTurn(fromShowdown);
-    return {
+    const restoredPlayer = lastTurnState.players
+      .find((player) => player.id === lastTurnState.actionPlayerId) || null;
+    undoLastTurn(fromShowdown, false);
+    return finish({
       ok: true,
-      message: restoredPlayerName
-        ? `The last turn was undone. It is ${restoredPlayerName}'s turn again.`
-        : 'The last turn was undone.',
-    };
+      action: { type: 'undo', restoredActionPlayer: restoredPlayer ? actor(restoredPlayer) : null },
+    });
   }
 
   if (name === 'cardsDealt') {
-    if (!cardsAreDealt()) return { ok: false, message: 'The game is not waiting for cards.' };
-    return { ok: true, message: 'Cards confirmed.' };
+    const phaseBefore = gameState?.phase || null;
+    if (!cardsAreDealt(false)) return finish({ ok: false, errorCode: 'NOT_WAITING_FOR_CARDS' });
+    return finish({ ok: true, action: { type: 'cards_dealt', phaseBefore, phaseAfter: gameState.phase } });
   }
 
   const currentPlayerNumber = viewActionPlayerNumber();
   const player = viewPlayer(currentPlayerNumber);
-  if (!player) return { ok: false, message: 'There is no active player.' };
+  if (!player) return finish({ ok: false, errorCode: 'NO_CURRENT_PLAYER' });
 
   if (name === 'cancelAction') {
-    if (!pendingFold && !pendingVoiceAction) return { ok: false, message: 'There is no action waiting for confirmation.' };
-    const cancelledFold = pendingFold;
+    if (!pendingVoiceAction) return finish({ ok: false, errorCode: 'NO_PENDING_CONFIRMATION' });
+    const cancelledAction = structuredClone(pendingVoiceAction);
     pendingFold = false;
     pendingVoiceAction = null;
     updateBetControls();
-    return { ok: true, message: cancelledFold ? 'The pending fold was cancelled.' : 'The pending action was cancelled.' };
+    return finish({ ok: true, action: { type: 'cancel_confirmation', cancelledAction } });
   }
 
   if (name === 'confirmAction') {
-    if (!pendingFold && !pendingVoiceAction) return { ok: false, message: 'There is no action waiting for confirmation.' };
+    if (!pendingVoiceAction) return finish({ ok: false, errorCode: 'NO_PENDING_CONFIRMATION' });
     if (gameScreen.hidden || !dealPrompt.hidden || !winnerPicker.hidden || !gameWinnerScreen.hidden) {
       pendingFold = false;
       pendingVoiceAction = null;
-      return { ok: false, message: 'That confirmation is no longer available.' };
+      return finish({ ok: false, errorCode: 'CONFIRMATION_EXPIRED' });
     }
     if (pendingVoiceAction && pendingVoiceAction.playerNumber !== currentPlayerNumber) {
       pendingFold = false;
       pendingVoiceAction = null;
-      return { ok: false, message: 'That confirmation is no longer available.' };
+      return finish({ ok: false, errorCode: 'CONFIRMATION_EXPIRED' });
     }
 
     const pendingAction = pendingVoiceAction;
-    const action = pendingFold ? 'fold' : pendingAction.type;
     pendingVoiceAction = null;
-    if (action === 'fold') {
-      confirm();
-      return { ok: true, message: `${player.name} folds.` };
-    }
-    if (action === 'all-in') {
+    if (pendingAction.type === 'all-in') {
       const amount = pendingAction.amount ?? player.chips;
       betCurrentPlayer(amount);
-      confirm();
-      return { ok: true, message: `${player.name} is all in for ${amount}.` };
+      confirm(false);
+      return finish({
+        ok: true,
+        action: { type: 'all_in', actor: actor(player), chipsMoved: amount },
+      });
     }
-    return { ok: false, message: 'Unknown pending action.' };
+    return finish({ ok: false, errorCode: 'UNKNOWN_PENDING_ACTION' });
   }
 
   if (gameScreen.hidden || !dealPrompt.hidden || !winnerPicker.hidden || !gameWinnerScreen.hidden) {
-    return { ok: false, message: 'A betting action is not available right now.' };
+    return finish({ ok: false, errorCode: 'BETTING_ACTION_UNAVAILABLE' });
   }
 
   const amountToCall = amountToCallForView(player);
@@ -643,59 +667,143 @@ function executeVoiceTool(name, args) {
   if (name === 'fold') {
     pendingVoiceAction = null;
     foldCurrentPlayer();
-    confirm();
-    return { ok: true, message: `${player.name} folds.` };
+    confirm(false);
+    return finish({ ok: true, action: { type: 'fold', actor: actor(player) } });
   }
   if (name === 'check') {
-    if (amountToCall > 0) return { ok: false, message: `${player.name} must call ${amountToCall} or fold.` };
+    if (amountToCall > 0) {
+      return finish({
+        ok: false,
+        errorCode: 'CHIPS_OWED',
+        details: { actor: actor(player), amountToCall },
+      });
+    }
     betCurrentPlayer(0);
-    confirm();
-    return { ok: true, message: `${player.name} checks.` };
+    confirm(false);
+    return finish({ ok: true, action: { type: 'check', actor: actor(player) } });
   }
   if (name === 'call') {
+    if (amountToCall <= 0) {
+      return finish({ ok: false, errorCode: 'NOTHING_TO_CALL', details: { actor: actor(player) } });
+    }
     betCurrentPlayer(amountToCall);
-    confirm();
-    return { ok: true, message: `${player.name} calls ${amountToCall}.` };
+    confirm(false);
+    return finish({
+      ok: true,
+      action: { type: 'call', actor: actor(player), chipsMoved: amountToCall },
+    });
   }
   if (name === 'allIn') {
     if (!legalActions.some(({ type }) => type === Transition.ALL_IN)) {
-      return { ok: false, message: `${player.name} cannot go all in under the current ${bettingLimitLabels[gameState.bettingLimit]} betting limit; the maximum additional bet is ${maximumBet}.` };
+      return finish({
+        ok: false,
+        errorCode: 'ALL_IN_NOT_LEGAL',
+        details: {
+          actor: actor(player),
+          bettingLimit: gameState.bettingLimit,
+          maximumAdditionalBet: maximumBet,
+        },
+      });
     }
     pendingFold = false;
     updateBetControls();
     pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber, amount: player.chips };
-    return { ok: true, confirmationRequired: true, message: `Ask ${player.name} to confirm going all in for ${player.chips}.` };
+    return finish({
+      ok: true,
+      action: { type: 'all_in_requested', actor: actor(player), amount: player.chips },
+      confirmationRequired: true,
+    });
   }
   if (name === 'bet') {
     const total = Number(args.total);
     const amount = total - player.roundBet;
-    if (!Number.isFinite(total) || !isLegalPendingBet(player, amount)) {
-      return { ok: false, message: `That total is not legal in ${bettingLimitLabels[gameState.bettingLimit]} Hold'em. The maximum total is ${player.roundBet + maximumBet}.` };
+    if (!Number.isInteger(total) || !isLegalPendingBet(player, amount)) {
+      return finish({
+        ok: false,
+        errorCode: 'ILLEGAL_BET_TOTAL',
+        details: {
+          requestedTotal: args.total,
+          currentRoundBet: player.roundBet,
+          minimumAdditionalBet: bettingBoundsForView(player).minRaiseAdditionalChips,
+          maximumTotal: player.roundBet + maximumBet,
+          bettingLimit: gameState.bettingLimit,
+        },
+      });
     }
     if (amount === player.chips) {
       pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber, amount };
-      return { ok: true, confirmationRequired: true, message: `That bet is all in. Ask ${player.name} to confirm going all in for ${player.chips}.` };
+      return finish({
+        ok: true,
+        action: { type: 'all_in_requested', actor: actor(player), amount, requestedAs: 'bet', total },
+        confirmationRequired: true,
+      });
     }
     betCurrentPlayer(amount);
-    confirm();
-    return { ok: true, message: `${player.name} bets to ${total}.` };
+    confirm(false);
+    return finish({
+      ok: true,
+      action: { type: 'bet', actor: actor(player), chipsMoved: amount, totalRoundBet: total },
+    });
   }
   if (name === 'raise') {
     const raiseAmount = Number(args.amount);
     const amount = amountToCall + raiseAmount;
-    if (!Number.isFinite(raiseAmount) || raiseAmount < 0 || !isLegalPendingBet(player, amount)) {
-      return { ok: false, message: `That raise is not legal in ${bettingLimitLabels[gameState.bettingLimit]} Hold'em. The maximum raise is ${Math.max(0, maximumBet - amountToCall)}.` };
+    if (!Number.isInteger(raiseAmount) || raiseAmount <= 0 || !isLegalPendingBet(player, amount)) {
+      return finish({
+        ok: false,
+        errorCode: 'ILLEGAL_RAISE',
+        details: {
+          requestedRaise: args.amount,
+          amountToCall,
+          minimumRaise: Math.max(0, bettingBoundsForView(player).minRaiseAdditionalChips - amountToCall),
+          maximumRaise: Math.max(0, maximumBet - amountToCall),
+          bettingLimit: gameState.bettingLimit,
+        },
+      });
     }
     if (amount === player.chips) {
       pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber, amount };
-      return { ok: true, confirmationRequired: true, message: `That raise is all in. Ask ${player.name} to confirm going all in for ${player.chips}.` };
+      return finish({
+        ok: true,
+        action: { type: 'all_in_requested', actor: actor(player), amount, requestedAs: 'raise', raiseAmount },
+        confirmationRequired: true,
+      });
     }
     const total = player.roundBet + amount;
     betCurrentPlayer(amount);
-    confirm();
-    return { ok: true, message: `${player.name} raises ${raiseAmount} to ${total}.` };
+    confirm(false);
+    return finish({
+      ok: true,
+      action: {
+        type: 'raise',
+        actor: actor(player),
+        chipsMoved: amount,
+        callAmount: amountToCall,
+        raiseAmount,
+        totalRoundBet: total,
+      },
+    });
   }
-  return { ok: false, message: 'Unknown poker action.' };
+  return finish({ ok: false, errorCode: 'UNKNOWN_ACTION', details: { requestedTool: name } });
+}
+
+function getDealerAgent() {
+  if (!dealerAgent) {
+    dealerAgent = new DealerAgent({
+      getGameState: getVoiceSnapshot,
+      tools: voiceTools,
+      executeTool: executeVoiceTool,
+      onStatus: setVoiceStatus,
+    });
+  }
+  return dealerAgent;
+}
+
+async function requestDealerNarration(sourceEvent, recentConversation = []) {
+  const result = await getDealerAgent().run(sourceEvent, recentConversation);
+  if (result.speak && result.utterance) voiceAgent?.speak(result.utterance);
+  else setVoiceStatus(voiceAgent?.idleStatus() || 'Microphone off');
+  return result;
 }
 
 async function connectVoiceAgent() {
@@ -704,10 +812,10 @@ async function connectVoiceAgent() {
 
   voiceAgent?.disconnect();
   voiceAgent = new VoiceAgent({
-    getInstructions: getVoiceInstructions,
-    prompts,
-    tools: voiceTools,
-    executeTool: executeVoiceTool,
+    onDelegation: ({ transcript, recentConversation }) => getDealerAgent().run({
+      type: 'voice_utterance',
+      transcript,
+    }, recentConversation),
     onTranscript: setVoiceTranscript,
     onStatus: (status) => {
       setVoiceStatus(status);
@@ -720,10 +828,14 @@ async function connectVoiceAgent() {
           const errorMessage = `Voice unavailable: ${error.message}`;
           setVoiceStatus(errorMessage);
           setVoiceTranscript(errorMessage);
-        });
+      });
     },
   });
-  voiceConnectionPromise = voiceAgent.connect(gameSettings?.voice?.name || voiceChoice.value)
+  const voice = gameSettings?.voice || selectedVoiceSettings();
+  voiceConnectionPromise = voiceAgent.connect(voice.name || voiceChoice.value, {
+    accent: voice.accent,
+    pace: voice.pace,
+  })
     .then(() => voiceAgent)
     .finally(() => { voiceConnectionPromise = null; });
   return voiceConnectionPromise;
@@ -748,12 +860,10 @@ async function previewVoice() {
   voicePreviewStatus.textContent = 'Loading voice…';
   voicePreviewAgent?.disconnect();
   voicePreviewAgent = new VoiceAgent({
-    getInstructions: () => prompts.voicePreviewInstructions,
-    prompts,
     onStatus: (status) => { voicePreviewStatus.textContent = status; },
   });
   try {
-    await voicePreviewAgent.connect(voiceChoice.value);
+    await voicePreviewAgent.connect(voiceChoice.value, { preview: true });
     voicePreviewAgent.speak(prompts.voicePreviewText);
     window.setTimeout(() => {
       voicePreviewAgent?.disconnect();
@@ -1144,9 +1254,10 @@ function canUndoLastTurn(fromShowdown = false) {
   return lastTurnState !== null && (fromShowdown || gameState.actionPlayerId !== lastTurnState.actionPlayerId);
 }
 
-function undoLastTurn(fromShowdown = false) {
+function undoLastTurn(fromShowdown = false, narrate = true) {
   if (!canUndoLastTurn(fromShowdown)) return;
 
+  const stateBefore = narrate ? getVoiceSnapshot() : null;
   raiseMode = false;
   gameState = structuredClone(lastTurnState);
   const player = viewPlayer(viewActionPlayerNumber());
@@ -1156,6 +1267,15 @@ function undoLastTurn(fromShowdown = false) {
   lastTurnState = null;
   lastTurnEndedHandByFold = false;
   renderGameState();
+  if (narrate && voiceAgent?.connected) {
+    requestDealerNarration({
+      type: 'state_transition',
+      origin: 'ui',
+      action: { type: 'UNDO' },
+      stateBefore,
+      stateAfter: getVoiceSnapshot(),
+    }).catch((error) => setVoiceStatus(`AI error: ${error.message}`));
+  }
 }
 
 function showHandCompleteFromGameState() {
@@ -1206,7 +1326,6 @@ function renderGameState() {
     dealMessage.textContent = `Game is ${bettingLimit} Texas Hold'em.${fixedLimit} Small blind is ${gameState.smallBlind}. ${blindPlayers} ${dealer.name}, you're the dealer. Deal two cards face down to each player. Press OK or say "cards are dealt" when done.`;
     dealPrompt.hidden = false;
     drawPlayerSeats();
-    voiceAgent?.speak(dealMessage.textContent);
     return;
   }
 
@@ -1351,12 +1470,12 @@ function showPotWinnerPicker(question, players, awardFunction, splitFunction = n
 }
 
 function awardPot(potIndex, winnerNumber) {
-  invokeGame({ type: Transition.AWARD_POT, potIndex, winnerId: winnerNumber });
+  invokeGame({ type: Transition.AWARD_POT, potIndex, winnerId: winnerNumber }, { narrate: true });
   renderGameState();
 }
 
 function awardSplitPot(potIndex, winnerNumbers) {
-  invokeGame({ type: Transition.SPLIT_POT, potIndex, winnerIds: winnerNumbers });
+  invokeGame({ type: Transition.SPLIT_POT, potIndex, winnerIds: winnerNumbers }, { narrate: true });
   renderGameState();
 }
 
@@ -1395,6 +1514,14 @@ function startNewHand() {
   invokeGame({ type: Transition.START_NEXT_HAND });
   takeAnte();
   renderGameState();
+  if (voiceAgent?.connected) {
+    requestDealerNarration({
+      type: 'new_hand_started',
+      handNumber: gameState.handNumber,
+      setup: getVoiceSnapshot().game,
+      dealInstruction: dealMessage.textContent,
+    }).catch((error) => setVoiceStatus(`AI error: ${error.message}`));
+  }
 }
 
 function connectVoiceForCurrentGame() {
@@ -1403,7 +1530,15 @@ function connectVoiceForCurrentGame() {
       const shouldAnnounceDeal = !dealPrompt.hidden && gameState.phase === GamePhase.DEAL_HOLE_CARDS;
       if (shouldAnnounceDeal) {
         startMicrophoneAfterSpeech = gameSettings.startMicrophoneAutomatically;
-        agent.speak(dealMessage.textContent);
+        const result = await requestDealerNarration({
+          type: 'game_started',
+          setup: getVoiceSnapshot().game,
+          dealInstruction: dealMessage.textContent,
+        });
+        if (gameSettings.startMicrophoneAutomatically && !result.speak) {
+          startMicrophoneAfterSpeech = false;
+          await agent.startMicrophone();
+        }
       } else if (gameSettings.startMicrophoneAutomatically) {
         await agent.startMicrophone();
       }
@@ -1429,9 +1564,67 @@ function beginSeatPositioning() {
   drawPlayerSeats();
 }
 
+function createGameStartDissolve() {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+
+  gameScreen.querySelector('.game-start-transition')?.remove();
+  const screenBounds = gameScreen.getBoundingClientRect();
+  const transition = document.createElement('div');
+  transition.className = 'game-start-transition';
+  transition.setAttribute('aria-hidden', 'true');
+
+  const colors = ['#fffdf6', '#f1c565', '#b63f29', '#2875c7', '#63d69a'];
+  [...playerSeats.querySelectorAll('.player-seat')].forEach((seat, seatIndex) => {
+    const bounds = seat.getBoundingClientRect();
+    const centerX = bounds.left - screenBounds.left + bounds.width / 2;
+    const centerY = bounds.top - screenBounds.top + bounds.height / 2;
+    const ghost = seat.cloneNode(true);
+    ghost.classList.add('game-start-seat-ghost');
+    ghost.removeAttribute('role');
+    ghost.removeAttribute('tabindex');
+    ghost.style.left = `${centerX}px`;
+    ghost.style.top = `${centerY}px`;
+    ghost.style.setProperty('--dissolve-delay', `${seatIndex * 20}ms`);
+    transition.append(ghost);
+
+    const particleCount = 18;
+    for (let particleIndex = 0; particleIndex < particleCount; particleIndex += 1) {
+      const particle = document.createElement('i');
+      particle.className = 'game-start-particle';
+      const seed = seatIndex * particleCount + particleIndex;
+      const angle = particleIndex / particleCount * Math.PI * 2 + seatIndex * 0.47;
+      const distance = 34 + (seed * 29 % 70);
+      const startRadius = 8 + (seed * 13 % 21);
+      const size = 3 + (seed * 7 % 6);
+      particle.style.left = `${centerX + Math.cos(angle) * startRadius}px`;
+      particle.style.top = `${centerY + Math.sin(angle) * startRadius}px`;
+      particle.style.width = `${size}px`;
+      particle.style.height = `${Math.max(2, size - seed % 3)}px`;
+      particle.style.setProperty('--particle-color', colors[seed % colors.length]);
+      particle.style.setProperty('--particle-x', `${Math.cos(angle) * distance}px`);
+      particle.style.setProperty('--particle-y', `${Math.sin(angle) * distance - 18}px`);
+      particle.style.setProperty('--particle-turn', `${seed % 2 ? 190 : -190}deg`);
+      particle.style.setProperty('--dissolve-delay', `${80 + seatIndex * 20 + particleIndex * 6}ms`);
+      transition.append(particle);
+    }
+  });
+
+  const pulse = document.createElement('div');
+  pulse.className = 'game-start-pulse';
+  transition.append(pulse);
+  gameScreen.append(transition);
+  gameScreen.classList.add('game-starting');
+
+  window.setTimeout(() => {
+    transition.remove();
+    gameScreen.classList.remove('game-starting');
+  }, 1100);
+}
+
 function lockSeatsAndStartGame() {
-  if (!seatingMode) return;
+  if (!seatingMode || gameScreen.classList.contains('game-starting')) return;
   lockClockwiseSeatOrder();
+  createGameStartDissolve();
   seatingMode = false;
   gameScreen.classList.remove('seating-mode');
   lockSeatsButton.hidden = true;
@@ -1446,7 +1639,7 @@ function lockSeatsAndStartGame() {
   connectVoiceForCurrentGame();
 }
 
-function confirmTurn() {
+function confirmTurn(narrate = true) {
   const currentPlayerNumber = gameState.actionPlayerId;
   const player = viewPlayer(currentPlayerNumber);
   lastTurnState = captureTurnState();
@@ -1464,7 +1657,7 @@ function confirmTurn() {
   } else {
     action = { type: Transition.BET, playerId: currentPlayerNumber, additionalChips: pendingBet };
   }
-  invokeGame(action);
+  invokeGame(action, { narrate });
   lastTurnEndedHandByFold = action.type === Transition.FOLD && gameState.phase === GamePhase.HAND_COMPLETE;
   pendingFold = false;
   pendingVoiceAction = null;
@@ -1491,13 +1684,13 @@ function betCurrentPlayer(amount) {
   return true;
 }
 
-function confirm() {
-  confirmTurn();
+function confirm(narrate = true) {
+  confirmTurn(narrate);
 }
 
-function cardsAreDealt() {
+function cardsAreDealt(narrate = true) {
   if (!currentGameActions().some(({ type }) => type === Transition.CARDS_DEALT)) return false;
-  invokeGame({ type: Transition.CARDS_DEALT });
+  invokeGame({ type: Transition.CARDS_DEALT }, { narrate });
   renderGameState();
   return true;
 }

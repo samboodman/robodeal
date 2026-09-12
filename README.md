@@ -14,7 +14,7 @@ The project is a learning project for Sam. The game is intentionally one small s
 - Show whose turn it is around the table and rotate the controls toward that player.
 - Keep the phone screen awake during an active game when the browser supports it.
 - Remember the latest setup in that browser, including players and chip settings.
-- Connect a small OpenAI Realtime voice agent when a game starts. It can answer short poker questions; perform check, call, bet, raise, fold, all-in, cards-dealt, and undo actions; manage all-in confirmation or cancellation; and silently ignore unrelated speech. The recording button controls only the microphone, and the voice customization page selects the output voice, accent, and speaking pace.
+- Connect GPT-Live when a game starts. GPT-Live handles full-duplex listening and dealer-style speech, delegates every relevant utterance to GPT-5.6 Terra, and never owns poker actions itself. Terra can answer state questions; request check, call, bet, raise, fold, all-in, cards-dealt, and undo tools; manage all-in confirmation or cancellation; and silently ignore unrelated speech. The recording button controls only the microphone, and the voice customization page selects the output voice, accent, and speaking pace.
 - Input audio files for debugging on localhost after enabling both debug features and audio-file input.
 
 ## How it is built
@@ -23,8 +23,19 @@ The project is a learning project for Sam. The game is intentionally one small s
 - `game-state.js` is the authoritative poker transition engine. It exports `GamePhase`, `Transition`, `BettingLimit`, `createGameState`, `getBettingBounds`, `createDebugGameState`, `getAvailableActions(state)`, and `executeTransition(state, action)`. The interface and voice agent consume its state and legal-action list rather than deciding poker rules independently.
 - `pot-logic.js` calculates contribution-based main and side pots and decides when betting rounds are complete. `pot-logic.test.js` tests that logic.
 - Vite runs the local development server and builds the site for deployment.
-- `voice-agent.js` owns the WebRTC voice connection, while `api/realtime-call.js` keeps the OpenAI API key on the server.
+- `voice-agent.js` owns the GPT-Live WebRTC connection and client-delegation events. `dealer-agent.js` runs the Terra tool loop in the browser so all actions reach the local state machine. `api/live-session.js` and `api/dealer-turn.js` keep the OpenAI API key and model calls on the server.
 - The app does not use React or a large UI framework.
+
+## Voice architecture
+
+RoboDeal keeps speech, reasoning, and game authority deliberately separate:
+
+```text
+microphone → GPT-Live 1 → GPT-5.6 Terra → JavaScript state machine
+speaker    ← GPT-Live 1 ← GPT-5.6 Terra ← JavaScript state/result
+```
+
+GPT-Live uses client delegation and supplies native transcript deltas; there is no separate transcription model. Terra receives the recent conversation plus a fresh state snapshot, may request one of the allowed browser tools, and writes the final dealer line only after JavaScript returns a raw structured outcome. UI actions and the opening game announcement also go through Terra before GPT-Live speaks them. Browser playback stays muted except while Terra-approved commentary is being delivered. The state machine remains the only component allowed to decide whether a poker transition is legal.
 
 ## Poker transition engine
 

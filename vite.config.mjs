@@ -1,42 +1,37 @@
 import { defineConfig, loadEnv } from 'vite';
+import {
+  apiError,
+  createDealerResponse,
+  createLiveSession,
+  readJsonBody,
+  sendJson,
+} from './openai-api.js';
 
-function localRealtimeApi(apiKey) {
+function localOpenAIApi(apiKey) {
   return {
-    name: 'robodeal-local-realtime-api',
+    name: 'robodeal-local-openai-api',
     configureServer(server) {
-      server.middlewares.use('/api/realtime-call', async (request, response) => {
-        response.setHeader('Content-Type', 'application/json; charset=utf-8');
+      server.middlewares.use('/api/live-session', async (request, response) => {
         if (request.method !== 'POST') {
-          response.statusCode = 405;
-          response.end(JSON.stringify({ error: 'Use POST for a Realtime call.' }));
+          sendJson(response, 405, { error: 'Use POST to create a GPT-Live session.' });
           return;
         }
-        if (!apiKey) {
-          response.statusCode = 500;
-          response.end(JSON.stringify({ error: 'The local server is missing OPENAI_API_KEY in .env.local.' }));
-          return;
-        }
-
         try {
-          const chunks = [];
-          for await (const chunk of request) chunks.push(chunk);
-          const requestBody = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-          const form = new FormData();
-          form.append('sdp', requestBody.sdp || '');
-          form.append('session', JSON.stringify({ type: 'realtime', model: 'gpt-realtime-2.1' }));
-          const openAIResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${apiKey}` },
-            body: form,
-          });
-          const answer = await openAIResponse.text();
-          response.statusCode = openAIResponse.status;
-          response.setHeader('Content-Type', openAIResponse.headers.get('content-type') || 'text/plain');
-          response.end(answer);
+          sendJson(response, 201, await createLiveSession(apiKey, await readJsonBody(request)));
         } catch (error) {
-          console.error('Local Realtime call failed:', error);
-          response.statusCode = 500;
-          response.end(JSON.stringify({ error: 'The local Realtime server failed.' }));
+          apiError(response, error, 'Local GPT-Live session creation failed');
+        }
+      });
+
+      server.middlewares.use('/api/dealer-turn', async (request, response) => {
+        if (request.method !== 'POST') {
+          sendJson(response, 405, { error: 'Use POST for a Terra dealer turn.' });
+          return;
+        }
+        try {
+          sendJson(response, 200, await createDealerResponse(apiKey, await readJsonBody(request)));
+        } catch (error) {
+          apiError(response, error, 'Local Terra dealer turn failed');
         }
       });
     },
@@ -45,5 +40,5 @@ function localRealtimeApi(apiKey) {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  return { plugins: [localRealtimeApi(env.OPENAI_API_KEY)] };
+  return { plugins: [localOpenAIApi(env.OPENAI_API_KEY)] };
 });

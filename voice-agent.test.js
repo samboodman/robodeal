@@ -1,79 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { audioBufferToPcm16, microphoneAudioConstraints, VoiceAgent } from './voice-agent.js';
-
-const prompts = JSON.parse(readFileSync(new URL('./Prompts.json', import.meta.url), 'utf8'));
+import { microphoneAudioConstraints, VoiceAgent } from './voice-agent.js';
 
 function testAgent(options = {}) {
   const sent = [];
-  const agent = new VoiceAgent({ getInstructions: () => 'Current game state', prompts, ...options });
+  const agent = new VoiceAgent({ delegationDelayMs: 0, ...options });
   agent.channel = {
     readyState: 'open',
     send: (event) => sent.push(JSON.parse(event)),
   };
+  agent.sessionStarted = true;
   return { agent, sent };
 }
-
-test('every completed transcription reaches the AI regardless of wording', async () => {
-  const { agent, sent } = testAgent();
-
-  await agent.handleEvent({
-    type: 'conversation.item.input_audio_transcription.completed',
-    transcript: 'What should we order for dinner?',
-    item_id: 'audio-item-1',
-  });
-
-  assert.equal(sent[0].type, 'session.update');
-  assert.deepEqual(sent[1], { type: 'response.create' });
-  assert.equal(sent.some(({ type }) => type === 'conversation.item.delete'), false);
-});
-
-test('the session exposes supplied tools with automatic tool choice', () => {
-  const tools = [{ type: 'function', name: 'call', parameters: { type: 'object', properties: {} } }];
-  const { agent } = testAgent({ tools });
-
-  const session = agent.sessionConfiguration('marin');
-
-  assert.equal(session.tool_choice, 'auto');
-  assert.deepEqual(session.tools, tools);
-});
-
-test('speaks an exact instruction as an audio response without conversation context', () => {
-  const statuses = [];
-  const { agent, sent } = testAgent({ onStatus: (status) => statuses.push(status) });
-
-  agent.speak('Deal two cards.');
-
-  assert.deepEqual(sent, [{
-    type: 'response.create',
-    response: {
-      conversation: 'none',
-      input: [],
-      output_modalities: ['audio'],
-      instructions: 'Say exactly this: Deal two cards.',
-      tools: [],
-      tool_choice: 'none',
-    },
-  }]);
-  assert.equal(agent.pendingResponseCount, 1);
-  assert.deepEqual(statuses, ['Thinking…']);
-});
-
-test('the session is configured for noisy restaurant speech', () => {
-  const { agent } = testAgent();
-
-  const input = agent.sessionConfiguration('marin').audio.input;
-
-  assert.equal(input.noise_reduction.type, 'far_field');
-  assert.equal(input.transcription.model, 'gpt-live-transcribe');
-  assert.equal(input.transcription.delay, 'medium');
-  assert.deepEqual(input.transcription.languages, ['en']);
-  assert.match(input.transcription.prompt, /noisy restaurant poker table/);
-  assert.equal(Object.hasOwn(input.transcription, 'keywords'), false);
-  assert.equal(input.turn_detection.type, 'semantic_vad');
-  assert.equal(input.turn_detection.create_response, false);
-});
 
 test('microphone constraints enable supported browser voice isolation', () => {
   assert.deepEqual(microphoneAudioConstraints({ voiceIsolation: true }), {
@@ -86,92 +24,144 @@ test('microphone constraints enable supported browser voice isolation', () => {
   assert.equal('voiceIsolation' in microphoneAudioConstraints(), false);
 });
 
-test('an AI tool call is executed and returned to the conversation', async () => {
-  const calls = [];
+test('collects native GPT-Live transcript deltas and sends client delegation to Terra', async () => {
+  const delegations = [];
   const { agent, sent } = testAgent({
-    executeTool: async (name, args) => {
-      calls.push({ name, args });
-      return { ok: true, message: 'Player 1 calls 5.' };
+    onDelegation: async (delegation) => {
+      delegations.push(delegation);
+      return { speak: true, kind: 'action_result', utterance: 'Sam calls five.' };
     },
   });
 
+  await agent.handleEvent({ type: 'session.input_transcript.delta', delta: 'I ' });
+  await agent.handleEvent({ type: 'session.input_transcript.delta', delta: 'call' });
   await agent.handleEvent({
-    type: 'response.function_call_arguments.done',
-    name: 'call',
-    arguments: '{}',
-    call_id: 'call-1',
+    type: 'session.delegation.created',
+    offset_ms: 1_200,
+    delegation: { id: 'item_1', target: 'client' },
   });
+  await new Promise((resolve) => setTimeout(resolve, 5));
 
-  assert.deepEqual(calls, [{ name: 'call', args: {} }]);
-  assert.equal(sent[0].type, 'conversation.item.create');
-  assert.match(sent[0].item.output, /Player 1 calls 5/);
-  assert.equal(sent[1].type, 'session.update');
-  assert.equal(sent[2].type, 'response.create');
+  assert.equal(delegations.length, 1);
+  assert.equal(delegations[0].delegationId, 'item_1');
+  assert.equal(delegations[0].transcript, 'I call');
+  assert.deepEqual(sent[0], {
+    type: 'session.commentary.append',
+    event_id: sent[0].event_id,
+    delegation_id: 'item_1',
+    content: 'Sam calls five.',
+  });
 });
 
-test('an AI-selected silent tool call produces no follow-up response', async () => {
+test('a silent Terra result resolves the delegation without spoken commentary', async () => {
+  const { agent, sent } = testAgent({
+    onDelegation: async () => ({ speak: false, kind: 'ignored', utterance: '' }),
+  });
+
+  await agent.handleEvent({ type: 'session.input_transcript.delta', delta: 'background chatter' });
+  await agent.handleEvent({
+    type: 'session.delegation.created',
+    delegation: { id: 'item_silent', target: 'client' },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].type, 'session.thinking.append');
+  assert.equal(sent[0].delegation_id, 'item_silent');
+  assert.match(sent[0].content, /Continue listening silently/);
+});
+
+test('a Terra failure stays silent and reports the problem in the UI', async () => {
   const statuses = [];
   const { agent, sent } = testAgent({
-    executeTool: async () => ({ ok: true, silent: true }),
+    onDelegation: async () => { throw new Error('backend offline'); },
     onStatus: (status) => statuses.push(status),
   });
 
+  await agent.handleEvent({ type: 'session.input_transcript.delta', delta: 'I call' });
   await agent.handleEvent({
-    type: 'response.function_call_arguments.done',
-    name: 'ignoreSpeech',
-    arguments: '{}',
-    call_id: 'ignore-1',
+    type: 'session.delegation.created',
+    delegation: { id: 'item_error', target: 'client' },
   });
+  await new Promise((resolve) => setTimeout(resolve, 5));
 
-  assert.deepEqual(sent.map(({ type }) => type), ['conversation.item.create']);
-  assert.match(sent[0].item.output, /\"silent\":true/);
-  assert.deepEqual(statuses, ['Applying action…', 'Microphone off']);
+  assert.deepEqual(sent.map(({ type }) => type), ['session.thinking.append']);
+  assert.equal(statuses.at(-1), 'AI error: backend offline');
 });
 
-test('voice status follows thinking, speaking, and idle response states', async () => {
-  const statuses = [];
-  const { agent } = testAgent({ onStatus: (status) => statuses.push(status) });
-  agent.microphoneStream = { getTracks: () => [] };
-
-  await agent.handleEvent({
-    type: 'conversation.item.input_audio_transcription.completed',
-    transcript: 'Dealer, call.',
-  });
-  await agent.handleEvent({ type: 'response.output_audio.delta', delta: 'audio' });
-  await agent.handleEvent({ type: 'response.done' });
-
-  assert.deepEqual(statuses, ['Thinking…', 'Speaking…', 'Listening']);
-});
-
-test('converts decoded audio to 24 kHz mono PCM16', () => {
-  const pcm = audioBufferToPcm16({
-    sampleRate: 12_000,
-    length: 2,
-    numberOfChannels: 1,
-    getChannelData: () => new Float32Array([-1, 1]),
-  });
-
-  assert.equal(pcm.length, 8);
-  assert.equal(new DataView(pcm.buffer).getInt16(0, true), -32_768);
-});
-
-test('an audio file is appended and committed through the Realtime input buffer', async () => {
+test('application narration uses commentary with a null delegation ID', () => {
   const { agent, sent } = testAgent();
+  agent.audio = { muted: true };
+
+  agent.speak('No-limit Texas Hold’em, five-chip ante.');
+
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].type, 'session.commentary.append');
+  assert.equal(sent[0].delegation_id, null);
+  assert.equal(sent[0].content, 'No-limit Texas Hold’em, five-chip ante.');
+  assert.equal(agent.audio.muted, false);
+});
+
+test('mutes any Live speech that was not opened by Terra-approved commentary', async () => {
+  const { agent } = testAgent();
+  agent.audio = { muted: true };
+
+  await agent.handleEvent({ type: 'session.output_transcript.delta', delta: 'Let me check.' });
+
+  assert.equal(agent.audio.muted, true);
+  assert.equal(agent.outputTranscript, '');
+  assert.deepEqual(agent.conversation, []);
+});
+
+test('output transcript deltas are retained as conversation history', async () => {
+  const transcripts = [];
+  const { agent } = testAgent({ onTranscript: (text) => transcripts.push(text) });
+  agent.pendingSpeechCount = 1;
+
+  await agent.handleEvent({ type: 'session.output_transcript.delta', delta: 'Sam ' });
+  await agent.handleEvent({ type: 'session.output_transcript.delta', delta: 'calls.' });
+  await agent.handleEvent({ type: 'session.output_transcript.done' });
+
+  assert.deepEqual(agent.conversation, [{ role: 'assistant', text: 'Sam calls.' }]);
+  assert.deepEqual(transcripts, ['RoboDeal: “Sam calls.”']);
+});
+
+test('session start is required before the agent reports connected', async () => {
+  const { agent } = testAgent();
+  agent.sessionStarted = false;
+  let started = false;
+  agent.sessionStartedResolve = () => { started = true; };
+
+  assert.equal(agent.connected, false);
+  await agent.handleEvent({ type: 'session.started' });
+
+  assert.equal(started, true);
+  assert.equal(agent.connected, true);
+});
+
+test('an audio file is played into the WebRTC sender track', async () => {
+  const { agent } = testAgent();
   const microphoneTrack = { kind: 'microphone' };
+  const fileTrack = { kind: 'file' };
   const replacedTracks = [];
   agent.sender = {
     track: microphoneTrack,
-    async replaceTrack(track) { replacedTracks.push(track); },
+    async replaceTrack(track) {
+      replacedTracks.push(track);
+      this.track = track;
+    },
   };
 
   class FakeAudioContext {
     async resume() {}
-    async decodeAudioData() {
+    async decodeAudioData() { return { duration: 1 }; }
+    createMediaStreamDestination() {
+      return { stream: { getAudioTracks: () => [fileTrack] } };
+    }
+    createBufferSource() {
       return {
-        sampleRate: 24_000,
-        length: 2_400,
-        numberOfChannels: 1,
-        getChannelData: () => new Float32Array(2_400).fill(0.25),
+        connect() {},
+        start() { queueMicrotask(() => this.onended()); },
       };
     }
     async close() {}
@@ -185,11 +175,6 @@ test('an audio file is appended and committed through the Realtime input buffer'
     globalThis.window = originalWindow;
   }
 
-  assert.deepEqual(replacedTracks, [null, microphoneTrack]);
-  assert.deepEqual(sent.map(({ type }) => type), [
-    'input_audio_buffer.clear',
-    'input_audio_buffer.append',
-    'input_audio_buffer.commit',
-  ]);
+  assert.deepEqual(replacedTracks, [fileTrack, microphoneTrack]);
   assert.equal(agent.audioTestRunning, false);
 });

@@ -1,37 +1,3 @@
-export function audioBufferToPcm16(audioBuffer, targetSampleRate = 24_000) {
-  const sourceRate = audioBuffer.sampleRate;
-  const outputLength = Math.floor(audioBuffer.length * targetSampleRate / sourceRate);
-  const pcm = new Uint8Array(outputLength * 2);
-  const view = new DataView(pcm.buffer);
-  const channels = Array.from(
-    { length: audioBuffer.numberOfChannels },
-    (_, channel) => audioBuffer.getChannelData(channel),
-  );
-
-  for (let index = 0; index < outputLength; index += 1) {
-    const sourcePosition = index * sourceRate / targetSampleRate;
-    const first = Math.floor(sourcePosition);
-    const second = Math.min(first + 1, audioBuffer.length - 1);
-    const mix = sourcePosition - first;
-    let sample = 0;
-    channels.forEach((channel) => {
-      sample += channel[first] + (channel[second] - channel[first]) * mix;
-    });
-    sample = Math.max(-1, Math.min(1, sample / channels.length));
-    view.setInt16(index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-  }
-  return pcm;
-}
-
-export function bytesToBase64(bytes) {
-  let binary = '';
-  const blockSize = 0x8000;
-  for (let offset = 0; offset < bytes.length; offset += blockSize) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + blockSize));
-  }
-  return btoa(binary);
-}
-
 export function fillPrompt(template, values) {
   return template.replace(/\{\{([A-Z_]+)\}\}/g, (placeholder, key) => (
     Object.hasOwn(values, key) ? String(values[key]) : placeholder
@@ -48,14 +14,21 @@ export function microphoneAudioConstraints(supported = {}) {
   };
 }
 
+function eventId(prefix) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
 export class VoiceAgent {
-  constructor({ getInstructions, prompts, tools = [], executeTool, onTranscript = () => {}, onStatus = () => {} }) {
-    this.getInstructions = getInstructions;
-    this.prompts = prompts;
-    this.tools = tools;
-    this.executeTool = executeTool;
+  constructor({
+    onDelegation = async () => ({ speak: false, kind: 'ignored', utterance: '' }),
+    onTranscript = () => {},
+    onStatus = () => {},
+    delegationDelayMs = 120,
+  } = {}) {
+    this.onDelegation = onDelegation;
     this.onTranscript = onTranscript;
     this.onStatus = onStatus;
+    this.delegationDelayMs = delegationDelayMs;
     this.connection = null;
     this.channel = null;
     this.sender = null;
@@ -63,42 +36,27 @@ export class VoiceAgent {
     this.microphoneStream = null;
     this.audioTestContext = null;
     this.audioTestRunning = false;
-    this.pendingResponseCount = 0;
+    this.sessionStarted = false;
+    this.sessionStartedResolve = null;
+    this.inputTranscript = '';
+    this.outputTranscript = '';
+    this.conversation = [];
+    this.pendingDelegations = [];
+    this.delegationTimer = null;
+    this.outputTranscriptTimer = null;
+    this.pendingSpeechCount = 0;
+    this.lastInputEndMs = null;
   }
 
   get connected() {
-    return this.channel?.readyState === 'open';
+    return this.channel?.readyState === 'open' && this.sessionStarted;
   }
 
   get recording() {
     return Boolean(this.microphoneStream);
   }
 
-  sessionConfiguration(voice) {
-    return {
-      type: 'realtime',
-      instructions: this.getInstructions(),
-      tools: this.tools,
-      tool_choice: this.tools.length > 0 ? 'auto' : 'none',
-      output_modalities: ['audio'],
-      audio: {
-        input: {
-          format: { type: 'audio/pcm', rate: 24_000 },
-          noise_reduction: { type: 'far_field' },
-          transcription: {
-            model: 'gpt-live-transcribe',
-            prompt: this.prompts.transcription.prompt,
-            languages: this.prompts.transcription.languages,
-            delay: 'medium',
-          },
-          turn_detection: { type: 'semantic_vad', create_response: false, interrupt_response: false },
-        },
-        output: { voice },
-      },
-    };
-  }
-
-  async connect(voice = 'marin') {
+  async connect(voice = 'marin', { accent = 'neutral', pace = 'natural', preview = false } = {}) {
     this.disconnect();
     this.onStatus('Connecting…');
     if (!window.RTCPeerConnection) throw new Error('This browser does not support WebRTC.');
@@ -111,6 +69,7 @@ export class VoiceAgent {
         this.audio.autoplay = true;
         this.audio.playsInline = true;
         this.audio.hidden = true;
+        this.audio.muted = this.pendingSpeechCount === 0;
         document.body.append(this.audio);
       }
       this.audio.srcObject = event.streams[0];
@@ -122,52 +81,71 @@ export class VoiceAgent {
       this.channel.addEventListener('open', resolve, { once: true });
       this.channel.addEventListener('close', () => reject(new Error('The voice connection closed.')), { once: true });
     });
+    const sessionStarted = new Promise((resolve) => { this.sessionStartedResolve = resolve; });
     this.channel.addEventListener('message', (event) => this.handleEvent(JSON.parse(event.data)));
-    this.channel.addEventListener('close', () => this.onStatus('Voice connection ended.'));
+    this.channel.addEventListener('close', () => {
+      this.sessionStarted = false;
+      this.onStatus('Voice connection ended.');
+    });
 
     const offer = await this.connection.createOffer();
     await this.connection.setLocalDescription(offer);
-    const response = await fetch('/api/realtime-call', {
+    const response = await fetch('/api/live-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sdp: offer.sdp }),
+      body: JSON.stringify({ sdp: offer.sdp, voice, accent, pace, preview }),
     });
-    const answer = await response.text();
-    if (!response.ok) throw new Error(answer);
-    await this.connection.setRemoteDescription({ type: 'answer', sdp: answer });
+    const text = await response.text();
+    let answer;
+    try {
+      answer = JSON.parse(text);
+    } catch {
+      answer = null;
+    }
+    if (!response.ok) throw new Error(answer?.error || text || 'GPT-Live could not start.');
+    if (!answer?.transport?.sdp) throw new Error('GPT-Live returned no WebRTC answer.');
+    await this.connection.setRemoteDescription({ type: 'answer', sdp: answer.transport.sdp });
     await channelOpened;
-    this.send({ type: 'session.update', session: this.sessionConfiguration(voice) });
+    await sessionStarted;
     this.onStatus('AI connected.');
   }
 
-  updateContext() {
-    if (!this.connected) return;
+  updateContext(context) {
+    if (!this.connected || !context) return;
     this.send({
-      type: 'session.update',
-      session: {
-        type: 'realtime',
-        instructions: this.getInstructions(),
-        tools: this.tools,
-        tool_choice: this.tools.length > 0 ? 'auto' : 'none',
-      },
+      type: 'session.thinking.append',
+      event_id: eventId('state'),
+      delegation_id: null,
+      content: String(context).slice(0, 2_000),
     });
   }
 
-  speak(text) {
-    if (!this.connected) return;
-    this.pendingResponseCount += 1;
-    this.onStatus('Thinking…');
+  speak(text, delegationId = null) {
+    if (!this.connected || !text) return;
+    this.pendingSpeechCount += 1;
+    if (this.audio) this.audio.muted = false;
+    this.onStatus('Speaking…');
     this.send({
-      type: 'response.create',
-      response: {
-        conversation: 'none',
-        input: [],
-        output_modalities: ['audio'],
-        instructions: fillPrompt(this.prompts.sayExactly, { TEXT: text }),
-        tools: [],
-        tool_choice: 'none',
-      },
+      type: 'session.commentary.append',
+      event_id: eventId('dealer'),
+      delegation_id: delegationId,
+      content: text,
     });
+  }
+
+  returnDelegation(result, delegationId) {
+    if (result?.speak && result.utterance) {
+      this.speak(result.utterance, delegationId);
+      return;
+    }
+    this.send({
+      type: 'session.thinking.append',
+      event_id: eventId('silent'),
+      delegation_id: delegationId,
+      content: 'The backend determined that no response or action is required. Continue listening silently.',
+    });
+    if (this.audio) this.audio.muted = true;
+    this.onStatus(this.idleStatus());
   }
 
   async startMicrophone() {
@@ -206,23 +184,19 @@ export class VoiceAgent {
     try {
       await context.resume();
       const audioBuffer = await context.decodeAudioData(await file.arrayBuffer());
-      const pcm = audioBufferToPcm16(audioBuffer);
-      if (pcm.length < 4_800) throw new Error('The audio file must contain at least 0.1 seconds of sound.');
-
-      await this.sender.replaceTrack(null);
-      this.send({ type: 'input_audio_buffer.clear' });
-      const chunkSize = 48_000;
-      for (let offset = 0; offset < pcm.length; offset += chunkSize) {
-        this.send({
-          type: 'input_audio_buffer.append',
-          audio: bytesToBase64(pcm.subarray(offset, offset + chunkSize)),
-        });
-      }
-      this.send({ type: 'input_audio_buffer.commit' });
+      if (audioBuffer.duration < 0.1) throw new Error('The audio file must contain at least 0.1 seconds of sound.');
+      const destination = context.createMediaStreamDestination();
+      const source = context.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(destination);
+      await this.sender.replaceTrack(destination.stream.getAudioTracks()[0]);
+      const ended = new Promise((resolve) => { source.onended = resolve; });
+      source.start();
+      await ended;
       if (this.connected) await this.sender.replaceTrack(previousTrack);
       this.onStatus('Audio test submitted.');
     } finally {
-      if (this.connected && this.sender.track !== previousTrack) {
+      if (this.channel?.readyState === 'open' && this.sender.track !== previousTrack) {
         await this.sender.replaceTrack(previousTrack).catch(() => {});
       }
       await context.close().catch(() => {});
@@ -237,6 +211,8 @@ export class VoiceAgent {
     this.channel?.close();
     this.connection?.close();
     this.audio?.remove();
+    clearTimeout(this.delegationTimer);
+    clearTimeout(this.outputTranscriptTimer);
     this.channel = null;
     this.connection = null;
     this.sender = null;
@@ -244,72 +220,117 @@ export class VoiceAgent {
     this.audioTestContext?.close().catch(() => {});
     this.audioTestContext = null;
     this.audioTestRunning = false;
-    this.pendingResponseCount = 0;
+    this.sessionStarted = false;
+    this.sessionStartedResolve = null;
+    this.inputTranscript = '';
+    this.outputTranscript = '';
+    this.conversation = [];
+    this.pendingDelegations = [];
+    this.delegationTimer = null;
+    this.outputTranscriptTimer = null;
+    this.pendingSpeechCount = 0;
+    this.lastInputEndMs = null;
   }
 
   send(event) {
-    if (this.connected) this.channel.send(JSON.stringify(event));
-  }
-
-  requestResponse() {
-    if (!this.connected) return;
-    this.pendingResponseCount += 1;
-    this.onStatus('Thinking…');
-    this.send({ type: 'response.create' });
+    if (this.channel?.readyState === 'open') this.channel.send(JSON.stringify(event));
   }
 
   idleStatus() {
     return this.recording ? 'Listening' : 'Microphone off';
   }
 
+  scheduleDelegations() {
+    clearTimeout(this.delegationTimer);
+    this.delegationTimer = setTimeout(() => this.flushDelegation(), this.delegationDelayMs);
+  }
+
+  async flushDelegation() {
+    this.delegationTimer = null;
+    const delegation = this.pendingDelegations.shift();
+    if (!delegation) return;
+    const transcript = this.inputTranscript.trim();
+    this.inputTranscript = '';
+    if (transcript) {
+      this.conversation.push({ role: 'user', text: transcript });
+      this.conversation = this.conversation.slice(-12);
+      this.onTranscript(`Heard: “${transcript}”`);
+    }
+    this.onStatus('Processing…');
+    try {
+      const result = await this.onDelegation({
+        delegationId: delegation.id,
+        transcript,
+        recentConversation: this.conversation.slice(-12),
+        offsetMs: delegation.offsetMs,
+      });
+      this.returnDelegation(result, delegation.id);
+    } catch (error) {
+      this.returnDelegation({ speak: false, kind: 'error', utterance: '' }, delegation.id);
+      this.onStatus(`AI error: ${error.message}`);
+      this.onTranscript(`Dealer error: ${error.message}`);
+    }
+    if (this.pendingDelegations.length > 0) this.scheduleDelegations();
+  }
+
+  finishOutputTranscript() {
+    clearTimeout(this.outputTranscriptTimer);
+    this.outputTranscriptTimer = null;
+    const transcript = this.outputTranscript.trim();
+    this.outputTranscript = '';
+    if (transcript) {
+      this.conversation.push({ role: 'assistant', text: transcript });
+      this.conversation = this.conversation.slice(-12);
+      this.onTranscript(`RoboDeal: “${transcript}”`);
+    }
+    this.pendingSpeechCount = Math.max(0, this.pendingSpeechCount - 1);
+    if (this.pendingSpeechCount === 0 && this.audio) this.audio.muted = true;
+    this.onStatus(this.idleStatus());
+  }
+
   async handleEvent(event) {
-    if (event.type === 'conversation.item.input_audio_transcription.completed') {
-      this.onTranscript(`Heard: “${event.transcript}”`);
-      this.updateContext();
-      this.requestResponse();
+    if (event.type === 'session.started') {
+      this.sessionStarted = true;
+      this.sessionStartedResolve?.();
+      this.sessionStartedResolve = null;
       return;
     }
-    if (event.type === 'response.output_audio.delta' || event.type === 'response.audio.delta') {
+    if (event.type === 'session.input_transcript.delta') {
+      if (
+        Number.isFinite(event.start_ms)
+        && Number.isFinite(this.lastInputEndMs)
+        && event.start_ms - this.lastInputEndMs > 1_500
+      ) {
+        this.inputTranscript = '';
+      }
+      this.inputTranscript = `${this.inputTranscript}${event.delta || ''}`.slice(-4_000);
+      if (Number.isFinite(event.end_ms)) this.lastInputEndMs = event.end_ms;
+      if (this.pendingDelegations.length > 0) this.scheduleDelegations();
+      return;
+    }
+    if (event.type === 'session.delegation.created' && event.delegation?.target === 'client') {
+      this.pendingDelegations.push({ id: event.delegation.id, offsetMs: event.offset_ms });
+      this.scheduleDelegations();
+      return;
+    }
+    if (event.type === 'session.output_transcript.delta') {
+      if (this.pendingSpeechCount === 0) {
+        if (this.audio) this.audio.muted = true;
+        return;
+      }
+      this.outputTranscript += event.delta || '';
       this.onStatus('Speaking…');
+      clearTimeout(this.outputTranscriptTimer);
+      this.outputTranscriptTimer = setTimeout(() => this.finishOutputTranscript(), 800);
       return;
     }
-    if (event.type === 'response.output_audio_transcript.done') {
-      this.onTranscript(`RoboDeal: “${event.transcript}”`);
-      return;
-    }
-    if (event.type === 'response.done') {
-      this.pendingResponseCount = Math.max(0, this.pendingResponseCount - 1);
-      if (this.pendingResponseCount === 0) this.onStatus(this.idleStatus());
+    if (event.type === 'session.output_transcript.done' || event.type === 'session.output_audio.done') {
+      this.finishOutputTranscript();
       return;
     }
     if (event.type === 'error') {
-      this.pendingResponseCount = 0;
+      this.pendingSpeechCount = 0;
       this.onStatus(`AI error: ${event.error?.message || 'unknown error'}`);
-      return;
     }
-    if (event.type !== 'response.function_call_arguments.done') return;
-
-    this.onStatus('Applying action…');
-    let result;
-    try {
-      result = await this.executeTool(event.name, JSON.parse(event.arguments || '{}'));
-    } catch (error) {
-      result = { ok: false, message: error.message };
-    }
-
-    this.send({
-      type: 'conversation.item.create',
-      item: {
-        type: 'function_call_output',
-        call_id: event.call_id,
-        output: JSON.stringify(result),
-      },
-    });
-    if (result.silent) {
-      this.onStatus(this.idleStatus());
-      return;
-    }
-    this.updateContext();
-    this.requestResponse();
   }
 }
