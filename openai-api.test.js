@@ -12,7 +12,12 @@ const callTool = {
   type: 'function',
   name: 'call',
   description: 'Call now.',
-  parameters: { type: 'object', properties: {}, additionalProperties: false },
+  parameters: {
+    type: 'object',
+    properties: { narration: { type: 'string' } },
+    required: ['narration'],
+    additionalProperties: false,
+  },
 };
 
 test('creates a native GPT-Live client-delegation session without a separate transcriber', () => {
@@ -35,17 +40,24 @@ test('creates a native GPT-Live client-delegation session without a separate tra
 test('builds a Terra Responses request with tools and strict dealer output', () => {
   const request = buildDealerResponseRequest({
     envelope: { sourceEvent: { type: 'voice_utterance', transcript: 'I call' }, gameState: {} },
-    tools: [callTool, { type: 'function', name: 'notAllowed' }],
+    tools: [callTool, { type: 'function', name: 'confirmAction' }],
   });
 
   assert.equal(request.model, 'gpt-5.6-terra');
-  assert.equal(request.reasoning.effort, 'low');
+  assert.equal(request.reasoning.effort, 'none');
   assert.equal(request.parallel_tool_calls, false);
+  assert.equal(request.max_output_tokens, 800);
   assert.deepEqual(request.tools.map(({ name }) => name), ['call']);
   assert.equal(request.tools[0].strict, true);
+  assert.deepEqual(request.tools[0].parameters.required, ['narration']);
   assert.deepEqual(request.text.format.schema, prompts.dealerResponseSchema);
   assert.match(request.instructions, /Too rich for me/);
   assert.match(request.instructions, /You need to say/);
+  assert.match(request.instructions, /stand-alone or turn-responsive declarations/);
+  assert.match(request.instructions, /Sam, you need to say check/);
+  assert.match(request.instructions, /allIn: execute immediately/);
+  assert.match(request.instructions, /tool's narration argument/);
+  assert.doesNotMatch(request.instructions, /all-in confirmation/);
 });
 
 test('continues the same Terra response with raw JavaScript tool output', () => {
@@ -62,6 +74,10 @@ test('continues the same Terra response with raw JavaScript tool output', () => 
     output: '{"ok":true,"action":{"type":"call","chipsMoved":5}}',
   }]);
   assert.equal(request.instructions, prompts.terraInstructions);
+  assert.deepEqual(request.tools, []);
+  assert.equal(request.tool_choice, 'none');
+  assert.equal(request.parallel_tool_calls, false);
+  assert.equal(request.max_output_tokens, 300);
 });
 
 test('parses Terra tool calls and final structured dealer speech', () => {

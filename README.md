@@ -37,9 +37,11 @@ speaker    ← GPT-Live 1 ← GPT-5.6 Terra ← JavaScript state/result
 
 GPT-Live uses client delegation and supplies native transcript deltas; there is no separate transcription model. Terra receives the recent conversation plus a fresh state snapshot, may request one of the allowed browser tools, and writes the final dealer line only after JavaScript returns a raw structured outcome. UI actions and the opening game announcement also go through Terra before GPT-Live speaks them. Browser playback stays muted except while Terra-approved commentary is being delivered, and closes only after the final audio event plus a locally observed playback drain. The state machine remains the only component allowed to decide whether a poker transition is legal.
 
+Voice turns record a capped latency history in `window.__robodealLatencyHistory` and log each completed sample as `[RoboDeal latency]`. The stages separate GPT-Live turn detection and transcript buffering, the initial Terra decision, JavaScript execution, the post-tool Terra narration, and GPT-Live speech startup.
+
 ## Poker transition engine
 
-`GameState` is plain serializable data: players, chips, blinds, dealer, active player, betting totals, pots, hand number, and one named phase. `getAvailableActions(state)` is the source for legal poker-engine transitions in the current state. Interface-only behavior such as undo and voice confirmation is managed separately in `app.js`. `executeTransition(state, action)` validates a named transition, returns a new state, and resolves deterministic outcomes such as advancing the turn, dealing the next street, running out all-in hands, or finishing a hand.
+`GameState` is plain serializable data: players, chips, blinds, dealer, active player, betting totals, pots, hand number, and one named phase. `getAvailableActions(state)` is the source for legal poker-engine transitions in the current state. Interface-only behavior such as undo is managed separately in `app.js`. `executeTransition(state, action)` validates a named transition, returns a new state, and resolves deterministic outcomes such as advancing the turn, dealing the next street, running out all-in hands, or finishing a hand.
 
 Run `npm test` to execute the transition tests, including illegal-action guards, blinds, all-ins, all-in runouts, folds, pot awards, side-pot splits, and big-blind mode.
 

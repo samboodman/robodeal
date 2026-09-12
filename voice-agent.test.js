@@ -107,6 +107,22 @@ test('application narration uses commentary with a null delegation ID', () => {
   assert.equal(agent.audio.muted, false);
 });
 
+test('reports backend and GPT-Live speech-start latency', async () => {
+  const samples = [];
+  const { agent } = testAgent({ onLatency: (timing) => samples.push(timing) });
+  agent.audio = { muted: true };
+
+  agent.speak('Sam checks.', null, { initialTerraMs: 12, javascriptMs: 1 });
+  await agent.handleEvent({ type: 'session.output_transcript.delta', delta: 'Sam ' });
+  await agent.handleEvent({ type: 'session.output_transcript.done' });
+
+  assert.equal(samples.length, 1);
+  assert.equal(samples[0].initialTerraMs, 12);
+  assert.equal(samples[0].javascriptMs, 1);
+  assert.ok(samples[0].gptLiveSpeechStartMs >= 0);
+  assert.ok(samples[0].estimatedEndOfSpeechToAudioMs >= 12);
+});
+
 test('mutes any Live speech that was not opened by Terra-approved commentary', async () => {
   const { agent } = testAgent();
   agent.audio = { muted: true };

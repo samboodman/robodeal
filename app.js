@@ -105,7 +105,6 @@ let voicePreviewAgent = null;
 let voiceConnectionPromise = null;
 let dealerAgent = null;
 let startMicrophoneAfterSpeech = false;
-let pendingVoiceAction = null;
 let raiseMode = false;
 let seatingMode = false;
 let seatAngles = {};
@@ -510,6 +509,13 @@ function setVoiceStatus(text) {
   voiceStatus.dataset.state = state;
 }
 
+function recordVoiceLatency(timing) {
+  const history = window.__robodealLatencyHistory || [];
+  history.push(timing);
+  window.__robodealLatencyHistory = history.slice(-20);
+  console.info('[RoboDeal latency]', JSON.stringify(timing));
+}
+
 function updateRecordingButton() {
   const recording = Boolean(voiceAgent?.recording);
   recordingButton.setAttribute('aria-pressed', String(recording));
@@ -560,7 +566,6 @@ function getVoiceSnapshot() {
     highestRoundBet: viewHighestRoundBet(),
     pendingBet,
     pendingFold,
-    pendingVoiceAction,
     canUndo: !gameScreen.hidden
       && dealPrompt.hidden
       && gameWinnerScreen.hidden
@@ -579,17 +584,32 @@ function getVoiceSnapshot() {
   };
 }
 
+function voiceTool(name, description, properties = {}, required = []) {
+  return {
+    type: 'function',
+    name,
+    description,
+    parameters: {
+      type: 'object',
+      properties: {
+        ...properties,
+        narration: { type: 'string', description: prompts.toolDescriptions.narration },
+      },
+      required: [...required, 'narration'],
+      additionalProperties: false,
+    },
+  };
+}
+
 const voiceTools = [
-  { type: 'function', name: 'check', description: prompts.toolDescriptions.check, parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'call', description: prompts.toolDescriptions.call, parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'bet', description: prompts.toolDescriptions.bet, parameters: { type: 'object', properties: { total: { type: 'number', description: prompts.toolDescriptions.betTotal } }, required: ['total'], additionalProperties: false } },
-  { type: 'function', name: 'raise', description: prompts.toolDescriptions.raise, parameters: { type: 'object', properties: { amount: { type: 'number', description: prompts.toolDescriptions.raiseAmount } }, required: ['amount'], additionalProperties: false } },
-  { type: 'function', name: 'fold', description: prompts.toolDescriptions.fold, parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'allIn', description: prompts.toolDescriptions.allIn, parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'confirmAction', description: prompts.toolDescriptions.confirmAction, parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'cancelAction', description: prompts.toolDescriptions.cancelAction, parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'cardsDealt', description: prompts.toolDescriptions.cardsDealt, parameters: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'undo', description: prompts.toolDescriptions.undo, parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  voiceTool('check', prompts.toolDescriptions.check),
+  voiceTool('call', prompts.toolDescriptions.call),
+  voiceTool('bet', prompts.toolDescriptions.bet, { total: { type: 'number', description: prompts.toolDescriptions.betTotal } }, ['total']),
+  voiceTool('raise', prompts.toolDescriptions.raise, { amount: { type: 'number', description: prompts.toolDescriptions.raiseAmount } }, ['amount']),
+  voiceTool('fold', prompts.toolDescriptions.fold),
+  voiceTool('allIn', prompts.toolDescriptions.allIn),
+  voiceTool('cardsDealt', prompts.toolDescriptions.cardsDealt),
+  voiceTool('undo', prompts.toolDescriptions.undo),
 ];
 
 function executeVoiceTool(name, args) {
@@ -620,42 +640,6 @@ function executeVoiceTool(name, args) {
   const player = viewPlayer(currentPlayerNumber);
   if (!player) return finish({ ok: false, errorCode: 'NO_CURRENT_PLAYER' });
 
-  if (name === 'cancelAction') {
-    if (!pendingVoiceAction) return finish({ ok: false, errorCode: 'NO_PENDING_CONFIRMATION' });
-    const cancelledAction = structuredClone(pendingVoiceAction);
-    pendingFold = false;
-    pendingVoiceAction = null;
-    updateBetControls();
-    return finish({ ok: true, action: { type: 'cancel_confirmation', cancelledAction } });
-  }
-
-  if (name === 'confirmAction') {
-    if (!pendingVoiceAction) return finish({ ok: false, errorCode: 'NO_PENDING_CONFIRMATION' });
-    if (gameScreen.hidden || !dealPrompt.hidden || !winnerPicker.hidden || !gameWinnerScreen.hidden) {
-      pendingFold = false;
-      pendingVoiceAction = null;
-      return finish({ ok: false, errorCode: 'CONFIRMATION_EXPIRED' });
-    }
-    if (pendingVoiceAction && pendingVoiceAction.playerNumber !== currentPlayerNumber) {
-      pendingFold = false;
-      pendingVoiceAction = null;
-      return finish({ ok: false, errorCode: 'CONFIRMATION_EXPIRED' });
-    }
-
-    const pendingAction = pendingVoiceAction;
-    pendingVoiceAction = null;
-    if (pendingAction.type === 'all-in') {
-      const amount = pendingAction.amount ?? player.chips;
-      betCurrentPlayer(amount);
-      confirm(false);
-      return finish({
-        ok: true,
-        action: { type: 'all_in', actor: actor(player), chipsMoved: amount },
-      });
-    }
-    return finish({ ok: false, errorCode: 'UNKNOWN_PENDING_ACTION' });
-  }
-
   if (gameScreen.hidden || !dealPrompt.hidden || !winnerPicker.hidden || !gameWinnerScreen.hidden) {
     return finish({ ok: false, errorCode: 'BETTING_ACTION_UNAVAILABLE' });
   }
@@ -663,9 +647,7 @@ function executeVoiceTool(name, args) {
   const amountToCall = amountToCallForView(player);
   const maximumBet = bettingBoundsForView(player).maxAdditionalChips;
   const legalActions = currentGameActions();
-  if (name !== 'fold' && name !== 'allIn') pendingVoiceAction = null;
   if (name === 'fold') {
-    pendingVoiceAction = null;
     foldCurrentPlayer();
     confirm(false);
     return finish({ ok: true, action: { type: 'fold', actor: actor(player) } });
@@ -706,12 +688,12 @@ function executeVoiceTool(name, args) {
       });
     }
     pendingFold = false;
-    updateBetControls();
-    pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber, amount: player.chips };
+    const amount = player.chips;
+    betCurrentPlayer(amount);
+    confirm(false);
     return finish({
       ok: true,
-      action: { type: 'all_in_requested', actor: actor(player), amount: player.chips },
-      confirmationRequired: true,
+      action: { type: 'all_in', actor: actor(player), chipsMoved: amount },
     });
   }
   if (name === 'bet') {
@@ -731,11 +713,11 @@ function executeVoiceTool(name, args) {
       });
     }
     if (amount === player.chips) {
-      pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber, amount };
+      betCurrentPlayer(amount);
+      confirm(false);
       return finish({
         ok: true,
-        action: { type: 'all_in_requested', actor: actor(player), amount, requestedAs: 'bet', total },
-        confirmationRequired: true,
+        action: { type: 'all_in', actor: actor(player), chipsMoved: amount, requestedAs: 'bet', total },
       });
     }
     betCurrentPlayer(amount);
@@ -762,11 +744,11 @@ function executeVoiceTool(name, args) {
       });
     }
     if (amount === player.chips) {
-      pendingVoiceAction = { type: 'all-in', playerNumber: currentPlayerNumber, amount };
+      betCurrentPlayer(amount);
+      confirm(false);
       return finish({
         ok: true,
-        action: { type: 'all_in_requested', actor: actor(player), amount, requestedAs: 'raise', raiseAmount },
-        confirmationRequired: true,
+        action: { type: 'all_in', actor: actor(player), chipsMoved: amount, requestedAs: 'raise', raiseAmount },
       });
     }
     const total = player.roundBet + amount;
@@ -801,7 +783,7 @@ function getDealerAgent() {
 
 async function requestDealerNarration(sourceEvent, recentConversation = []) {
   const result = await getDealerAgent().run(sourceEvent, recentConversation);
-  if (result.speak && result.utterance) voiceAgent?.speak(result.utterance);
+  if (result.speak && result.utterance) voiceAgent?.speak(result.utterance, null, result.timing);
   else setVoiceStatus(voiceAgent?.idleStatus() || 'Microphone off');
   return result;
 }
@@ -817,6 +799,7 @@ async function connectVoiceAgent() {
       transcript,
     }, recentConversation),
     onTranscript: setVoiceTranscript,
+    onLatency: recordVoiceLatency,
     onStatus: (status) => {
       setVoiceStatus(status);
       if (!startMicrophoneAfterSpeech || status !== 'Microphone off') return;
@@ -1263,7 +1246,6 @@ function undoLastTurn(fromShowdown = false, narrate = true) {
   const player = viewPlayer(viewActionPlayerNumber());
   pendingBet = player ? amountToCallForView(player) : 0;
   pendingFold = false;
-  pendingVoiceAction = null;
   lastTurnState = null;
   lastTurnEndedHandByFold = false;
   renderGameState();
@@ -1499,7 +1481,6 @@ function startHand() {
   lastTurnEndedHandByFold = false;
   pendingBet = 0;
   pendingFold = false;
-  pendingVoiceAction = null;
   invokeGame({ type: Transition.START_HAND });
   takeAnte();
   renderGameState();
@@ -1510,7 +1491,6 @@ function startNewHand() {
   lastTurnEndedHandByFold = false;
   pendingBet = 0;
   pendingFold = false;
-  pendingVoiceAction = null;
   invokeGame({ type: Transition.START_NEXT_HAND });
   takeAnte();
   renderGameState();
@@ -1660,7 +1640,6 @@ function confirmTurn(narrate = true) {
   invokeGame(action, { narrate });
   lastTurnEndedHandByFold = action.type === Transition.FOLD && gameState.phase === GamePhase.HAND_COMPLETE;
   pendingFold = false;
-  pendingVoiceAction = null;
   renderGameState();
 }
 

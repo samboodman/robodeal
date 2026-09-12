@@ -8,8 +8,6 @@ const allowedToolNames = new Set([
   'raise',
   'fold',
   'allIn',
-  'confirmAction',
-  'cancelAction',
   'cardsDealt',
   'undo',
 ]);
@@ -49,7 +47,8 @@ export function buildLiveSessionRequest({ sdp, voice = 'marin', accent = 'neutra
 }
 
 export function buildDealerResponseRequest({ envelope, previousResponseId = null, toolOutputs = [], tools = [] }) {
-  const normalizedTools = tools.map(normalizeTool).filter(Boolean);
+  const isContinuation = Boolean(previousResponseId);
+  const normalizedTools = isContinuation ? [] : tools.map(normalizeTool).filter(Boolean);
   const input = previousResponseId
     ? toolOutputs.map(({ callId, output }) => ({
       type: 'function_call_output',
@@ -71,9 +70,9 @@ export function buildDealerResponseRequest({ envelope, previousResponseId = null
     input,
     ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
     tools: normalizedTools,
-    tool_choice: normalizedTools.length > 0 ? 'auto' : 'none',
+    tool_choice: isContinuation || normalizedTools.length === 0 ? 'none' : 'auto',
     parallel_tool_calls: false,
-    reasoning: { effort: 'low' },
+    reasoning: { effort: 'none' },
     text: {
       verbosity: 'low',
       format: {
@@ -83,7 +82,7 @@ export function buildDealerResponseRequest({ envelope, previousResponseId = null
         schema: prompts.dealerResponseSchema,
       },
     },
-    max_output_tokens: 800,
+    max_output_tokens: isContinuation ? 300 : 800,
     store: true,
   };
 }

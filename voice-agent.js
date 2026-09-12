@@ -30,7 +30,8 @@ export class VoiceAgent {
     onDelegation = async () => ({ speak: false, kind: 'ignored', utterance: '' }),
     onTranscript = () => {},
     onStatus = () => {},
-    delegationDelayMs = 120,
+    onLatency = () => {},
+    delegationDelayMs = 60,
     outputSilenceThreshold = 0.008,
     outputSilenceMs = 180,
     outputDrainMinMs = 350,
@@ -41,6 +42,7 @@ export class VoiceAgent {
     this.onDelegation = onDelegation;
     this.onTranscript = onTranscript;
     this.onStatus = onStatus;
+    this.onLatency = onLatency;
     this.delegationDelayMs = delegationDelayMs;
     this.outputSilenceThreshold = outputSilenceThreshold;
     this.outputSilenceMs = outputSilenceMs;
@@ -72,6 +74,7 @@ export class VoiceAgent {
     this.outputDrainStartedAt = null;
     this.outputSilenceStartedAt = null;
     this.outputCompletionsAwaitingDrain = 0;
+    this.pendingSpeechTelemetry = [];
     this.pendingSpeechCount = 0;
     this.lastInputEndMs = null;
   }
@@ -156,9 +159,14 @@ export class VoiceAgent {
     });
   }
 
-  speak(text, delegationId = null) {
+  speak(text, delegationId = null, timing = null) {
     if (!this.connected || !text) return;
     this.pendingSpeechCount += 1;
+    this.pendingSpeechTelemetry.push({
+      ...(timing || {}),
+      commentarySentAt: Date.now(),
+      speechStarted: false,
+    });
     this.outputAudioContext?.resume().catch(() => {});
     this.setOutputGate(true);
     this.onStatus('Speaking…');
@@ -172,7 +180,7 @@ export class VoiceAgent {
 
   returnDelegation(result, delegationId) {
     if (result?.speak && result.utterance) {
-      this.speak(result.utterance, delegationId);
+      this.speak(result.utterance, delegationId, result.timing);
       return;
     }
     this.send({
@@ -276,6 +284,7 @@ export class VoiceAgent {
     this.outputDrainStartedAt = null;
     this.outputSilenceStartedAt = null;
     this.outputCompletionsAwaitingDrain = 0;
+    this.pendingSpeechTelemetry = [];
     this.pendingSpeechCount = 0;
     this.lastInputEndMs = null;
   }
@@ -342,6 +351,7 @@ export class VoiceAgent {
       this.onTranscript(`Heard: “${transcript}”`);
     }
     this.onStatus('Processing…');
+    const backendStartedAt = Date.now();
     try {
       const result = await this.onDelegation({
         delegationId: delegation.id,
@@ -349,6 +359,13 @@ export class VoiceAgent {
         recentConversation: this.conversation.slice(-12),
         offsetMs: delegation.offsetMs,
       });
+      result.timing = {
+        ...(result.timing || {}),
+        transcriptBufferMs: backendStartedAt - delegation.receivedAt,
+        liveTurnDetectionMs: Number.isFinite(delegation.offsetMs) && Number.isFinite(delegation.inputEndMs)
+          ? Math.max(0, delegation.offsetMs - delegation.inputEndMs)
+          : null,
+      };
       this.returnDelegation(result, delegation.id);
     } catch (error) {
       this.returnDelegation({ speak: false, kind: 'error', utterance: '' }, delegation.id);
@@ -418,6 +435,7 @@ export class VoiceAgent {
     this.outputDrainStartedAt = null;
     this.outputSilenceStartedAt = null;
     this.pendingSpeechCount = Math.max(0, this.pendingSpeechCount - completed);
+    this.pendingSpeechTelemetry.splice(0, completed);
     if (this.pendingSpeechCount === 0) {
       this.setOutputGate(false);
       this.onStatus(this.idleStatus());
@@ -442,12 +460,22 @@ export class VoiceAgent {
         this.inputTranscript = '';
       }
       this.inputTranscript = `${this.inputTranscript}${event.delta || ''}`.slice(-4_000);
-      if (Number.isFinite(event.end_ms)) this.lastInputEndMs = event.end_ms;
+      if (Number.isFinite(event.end_ms)) {
+        this.lastInputEndMs = event.end_ms;
+        if (this.pendingDelegations.length > 0) {
+          this.pendingDelegations[this.pendingDelegations.length - 1].inputEndMs = event.end_ms;
+        }
+      }
       if (this.pendingDelegations.length > 0) this.scheduleDelegations();
       return;
     }
     if (event.type === 'session.delegation.created' && event.delegation?.target === 'client') {
-      this.pendingDelegations.push({ id: event.delegation.id, offsetMs: event.offset_ms });
+      this.pendingDelegations.push({
+        id: event.delegation.id,
+        offsetMs: event.offset_ms,
+        inputEndMs: this.lastInputEndMs,
+        receivedAt: Date.now(),
+      });
       this.scheduleDelegations();
       return;
     }
@@ -457,6 +485,28 @@ export class VoiceAgent {
         return;
       }
       this.outputTranscript += event.delta || '';
+      const speechTelemetry = this.pendingSpeechTelemetry.find((timing) => !timing.speechStarted);
+      if (speechTelemetry) {
+        speechTelemetry.speechStarted = true;
+        const latency = {
+          ...speechTelemetry,
+          gptLiveSpeechStartMs: Date.now() - speechTelemetry.commentarySentAt,
+        };
+        delete latency.commentarySentAt;
+        delete latency.speechStarted;
+        const backendMs = Number.isFinite(latency.totalBackendMs)
+          ? latency.totalBackendMs
+          : [latency.queueMs, latency.initialTerraMs, latency.javascriptMs, latency.postToolTerraMs]
+            .filter(Number.isFinite)
+            .reduce((total, duration) => total + duration, 0);
+        latency.estimatedEndOfSpeechToAudioMs = [
+          latency.liveTurnDetectionMs,
+          latency.transcriptBufferMs,
+          backendMs,
+          latency.gptLiveSpeechStartMs,
+        ].filter(Number.isFinite).reduce((total, duration) => total + duration, 0);
+        this.onLatency(latency);
+      }
       this.onStatus('Speaking…');
       clearTimeout(this.outputTranscriptTimer);
       this.outputTranscriptTimer = setTimeout(() => this.finishOutputTranscript(), 800);
