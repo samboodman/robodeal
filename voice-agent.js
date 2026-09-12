@@ -14,6 +14,13 @@ export function microphoneAudioConstraints(supported = {}) {
   };
 }
 
+export function rootMeanSquare(samples) {
+  if (!samples?.length) return 0;
+  let sum = 0;
+  for (const sample of samples) sum += sample * sample;
+  return Math.sqrt(sum / samples.length);
+}
+
 function eventId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -24,15 +31,32 @@ export class VoiceAgent {
     onTranscript = () => {},
     onStatus = () => {},
     delegationDelayMs = 120,
+    outputSilenceThreshold = 0.008,
+    outputSilenceMs = 180,
+    outputDrainMinMs = 350,
+    outputDrainMaxMs = 2_000,
+    outputDrainFallbackMs = 450,
+    outputDrainPollMs = 30,
   } = {}) {
     this.onDelegation = onDelegation;
     this.onTranscript = onTranscript;
     this.onStatus = onStatus;
     this.delegationDelayMs = delegationDelayMs;
+    this.outputSilenceThreshold = outputSilenceThreshold;
+    this.outputSilenceMs = outputSilenceMs;
+    this.outputDrainMinMs = outputDrainMinMs;
+    this.outputDrainMaxMs = outputDrainMaxMs;
+    this.outputDrainFallbackMs = outputDrainFallbackMs;
+    this.outputDrainPollMs = outputDrainPollMs;
     this.connection = null;
     this.channel = null;
     this.sender = null;
     this.audio = null;
+    this.outputAudioContext = null;
+    this.outputAudioSource = null;
+    this.outputAnalyser = null;
+    this.outputAnalyserSamples = null;
+    this.outputGate = null;
     this.microphoneStream = null;
     this.audioTestContext = null;
     this.audioTestRunning = false;
@@ -44,6 +68,10 @@ export class VoiceAgent {
     this.pendingDelegations = [];
     this.delegationTimer = null;
     this.outputTranscriptTimer = null;
+    this.outputDrainTimer = null;
+    this.outputDrainStartedAt = null;
+    this.outputSilenceStartedAt = null;
+    this.outputCompletionsAwaitingDrain = 0;
     this.pendingSpeechCount = 0;
     this.lastInputEndMs = null;
   }
@@ -61,6 +89,12 @@ export class VoiceAgent {
     this.onStatus('Connecting…');
     if (!window.RTCPeerConnection) throw new Error('This browser does not support WebRTC.');
 
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (AudioContextClass) {
+      this.outputAudioContext = new AudioContextClass();
+      await this.outputAudioContext.resume().catch(() => {});
+    }
+
     this.connection = new RTCPeerConnection();
     this.sender = this.connection.addTransceiver('audio', { direction: 'sendrecv' }).sender;
     this.connection.addEventListener('track', (event) => {
@@ -69,10 +103,12 @@ export class VoiceAgent {
         this.audio.autoplay = true;
         this.audio.playsInline = true;
         this.audio.hidden = true;
-        this.audio.muted = this.pendingSpeechCount === 0;
+        this.audio.muted = true;
         document.body.append(this.audio);
       }
       this.audio.srcObject = event.streams[0];
+      this.connectOutputMonitor();
+      this.setOutputGate(this.pendingSpeechCount > 0);
       this.audio.play().catch(() => {});
     });
 
@@ -123,7 +159,8 @@ export class VoiceAgent {
   speak(text, delegationId = null) {
     if (!this.connected || !text) return;
     this.pendingSpeechCount += 1;
-    if (this.audio) this.audio.muted = false;
+    this.outputAudioContext?.resume().catch(() => {});
+    this.setOutputGate(true);
     this.onStatus('Speaking…');
     this.send({
       type: 'session.commentary.append',
@@ -144,7 +181,7 @@ export class VoiceAgent {
       delegation_id: delegationId,
       content: 'The backend determined that no response or action is required. Continue listening silently.',
     });
-    if (this.audio) this.audio.muted = true;
+    if (this.pendingSpeechCount === 0) this.setOutputGate(false);
     this.onStatus(this.idleStatus());
   }
 
@@ -213,10 +250,17 @@ export class VoiceAgent {
     this.audio?.remove();
     clearTimeout(this.delegationTimer);
     clearTimeout(this.outputTranscriptTimer);
+    clearTimeout(this.outputDrainTimer);
     this.channel = null;
     this.connection = null;
     this.sender = null;
     this.audio = null;
+    this.outputAudioSource = null;
+    this.outputAnalyser = null;
+    this.outputAnalyserSamples = null;
+    this.outputGate = null;
+    this.outputAudioContext?.close().catch(() => {});
+    this.outputAudioContext = null;
     this.audioTestContext?.close().catch(() => {});
     this.audioTestContext = null;
     this.audioTestRunning = false;
@@ -228,6 +272,10 @@ export class VoiceAgent {
     this.pendingDelegations = [];
     this.delegationTimer = null;
     this.outputTranscriptTimer = null;
+    this.outputDrainTimer = null;
+    this.outputDrainStartedAt = null;
+    this.outputSilenceStartedAt = null;
+    this.outputCompletionsAwaitingDrain = 0;
     this.pendingSpeechCount = 0;
     this.lastInputEndMs = null;
   }
@@ -238,6 +286,43 @@ export class VoiceAgent {
 
   idleStatus() {
     return this.recording ? 'Listening' : 'Microphone off';
+  }
+
+  connectOutputMonitor() {
+    if (!this.audio || !this.outputAudioContext || this.outputAudioSource) return;
+    try {
+      this.outputAudioSource = this.outputAudioContext.createMediaElementSource(this.audio);
+      this.outputAnalyser = this.outputAudioContext.createAnalyser();
+      this.outputAnalyser.fftSize = 512;
+      this.outputAnalyserSamples = new Float32Array(this.outputAnalyser.fftSize);
+      this.outputGate = this.outputAudioContext.createGain();
+      this.outputAudioSource.connect(this.outputAnalyser);
+      this.outputAnalyser.connect(this.outputGate);
+      this.outputGate.connect(this.outputAudioContext.destination);
+      this.audio.muted = false;
+    } catch {
+      this.outputAudioSource = null;
+      this.outputAnalyser = null;
+      this.outputAnalyserSamples = null;
+      this.outputGate = null;
+    }
+  }
+
+  setOutputGate(open) {
+    if (this.outputGate && this.outputAudioContext) {
+      const { gain } = this.outputGate;
+      gain.cancelScheduledValues?.(this.outputAudioContext.currentTime);
+      gain.setValueAtTime(open ? 1 : 0, this.outputAudioContext.currentTime);
+      if (this.audio) this.audio.muted = false;
+      return;
+    }
+    if (this.audio) this.audio.muted = !open;
+  }
+
+  outputIsSilent() {
+    if (!this.outputAnalyser || !this.outputAnalyserSamples) return null;
+    this.outputAnalyser.getFloatTimeDomainData(this.outputAnalyserSamples);
+    return rootMeanSquare(this.outputAnalyserSamples) < this.outputSilenceThreshold;
   }
 
   scheduleDelegations() {
@@ -283,9 +368,62 @@ export class VoiceAgent {
       this.conversation = this.conversation.slice(-12);
       this.onTranscript(`RoboDeal: “${transcript}”`);
     }
-    this.pendingSpeechCount = Math.max(0, this.pendingSpeechCount - 1);
-    if (this.pendingSpeechCount === 0 && this.audio) this.audio.muted = true;
-    this.onStatus(this.idleStatus());
+  }
+
+  markOutputAudioDone() {
+    if (this.pendingSpeechCount === 0) {
+      this.setOutputGate(false);
+      return;
+    }
+    this.outputCompletionsAwaitingDrain += 1;
+    clearTimeout(this.outputDrainTimer);
+    this.outputDrainStartedAt = Date.now();
+    this.outputSilenceStartedAt = null;
+    this.pollOutputDrain();
+  }
+
+  pollOutputDrain() {
+    const now = Date.now();
+    const elapsed = now - this.outputDrainStartedAt;
+    const silent = this.outputIsSilent();
+
+    if (silent === null) {
+      if (elapsed >= this.outputDrainFallbackMs) {
+        this.finishOutputPlayback();
+        return;
+      }
+    } else if (silent) {
+      this.outputSilenceStartedAt ??= now;
+      const silentFor = now - this.outputSilenceStartedAt;
+      if (elapsed >= this.outputDrainMinMs && silentFor >= this.outputSilenceMs) {
+        this.finishOutputPlayback();
+        return;
+      }
+    } else {
+      this.outputSilenceStartedAt = null;
+    }
+
+    if (elapsed >= this.outputDrainMaxMs) {
+      this.finishOutputPlayback();
+      return;
+    }
+    this.outputDrainTimer = setTimeout(() => this.pollOutputDrain(), this.outputDrainPollMs);
+  }
+
+  finishOutputPlayback() {
+    clearTimeout(this.outputDrainTimer);
+    this.outputDrainTimer = null;
+    const completed = this.outputCompletionsAwaitingDrain;
+    this.outputCompletionsAwaitingDrain = 0;
+    this.outputDrainStartedAt = null;
+    this.outputSilenceStartedAt = null;
+    this.pendingSpeechCount = Math.max(0, this.pendingSpeechCount - completed);
+    if (this.pendingSpeechCount === 0) {
+      this.setOutputGate(false);
+      this.onStatus(this.idleStatus());
+    } else {
+      this.onStatus('Speaking…');
+    }
   }
 
   async handleEvent(event) {
@@ -324,12 +462,20 @@ export class VoiceAgent {
       this.outputTranscriptTimer = setTimeout(() => this.finishOutputTranscript(), 800);
       return;
     }
-    if (event.type === 'session.output_transcript.done' || event.type === 'session.output_audio.done') {
+    if (event.type === 'session.output_transcript.done') {
       this.finishOutputTranscript();
+      return;
+    }
+    if (event.type === 'session.output_audio.done') {
+      this.markOutputAudioDone();
       return;
     }
     if (event.type === 'error') {
       this.pendingSpeechCount = 0;
+      this.outputCompletionsAwaitingDrain = 0;
+      clearTimeout(this.outputDrainTimer);
+      this.outputDrainTimer = null;
+      this.setOutputGate(false);
       this.onStatus(`AI error: ${event.error?.message || 'unknown error'}`);
     }
   }

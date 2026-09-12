@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { microphoneAudioConstraints, VoiceAgent } from './voice-agent.js';
+import { microphoneAudioConstraints, rootMeanSquare, VoiceAgent } from './voice-agent.js';
 
 function testAgent(options = {}) {
   const sent = [];
@@ -22,6 +22,11 @@ test('microphone constraints enable supported browser voice isolation', () => {
     voiceIsolation: true,
   });
   assert.equal('voiceIsolation' in microphoneAudioConstraints(), false);
+});
+
+test('calculates an audio signal root mean square', () => {
+  assert.equal(rootMeanSquare(new Float32Array([0, 0, 0])), 0);
+  assert.equal(rootMeanSquare(new Float32Array([1, -1])), 1);
 });
 
 test('collects native GPT-Live transcript deltas and sends client delegation to Terra', async () => {
@@ -117,6 +122,7 @@ test('output transcript deltas are retained as conversation history', async () =
   const transcripts = [];
   const { agent } = testAgent({ onTranscript: (text) => transcripts.push(text) });
   agent.pendingSpeechCount = 1;
+  agent.audio = { muted: false };
 
   await agent.handleEvent({ type: 'session.output_transcript.delta', delta: 'Sam ' });
   await agent.handleEvent({ type: 'session.output_transcript.delta', delta: 'calls.' });
@@ -124,6 +130,55 @@ test('output transcript deltas are retained as conversation history', async () =
 
   assert.deepEqual(agent.conversation, [{ role: 'assistant', text: 'Sam calls.' }]);
   assert.deepEqual(transcripts, ['RoboDeal: “Sam calls.”']);
+  assert.equal(agent.pendingSpeechCount, 1);
+  assert.equal(agent.audio.muted, false);
+});
+
+test('audio completion waits for a local drain before closing the output gate', async () => {
+  const statuses = [];
+  const { agent } = testAgent({
+    onStatus: (status) => statuses.push(status),
+    outputDrainFallbackMs: 8,
+    outputDrainPollMs: 2,
+  });
+  agent.pendingSpeechCount = 1;
+  agent.audio = { muted: false };
+
+  await agent.handleEvent({ type: 'session.output_audio.done' });
+
+  assert.equal(agent.audio.muted, false);
+  assert.equal(agent.pendingSpeechCount, 1);
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  assert.equal(agent.audio.muted, true);
+  assert.equal(agent.pendingSpeechCount, 0);
+  assert.equal(statuses.at(-1), 'Microphone off');
+});
+
+test('local audio activity resets the silence drain window', async () => {
+  const { agent } = testAgent({
+    outputSilenceMs: 6,
+    outputDrainMinMs: 0,
+    outputDrainMaxMs: 100,
+    outputDrainPollMs: 2,
+  });
+  agent.pendingSpeechCount = 1;
+  agent.audio = { muted: false };
+  let polls = 0;
+  agent.outputAnalyserSamples = new Float32Array(2);
+  agent.outputAnalyser = {
+    getFloatTimeDomainData(samples) {
+      polls += 1;
+      samples.fill(polls <= 2 ? 0.1 : 0);
+    },
+  };
+
+  await agent.handleEvent({ type: 'session.output_audio.done' });
+
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(agent.audio.muted, false);
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  assert.equal(agent.audio.muted, true);
+  assert.ok(polls >= 3);
 });
 
 test('session start is required before the agent reports connected', async () => {

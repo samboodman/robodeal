@@ -35,7 +35,7 @@ microphone → GPT-Live 1 → GPT-5.6 Terra → JavaScript state machine
 speaker    ← GPT-Live 1 ← GPT-5.6 Terra ← JavaScript state/result
 ```
 
-GPT-Live uses client delegation and supplies native transcript deltas; there is no separate transcription model. Terra receives the recent conversation plus a fresh state snapshot, may request one of the allowed browser tools, and writes the final dealer line only after JavaScript returns a raw structured outcome. UI actions and the opening game announcement also go through Terra before GPT-Live speaks them. Browser playback stays muted except while Terra-approved commentary is being delivered. The state machine remains the only component allowed to decide whether a poker transition is legal.
+GPT-Live uses client delegation and supplies native transcript deltas; there is no separate transcription model. Terra receives the recent conversation plus a fresh state snapshot, may request one of the allowed browser tools, and writes the final dealer line only after JavaScript returns a raw structured outcome. UI actions and the opening game announcement also go through Terra before GPT-Live speaks them. Browser playback stays muted except while Terra-approved commentary is being delivered, and closes only after the final audio event plus a locally observed playback drain. The state machine remains the only component allowed to decide whether a poker transition is legal.
 
 ## Poker transition engine
 
