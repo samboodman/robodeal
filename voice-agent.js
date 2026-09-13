@@ -21,6 +21,19 @@ export function rootMeanSquare(samples) {
   return Math.sqrt(sum / samples.length);
 }
 
+export function isBackchannelOnly(text) {
+  const compact = String(text || '').toLowerCase().replace(/[^a-z]/g, '');
+  return /^(?:m+h+m+|m+h+|h+m+|u+h+u+h+|u+h+h+|ok(?:ay)?|right|gotit|isee|yeah|yep)$/.test(compact);
+}
+
+export function isBackchannelPrefix(text) {
+  const compact = String(text || '').toLowerCase().replace(/[^a-z]/g, '');
+  if (!compact) return true;
+  if (/^(?:m+h*m*|h+m*|u+h*(?:u+h*)?)$/.test(compact)) return true;
+  const backchannels = ['mhmm', 'mhm', 'hmm', 'uhhuh', 'uhuh', 'okay', 'ok', 'right', 'gotit', 'isee', 'yeah', 'yep'];
+  return backchannels.some((backchannel) => backchannel.startsWith(compact));
+}
+
 function eventId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -40,6 +53,9 @@ export class VoiceAgent {
     outputDrainMaxMs = 2_000,
     outputDrainFallbackMs = 450,
     outputDrainPollMs = 30,
+    outputResponseTimeoutMs = 5_000,
+    outputTranscriptIdleMs = 800,
+    outputAuthorizationDelayMs = 150,
   } = {}) {
     this.onDelegation = onDelegation;
     this.onSpeculativeDelegation = onSpeculativeDelegation;
@@ -54,6 +70,9 @@ export class VoiceAgent {
     this.outputDrainMaxMs = outputDrainMaxMs;
     this.outputDrainFallbackMs = outputDrainFallbackMs;
     this.outputDrainPollMs = outputDrainPollMs;
+    this.outputResponseTimeoutMs = outputResponseTimeoutMs;
+    this.outputTranscriptIdleMs = outputTranscriptIdleMs;
+    this.outputAuthorizationDelayMs = outputAuthorizationDelayMs;
     this.connection = null;
     this.channel = null;
     this.sender = null;
@@ -62,6 +81,7 @@ export class VoiceAgent {
     this.outputAudioSource = null;
     this.outputAnalyser = null;
     this.outputAnalyserSamples = null;
+    this.outputDelay = null;
     this.outputGate = null;
     this.microphoneStream = null;
     this.audioTestContext = null;
@@ -76,6 +96,7 @@ export class VoiceAgent {
     this.speculationTimer = null;
     this.speculativeTurn = null;
     this.outputTranscriptTimer = null;
+    this.outputTranscriptAuthorized = false;
     this.outputDrainTimer = null;
     this.outputDrainStartedAt = null;
     this.outputSilenceStartedAt = null;
@@ -174,7 +195,8 @@ export class VoiceAgent {
       speechStarted: false,
     });
     this.outputAudioContext?.resume().catch(() => {});
-    this.setOutputGate(true);
+    this.outputTranscriptAuthorized = false;
+    this.setOutputGate(false);
     this.onStatus('Speaking…');
     this.send({
       type: 'session.commentary.append',
@@ -182,6 +204,7 @@ export class VoiceAgent {
       delegation_id: delegationId,
       content: text,
     });
+    this.scheduleOutputCompletion(this.outputResponseTimeoutMs);
   }
 
   returnDelegation(result, delegationId) {
@@ -273,6 +296,7 @@ export class VoiceAgent {
     this.outputAudioSource = null;
     this.outputAnalyser = null;
     this.outputAnalyserSamples = null;
+    this.outputDelay = null;
     this.outputGate = null;
     this.outputAudioContext?.close().catch(() => {});
     this.outputAudioContext = null;
@@ -289,6 +313,7 @@ export class VoiceAgent {
     this.speculationTimer = null;
     this.speculativeTurn = null;
     this.outputTranscriptTimer = null;
+    this.outputTranscriptAuthorized = false;
     this.outputDrainTimer = null;
     this.outputDrainStartedAt = null;
     this.outputSilenceStartedAt = null;
@@ -313,8 +338,11 @@ export class VoiceAgent {
       this.outputAnalyser = this.outputAudioContext.createAnalyser();
       this.outputAnalyser.fftSize = 512;
       this.outputAnalyserSamples = new Float32Array(this.outputAnalyser.fftSize);
+      this.outputDelay = this.outputAudioContext.createDelay(1);
+      this.outputDelay.delayTime.value = this.outputAuthorizationDelayMs / 1_000;
       this.outputGate = this.outputAudioContext.createGain();
-      this.outputAudioSource.connect(this.outputAnalyser);
+      this.outputAudioSource.connect(this.outputDelay);
+      this.outputDelay.connect(this.outputAnalyser);
       this.outputAnalyser.connect(this.outputGate);
       this.outputGate.connect(this.outputAudioContext.destination);
       this.audio.muted = false;
@@ -322,6 +350,7 @@ export class VoiceAgent {
       this.outputAudioSource = null;
       this.outputAnalyser = null;
       this.outputAnalyserSamples = null;
+      this.outputDelay = null;
       this.outputGate = null;
     }
   }
@@ -344,6 +373,7 @@ export class VoiceAgent {
     this.outputDrainStartedAt = null;
     this.outputSilenceStartedAt = null;
     this.outputTranscript = '';
+    this.outputTranscriptAuthorized = false;
     clearTimeout(this.outputTranscriptTimer);
     this.outputTranscriptTimer = null;
     clearTimeout(this.outputDrainTimer);
@@ -435,6 +465,25 @@ export class VoiceAgent {
     }
   }
 
+  scheduleOutputCompletion(delayMs) {
+    clearTimeout(this.outputTranscriptTimer);
+    this.outputTranscriptTimer = setTimeout(() => this.completeOutputResponse(), delayMs);
+    this.outputTranscriptTimer.unref?.();
+  }
+
+  completeOutputResponse() {
+    if (!this.outputTranscriptAuthorized && isBackchannelOnly(this.outputTranscript)) {
+      this.outputTranscript = '';
+      this.setOutputGate(false);
+      this.onStatus('Processing…');
+      this.scheduleOutputCompletion(this.outputResponseTimeoutMs);
+      return;
+    }
+    this.finishOutputTranscript();
+    this.outputTranscriptAuthorized = false;
+    if (this.outputCompletionsAwaitingDrain === 0) this.markOutputAudioDone();
+  }
+
   markOutputAudioDone() {
     if (this.pendingSpeechCount === 0) {
       this.setOutputGate(false);
@@ -473,6 +522,7 @@ export class VoiceAgent {
       return;
     }
     this.outputDrainTimer = setTimeout(() => this.pollOutputDrain(), this.outputDrainPollMs);
+    this.outputDrainTimer.unref?.();
   }
 
   finishOutputPlayback() {
@@ -534,10 +584,17 @@ export class VoiceAgent {
     }
     if (event.type === 'session.output_transcript.delta') {
       if (this.pendingSpeechCount === 0) {
-        if (this.audio) this.audio.muted = true;
+        this.setOutputGate(false);
         return;
       }
       this.outputTranscript += event.delta || '';
+      if (!this.outputTranscriptAuthorized && isBackchannelPrefix(this.outputTranscript)) {
+        this.setOutputGate(false);
+        this.scheduleOutputCompletion(this.outputTranscriptIdleMs);
+        return;
+      }
+      this.outputTranscriptAuthorized = true;
+      this.setOutputGate(true);
       const speechTelemetry = this.pendingSpeechTelemetry.find((timing) => !timing.speechStarted);
       if (speechTelemetry) {
         speechTelemetry.speechStarted = true;
@@ -561,16 +618,14 @@ export class VoiceAgent {
         this.onLatency(latency);
       }
       this.onStatus('Speaking…');
-      clearTimeout(this.outputTranscriptTimer);
-      this.outputTranscriptTimer = setTimeout(() => this.finishOutputTranscript(), 800);
+      this.scheduleOutputCompletion(this.outputTranscriptIdleMs);
       return;
     }
     if (event.type === 'session.output_transcript.done') {
-      this.finishOutputTranscript();
+      this.completeOutputResponse();
       return;
     }
     if (event.type === 'session.output_audio.done') {
-      this.markOutputAudioDone();
       return;
     }
     if (event.type === 'error') {

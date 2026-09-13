@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { microphoneAudioConstraints, rootMeanSquare, VoiceAgent } from './voice-agent.js';
+import {
+  isBackchannelOnly,
+  isBackchannelPrefix,
+  microphoneAudioConstraints,
+  rootMeanSquare,
+  VoiceAgent,
+} from './voice-agent.js';
 
 function testAgent(options = {}) {
   const sent = [];
@@ -27,6 +33,14 @@ test('microphone constraints enable supported browser voice isolation', () => {
 test('calculates an audio signal root mean square', () => {
   assert.equal(rootMeanSquare(new Float32Array([0, 0, 0])), 0);
   assert.equal(rootMeanSquare(new Float32Array([1, -1])), 1);
+});
+
+test('recognizes complete and partial voice backchannels', () => {
+  assert.equal(isBackchannelOnly('Mhhmm.'), true);
+  assert.equal(isBackchannelOnly('Uh-huh'), true);
+  assert.equal(isBackchannelOnly('Sam calls five.'), false);
+  assert.equal(isBackchannelPrefix('Mh'), true);
+  assert.equal(isBackchannelPrefix('Sam'), false);
 });
 
 test('collects native GPT-Live transcript deltas and sends client delegation to Terra', async () => {
@@ -133,7 +147,7 @@ test('a Terra failure stays silent and reports the problem in the UI', async () 
   assert.equal(statuses.at(-1), 'AI error: backend offline');
 });
 
-test('application narration uses commentary with a null delegation ID', () => {
+test('application narration stays muted until approved output begins', async () => {
   const { agent, sent } = testAgent();
   agent.audio = { muted: true };
 
@@ -143,6 +157,9 @@ test('application narration uses commentary with a null delegation ID', () => {
   assert.equal(sent[0].type, 'session.commentary.append');
   assert.equal(sent[0].delegation_id, null);
   assert.equal(sent[0].content, 'No-limit Texas Hold’em, five-chip ante.');
+  assert.equal(agent.audio.muted, true);
+
+  await agent.handleEvent({ type: 'session.output_transcript.delta', delta: 'No-limit Texas Hold’em' });
   assert.equal(agent.audio.muted, false);
 });
 
@@ -171,6 +188,31 @@ test('mutes any Live speech that was not opened by Terra-approved commentary', a
   assert.equal(agent.audio.muted, true);
   assert.equal(agent.outputTranscript, '');
   assert.deepEqual(agent.conversation, []);
+});
+
+test('suppresses a backchannel while Terra-approved commentary is pending', async () => {
+  const statuses = [];
+  const { agent } = testAgent({
+    onStatus: (status) => statuses.push(status),
+    outputResponseTimeoutMs: 20,
+    outputDrainFallbackMs: 8,
+    outputDrainPollMs: 2,
+  });
+  agent.audio = { muted: true };
+  agent.speak('Sam calls five.');
+
+  await agent.handleEvent({ type: 'session.output_transcript.delta', delta: 'Mhhmm.' });
+  assert.equal(agent.audio.muted, true);
+  await agent.handleEvent({ type: 'session.output_transcript.done' });
+  assert.equal(agent.pendingSpeechCount, 1);
+  assert.equal(statuses.at(-1), 'Processing…');
+
+  await agent.handleEvent({ type: 'session.output_transcript.delta', delta: 'Sam calls five.' });
+  assert.equal(agent.audio.muted, false);
+  await agent.handleEvent({ type: 'session.output_transcript.done' });
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  assert.equal(agent.pendingSpeechCount, 0);
+  assert.equal(agent.audio.muted, true);
 });
 
 test('incoming user speech immediately closes a previously open output gate', async () => {
@@ -212,7 +254,7 @@ test('output transcript deltas are retained as conversation history', async () =
   assert.equal(agent.audio.muted, false);
 });
 
-test('audio completion waits for a local drain before closing the output gate', async () => {
+test('output completion waits for a local drain before closing the output gate', async () => {
   const statuses = [];
   const { agent } = testAgent({
     onStatus: (status) => statuses.push(status),
@@ -222,11 +264,51 @@ test('audio completion waits for a local drain before closing the output gate', 
   agent.pendingSpeechCount = 1;
   agent.audio = { muted: false };
 
-  await agent.handleEvent({ type: 'session.output_audio.done' });
+  agent.outputTranscript = 'Sam calls.';
+  agent.outputTranscriptAuthorized = true;
+  await agent.handleEvent({ type: 'session.output_transcript.done' });
 
   assert.equal(agent.audio.muted, false);
   assert.equal(agent.pendingSpeechCount, 1);
   await new Promise((resolve) => setTimeout(resolve, 15));
+  assert.equal(agent.audio.muted, true);
+  assert.equal(agent.pendingSpeechCount, 0);
+  assert.equal(statuses.at(-1), 'Microphone off');
+});
+
+test('transcript completion starts the local drain when no audio completion event arrives', async () => {
+  const statuses = [];
+  const { agent } = testAgent({
+    onStatus: (status) => statuses.push(status),
+    outputDrainFallbackMs: 8,
+    outputDrainPollMs: 2,
+  });
+  agent.pendingSpeechCount = 1;
+  agent.audio = { muted: false };
+
+  await agent.handleEvent({ type: 'session.output_transcript.done' });
+
+  assert.equal(agent.audio.muted, false);
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  assert.equal(agent.audio.muted, true);
+  assert.equal(agent.pendingSpeechCount, 0);
+  assert.equal(statuses.at(-1), 'Microphone off');
+});
+
+test('a missing Live output event cannot leave speech and automatic microphone startup stuck', async () => {
+  const statuses = [];
+  const { agent } = testAgent({
+    onStatus: (status) => statuses.push(status),
+    outputResponseTimeoutMs: 8,
+    outputDrainFallbackMs: 8,
+    outputDrainPollMs: 2,
+  });
+  agent.audio = { muted: true };
+
+  agent.speak('Deal two cards to each player.');
+
+  assert.equal(statuses.at(-1), 'Speaking…');
+  await new Promise((resolve) => setTimeout(resolve, 25));
   assert.equal(agent.audio.muted, true);
   assert.equal(agent.pendingSpeechCount, 0);
   assert.equal(statuses.at(-1), 'Microphone off');
@@ -250,7 +332,9 @@ test('local audio activity resets the silence drain window', async () => {
     },
   };
 
-  await agent.handleEvent({ type: 'session.output_audio.done' });
+  agent.outputTranscript = 'Sam calls.';
+  agent.outputTranscriptAuthorized = true;
+  await agent.handleEvent({ type: 'session.output_transcript.done' });
 
   await new Promise((resolve) => setTimeout(resolve, 5));
   assert.equal(agent.audio.muted, false);
