@@ -1,7 +1,7 @@
 :root {
   font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
   color: #173329;
-  background: #084b2d;
+  background: #5b3018;
   -webkit-text-size-adjust: 100%;
 }
 * {
@@ -13,14 +13,12 @@
 body {
   margin: 0;
   min-height: 100svh;
-  background-color: #0b633a;
-  background-image:
-    radial-gradient(ellipse at center, transparent 55%, #032f1c66 100%),
-    url("./assets/green-felt-photo-tile.jpg");
+  background-color: #5b3018;
+  background-image: url("./assets/log-wall-background.png");
   background-position: center;
-  background-size: cover, 384px 384px;
+  background-size: cover;
   background-attachment: fixed;
-  background-repeat: no-repeat, repeat;
+  background-repeat: no-repeat;
 }
 .app-shell {
   min-height: 100svh;
@@ -1002,6 +1000,25 @@ button:active {
 .chip-orange {
   --chip-color: #df7629;
   --chip-trim: #8a400f;
+}
+.chip-stream {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow: hidden;
+  pointer-events: none;
+}
+.chip-stream-chip {
+  position: fixed;
+  width: 22px;
+  height: 22px;
+  border: 3px solid var(--chip-trim);
+  border-radius: 50%;
+  background: var(--chip-color);
+  box-shadow: 0 2px 3px #04160f66;
+  transform: translate(-50%, -50%);
+  transition: transform 650ms cubic-bezier(0.4, 0, 0.2, 1), opacity 650ms ease;
+  will-change: transform, opacity;
 }
 .checkbox-setting {
   display: flex;

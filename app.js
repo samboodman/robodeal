@@ -108,6 +108,7 @@ let startMicrophoneAfterSpeech = false;
 let raiseMode = false;
 let seatingMode = false;
 let seatAngles = {};
+let pendingChipStream = null;
 const lastGameSettingsKey = 'robodeal-last-game-settings';
 const isLocalDebugEnvironment = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 const bettingLimitLabels = Object.freeze({
@@ -150,6 +151,50 @@ const debugPresetPlayerCounts = Object.freeze({
   'hand-won': 3,
   'game-won': 2,
 });
+
+function calculateChips(chipValues, chipCount) {
+  let cleanChips = chipValues.filter(chip => chip.value !== null && chip.value > 0);
+  
+  let dp = new Array(chipCount + 1).fill(Infinity);
+  let parent = new Array(chipCount + 1).fill(null);
+  
+  dp[0] = 0;
+
+  for (let currentAmount = 1; currentAmount <= chipCount; currentAmount++) {
+    for (let chip of cleanChips) {
+      if (currentAmount >= chip.value) {
+        if (dp[currentAmount - chip.value] + 1 < dp[currentAmount]) {
+          dp[currentAmount] = dp[currentAmount - chip.value] + 1;
+          parent[currentAmount] = chip;
+        }
+      }
+    }
+  }
+
+  if (dp[chipCount] === Infinity) {
+    return []; 
+  }
+
+  let output = [];
+  let remainingAmount = chipCount;
+  while (remainingAmount > 0) {
+    let chipUsed = parent[remainingAmount];
+    output.push(chipUsed.color);
+    remainingAmount -= chipUsed.value;
+  }
+
+  return output;
+};
+
+export function convertAiAnswersToNumber(aiAnswer) {
+  let outputString = ""
+  let numberOfDigits = Object.keys(aiAnswer).length;
+  for (let i = 1; i < 10 ** numberOfDigits; i *= 10) {
+    outputString = aiAnswer[`${i}`] + outputString
+  }
+  outputString = outputString.replace(/(?<=^|[0-9])[a-zA-Z]+(?=$|[0-9])/g, "0")
+  return Number(outputString)
+}
 
 function selectDebugPreset() {
   const requiredPlayerCount = debugPresetPlayerCounts[debugPresetSelect.value];
@@ -268,12 +313,11 @@ function updateChipDisplayModeButton() {
 }
 
 function selectedChipDenominations() {
-  return Object.fromEntries(chipDenominationInputs.map((input) => [
-    input.dataset.chipColor,
-    chipEnabledCheckboxes.find((checkbox) => checkbox.dataset.chipEnabled === input.dataset.chipColor)?.checked
-      ? Math.max(1, Number(input.value) || 1)
-      : null,
-  ]));
+  return chipDenominationInputs.map((input) => {
+    const color = input.dataset.chipColor;
+    const enabled = chipEnabledCheckboxes.find((checkbox) => checkbox.dataset.chipEnabled === color)?.checked;
+    return { color, value: enabled ? Math.max(1, Number(input.value) || 1) : null };
+  });
 }
 
 function updateChipDenominationAvailability(checkbox) {
@@ -286,11 +330,15 @@ function updateChipDenominationAvailability(checkbox) {
 }
 
 function restoreChipDenominations(savedDenominations) {
-  if (!savedDenominations || typeof savedDenominations !== 'object') return;
+  if (!savedDenominations) return;
+  const byColor = Array.isArray(savedDenominations)
+    ? Object.fromEntries(savedDenominations.map(({ color, value }) => [color, value]))
+    : savedDenominations;
+  if (typeof byColor !== 'object') return;
   chipDenominationInputs.forEach((input) => {
     const color = input.dataset.chipColor;
-    if (!Object.hasOwn(savedDenominations, color)) return;
-    const savedDenomination = savedDenominations[color];
+    if (!Object.hasOwn(byColor, color)) return;
+    const savedDenomination = byColor[color];
     const checkbox = chipEnabledCheckboxes.find((candidate) => candidate.dataset.chipEnabled === color);
     checkbox.checked = savedDenomination !== null && savedDenomination !== false;
     const savedValue = Number(savedDenomination);
@@ -937,22 +985,72 @@ function makePlayers() {
   });
 }
 
+function activeChipDenominations() {
+  const allowedColors = new Set(chipDenominationInputs.map((input) => input.dataset.chipColor));
+  return (gameSettings?.chipDenominations || [])
+    .filter(({ color, value }) => allowedColors.has(color) && Number.isFinite(Number(value)) && Number(value) > 0)
+    .map(({ color, value }) => ({ color, value: Number(value) }))
+    .sort((first, second) => second.value - first.value);
+}
+
+const CHIP_STREAM_MAX_CHIPS = 40;
+const CHIP_STREAM_STAGGER_MS = 55;
+const CHIP_STREAM_TRAVEL_MS = 650;
+
+function animateChipStream({ playerId, amount }) {
+  const seat = playerSeats.querySelector(`.player-seat[data-player-id="${playerId}"]`);
+  if (!seat || !(amount > 0)) return;
+  const colors = calculateChips(activeChipDenominations(), amount).slice(0, CHIP_STREAM_MAX_CHIPS);
+  if (colors.length === 0) return;
+
+  const seatRect = seat.getBoundingClientRect();
+  const startX = seatRect.left + seatRect.width / 2;
+  const startY = seatRect.top + seatRect.height / 2;
+  const endX = window.innerWidth / 2;
+  const endY = window.innerHeight / 2;
+
+  const layer = document.createElement('div');
+  layer.className = 'chip-stream';
+  layer.setAttribute('aria-hidden', 'true');
+
+  colors.forEach((color, index) => {
+    const chip = document.createElement('i');
+    chip.className = `chip-stream-chip chip-${color}`;
+    chip.style.left = `${startX}px`;
+    chip.style.top = `${startY}px`;
+    chip.style.transitionDelay = `${index * CHIP_STREAM_STAGGER_MS}ms`;
+    layer.append(chip);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        chip.style.transform = `translate(-50%, -50%) translate(${endX - startX}px, ${endY - startY}px)`;
+        chip.style.opacity = '0.2';
+      });
+    });
+  });
+
+  document.body.append(layer);
+  window.setTimeout(
+    () => layer.remove(),
+    CHIP_STREAM_TRAVEL_MS + colors.length * CHIP_STREAM_STAGGER_MS + 100,
+  );
+}
+
 function makePlayerChipPiles(amount) {
   const container = document.createElement('div');
   container.className = 'player-chip-piles';
   container.setAttribute('aria-hidden', 'true');
-  const allowedColors = new Set(chipDenominationInputs.map((input) => input.dataset.chipColor));
-  const denominations = Object.entries(gameSettings.chipDenominations || {})
-    .filter(([color, value]) => allowedColors.has(color) && Number.isFinite(Number(value)) && Number(value) > 0)
-    .map(([color, value]) => ({ color, value: Number(value) }))
-    .sort((first, second) => second.value - first.value);
-  let remaining = Math.max(0, Math.floor(amount));
+  const denominations = activeChipDenominations();
+  const total = Math.max(0, Math.floor(amount));
+  const chipColors = calculateChips(denominations, total);
+  const chipCounts = new Map();
+  chipColors.forEach((color) => chipCounts.set(color, (chipCounts.get(color) || 0) + 1));
 
-  denominations.forEach(({ color, value }) => {
-    const chipCount = Math.floor(remaining / value);
-    remaining %= value;
+  let visibleChips = 0;
+  denominations.forEach(({ color }) => {
+    const chipCount = chipCounts.get(color) || 0;
     if (chipCount === 0) return;
-    const visibleChipCount = Math.min(chipCount, 100);
+    const visibleChipCount = Math.min(chipCount, 100 - visibleChips);
+    visibleChips += visibleChipCount;
     for (let firstChip = 0; firstChip < visibleChipCount; firstChip += 10) {
       const stack = document.createElement('span');
       stack.className = 'player-chip-stack';
@@ -966,10 +1064,10 @@ function makePlayerChipPiles(amount) {
     }
   });
 
-  if (remaining > 0 || denominations.length === 0) {
+  if ((total > 0 && chipColors.length === 0) || denominations.length === 0) {
     const remainder = document.createElement('span');
     remainder.className = 'player-chip-remainder';
-    remainder.textContent = denominations.length === 0 ? amount : `+${remaining}`;
+    remainder.textContent = denominations.length === 0 ? amount : `+${total}`;
     container.append(remainder);
   }
 
@@ -1294,6 +1392,11 @@ function renderGameState() {
     pendingBet = player ? amountToCallForView(player) : 0;
     pendingFold = false;
     drawPlayerSeats();
+    if (pendingChipStream) {
+      const stream = pendingChipStream;
+      pendingChipStream = null;
+      animateChipStream(stream);
+    }
     return;
   }
 
@@ -1485,6 +1588,7 @@ function startHand() {
   lastTurnEndedHandByFold = false;
   pendingBet = 0;
   pendingFold = false;
+  pendingChipStream = null;
   invokeGame({ type: Transition.START_HAND });
   takeAnte();
   renderGameState();
@@ -1495,6 +1599,7 @@ function startNewHand() {
   lastTurnEndedHandByFold = false;
   pendingBet = 0;
   pendingFold = false;
+  pendingChipStream = null;
   invokeGame({ type: Transition.START_NEXT_HAND });
   takeAnte();
   renderGameState();
@@ -1641,6 +1746,8 @@ function confirmTurn(narrate = true) {
   } else {
     action = { type: Transition.BET, playerId: currentPlayerNumber, additionalChips: pendingBet };
   }
+  const chipsMoved = action.type === Transition.CHECK || action.type === Transition.FOLD ? 0 : pendingBet;
+  if (chipsMoved > 0) pendingChipStream = { playerId: currentPlayerNumber, amount: chipsMoved };
   invokeGame(action, { narrate });
   lastTurnEndedHandByFold = action.type === Transition.FOLD && gameState.phase === GamePhase.HAND_COMPLETE;
   pendingFold = false;
