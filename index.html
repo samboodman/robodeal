@@ -24,11 +24,7 @@
             <option value="8">8 players</option>
           </select>
           <div class="money-grid">
-            <div>
-              <label for="starting-money">Starting money</label>
-              <input id="starting-money" name="startingMoney" type="number" min="1" value="250" inputmode="numeric" required />
-            </div>
-            <div>
+            <div class="small-blind-field">
               <label for="small-blind">Small Blind</label>
               <input id="small-blind" name="smallBlind" type="number" min="0" value="5" inputmode="numeric" required />
             </div>
@@ -45,9 +41,22 @@
             <input id="use-ante" name="useAnte" type="checkbox" />
             Use ante
           </label>
+          <label class="checkbox-setting" for="different-stacks">
+            <input id="different-stacks" name="differentStacks" type="checkbox" />
+            Players have different starting chip amounts
+          </label>
           <div id="ante-setting" hidden>
             <label for="ante">Ante amount</label>
             <input id="ante" name="ante" type="number" min="1" value="5" inputmode="numeric" required disabled />
+          </div>
+
+          <div id="starting-money-setting" class="starting-money-setting">
+            <label for="starting-money">Starting money</label>
+            <input id="starting-money" name="startingMoney" type="number" min="1" value="250" inputmode="numeric" required />
+          </div>
+          <div id="chip-amounts-setting" class="chip-amounts-setting" hidden>
+            <p>Chip Amounts:</p>
+            <div id="chip-amounts-list" class="chip-amounts-list"></div>
           </div>
 
           <label for="betting-limit">Betting limit</label>
@@ -224,6 +233,7 @@
                 <button id="fold-action-button" type="button">Fold</button>
                 <button id="all-in-action-button" type="button">All in</button>
                 <button id="raise-action-button" type="button">Raise</button>
+                <button id="other-button" class="other-button" type="button">Other</button>
                 <button id="help-button" class="help-button" type="button">Help</button>
               </div>
               <div id="raise-panel" class="raise-panel" hidden>
@@ -278,6 +288,50 @@
             <div><dt>Redo</dt><dd>Step forward again through turns you have undone.</dd></div>
           </dl>
           <button id="close-help-button" type="button">Back to game</button>
+        </section>
+        <section id="other-screen" class="other-screen" aria-label="Other" hidden>
+          <div class="other-actions">
+            <button id="buy-back-button" class="other-action-button" type="button">Buy back</button>
+            <button id="alter-settings-button" class="other-action-button" type="button">Alter settings</button>
+          </div>
+          <button id="other-back-button" class="other-back-button" type="button">Back to game</button>
+        </section>
+        <section id="buy-back-screen" class="dialog-screen" aria-labelledby="buy-back-title" hidden>
+          <h2 id="buy-back-title">Buy back</h2>
+          <div id="buy-back-players" class="dialog-options"></div>
+          <label for="buy-back-amount">Amount</label>
+          <input id="buy-back-amount" type="number" min="1" inputmode="numeric" value="100" />
+          <button id="buy-back-confirm-button" type="button">Buy back</button>
+          <button id="buy-back-cancel-button" type="button">Cancel</button>
+        </section>
+        <section id="alter-settings-screen" class="dialog-screen" aria-labelledby="alter-settings-title" hidden>
+          <h2 id="alter-settings-title">Alter settings</h2>
+          <div class="alter-grid">
+            <label for="alter-limit">Betting limit</label>
+            <select id="alter-limit">
+              <option value="no-limit">No-Limit</option>
+              <option value="pot-limit">Pot-Limit</option>
+              <option value="fixed-limit">Fixed-Limit</option>
+            </select>
+            <label for="alter-fixed-bet">Fixed-limit bet</label>
+            <input id="alter-fixed-bet" type="number" min="1" inputmode="numeric" />
+            <label for="alter-small-blind">Small blind</label>
+            <input id="alter-small-blind" type="number" min="0" inputmode="numeric" />
+            <label for="alter-big-blind">Use big blind</label>
+            <input id="alter-big-blind" type="checkbox" />
+            <label for="alter-blind-increase">Blind increase</label>
+            <input id="alter-blind-increase" type="number" min="0" inputmode="numeric" />
+            <label for="alter-ante">Use ante</label>
+            <input id="alter-ante" type="checkbox" />
+            <label for="alter-ante-amount">Ante amount</label>
+            <input id="alter-ante-amount" type="number" min="1" inputmode="numeric" />
+          </div>
+          <div class="alter-names-block">
+            <p>Player names</p>
+            <div id="alter-player-names" class="alter-names"></div>
+          </div>
+          <button id="alter-settings-save-button" type="button">Save (applies next hand)</button>
+          <button id="alter-settings-cancel-button" type="button">Cancel</button>
         </section>
       </section>
       <section id="game-winner-screen" class="game-winner-screen" aria-live="polite" hidden>

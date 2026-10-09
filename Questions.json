@@ -100,6 +100,9 @@
       { "kind": "bigBlind", "name": "big_blind", "label": "the big blind amount" },
       { "kind": "ante", "name": "ante", "label": "the ante amount" },
       { "kind": "sidePotCount", "name": "side_pot_count", "label": "how many side pots there are" },
+      { "kind": "nonEliminatedPlayerCount", "name": "non_eliminated_player_count", "label": "the number of players who are not eliminated" },
+      { "kind": "inHandPlayerCount", "name": "in_hand_player_count", "label": "the number of players who are not folded or eliminated" },
+      { "kind": "amountToCall", "name": "amount_to_call", "label": "the amount the current player needs to call" },
       { "kind": "playerChips", "from": "players", "name": "player_{number}_chips", "label": "how many chips {name} has" },
       { "kind": "playerRoundBet", "from": "players", "name": "player_{number}_round_bet", "label": "how much {name} has bet this round" },
       { "kind": "sidePotAmount", "from": "sidePots", "name": "side_pot_{index}", "label": "the amount in side pot {index}" }

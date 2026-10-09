@@ -31,6 +31,11 @@ const enableAudioFileInputCheckbox = document.querySelector('#enable-audio-file-
 const useBigBlindCheckbox = document.querySelector('#use-big-blind');
 const useAnteCheckbox = document.querySelector('#use-ante');
 const anteSetting = document.querySelector('#ante-setting');
+const differentStacksCheckbox = document.querySelector('#different-stacks');
+const startingMoneySetting = document.querySelector('#starting-money-setting');
+const chipAmountsSetting = document.querySelector('#chip-amounts-setting');
+const chipAmountsList = document.querySelector('#chip-amounts-list');
+const startingMoneyInput = document.querySelector('#starting-money');
 const anteInput = document.querySelector('#ante');
 const bettingLimitSelect = document.querySelector('#betting-limit');
 const fixedLimitSetting = document.querySelector('#fixed-limit-setting');
@@ -67,6 +72,27 @@ const cancelRaiseButton = document.querySelector('#cancel-raise-button');
 const helpButton = document.querySelector('#help-button');
 const buttonHelp = document.querySelector('#button-help');
 const closeHelpButton = document.querySelector('#close-help-button');
+const otherButton = document.querySelector('#other-button');
+const otherScreen = document.querySelector('#other-screen');
+const otherBackButton = document.querySelector('#other-back-button');
+const buyBackButton = document.querySelector('#buy-back-button');
+const buyBackScreen = document.querySelector('#buy-back-screen');
+const buyBackPlayers = document.querySelector('#buy-back-players');
+const buyBackAmount = document.querySelector('#buy-back-amount');
+const buyBackConfirmButton = document.querySelector('#buy-back-confirm-button');
+const buyBackCancelButton = document.querySelector('#buy-back-cancel-button');
+const alterSettingsButton = document.querySelector('#alter-settings-button');
+const alterSettingsScreen = document.querySelector('#alter-settings-screen');
+const alterLimit = document.querySelector('#alter-limit');
+const alterFixedBet = document.querySelector('#alter-fixed-bet');
+const alterSmallBlind = document.querySelector('#alter-small-blind');
+const alterBigBlind = document.querySelector('#alter-big-blind');
+const alterBlindIncrease = document.querySelector('#alter-blind-increase');
+const alterAnte = document.querySelector('#alter-ante');
+const alterAnteAmount = document.querySelector('#alter-ante-amount');
+const alterPlayerNames = document.querySelector('#alter-player-names');
+const alterSettingsSaveButton = document.querySelector('#alter-settings-save-button');
+const alterSettingsCancelButton = document.querySelector('#alter-settings-cancel-button');
 const potValue = document.querySelector('#pot-value');
 const sidePotValue = document.querySelector('#side-pot-value');
 const winnerPicker = document.querySelector('#winner-picker');
@@ -115,6 +141,7 @@ let raiseMode = false;
 let seatingMode = false;
 let seatAngles = {};
 let pendingChipStream = null;
+let selectedBuyBackPlayerId = null;
 const lastGameSettingsKey = 'robodeal-last-game-settings';
 const isLocalDebugEnvironment = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 const bettingLimitLabels = Object.freeze({
@@ -400,6 +427,11 @@ function restoreLastGameSettings() {
   });
   drawDealerOptions(String(settings.dealerNumber));
   dealerSelect.value = String(settings.dealerNumber);
+  differentStacksCheckbox.checked = settings.differentStacks === true;
+  updateStartingMoneyMode();
+  if (differentStacksCheckbox.checked && Array.isArray(settings.playerChips)) {
+    drawChipAmounts(settings.playerChips.map((value) => String(value)));
+  }
   chipDisplayMode = settings.chipDisplayMode === 'pile' ? 'pile' : 'value';
   updateChipDisplayModeButton();
   restoreChipDenominations(settings.chipDenominations);
@@ -950,12 +982,49 @@ function drawPlayerNames() {
     input.placeholder = `Player ${number}`;
     input.value = existingNames[number - 1] || '';
     input.setAttribute('aria-label', `Name for player ${number}`);
-    input.addEventListener('input', () => drawDealerOptions());
+    input.addEventListener('input', () => {
+      drawDealerOptions();
+      refreshChipAmountLabels();
+    });
     row.append(seat, input);
     playerNames.append(row);
   }
 
   drawDealerOptions(selectedDealer);
+}
+
+function drawChipAmounts(existingValues = null) {
+  const names = [...playerNames.querySelectorAll('input')];
+  const previous = existingValues
+    || [...chipAmountsList.querySelectorAll('input')].map((input) => input.value);
+  const fallback = Number(startingMoneyInput.value) || 1;
+  chipAmountsList.replaceChildren();
+  names.forEach((nameInput, index) => {
+    const row = document.createElement('div');
+    row.className = 'chip-amount-row';
+    const label = document.createElement('span');
+    label.className = 'chip-amount-name';
+    label.textContent = `${nameInput.value || `Player ${index + 1}`}.`;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '1';
+    input.inputMode = 'numeric';
+    input.value = String(previous[index] || fallback);
+    input.setAttribute('aria-label', `Starting chips for ${nameInput.value || `Player ${index + 1}`}`);
+    row.append(label, input);
+    chipAmountsList.append(row);
+  });
+}
+
+function updateStartingMoneyMode() {
+  const different = differentStacksCheckbox.checked;
+  startingMoneySetting.hidden = different;
+  chipAmountsSetting.hidden = !different;
+  if (different) drawChipAmounts();
+}
+
+function refreshChipAmountLabels() {
+  if (differentStacksCheckbox.checked) drawChipAmounts();
 }
 
 function drawDealerOptions(selectedDealer = dealerSelect.value || '1') {
@@ -975,11 +1044,17 @@ function drawDealerOptions(selectedDealer = dealerSelect.value || '1') {
 
 function makePlayers() {
   const names = [...playerNames.querySelectorAll('input')];
-  const players = names.map((input, index) => ({
-    id: index + 1,
-    name: input.value || `Player ${index + 1}`,
-    chips: Number(document.querySelector('#starting-money').value),
-  }));
+  const fallbackChips = Number(startingMoneyInput.value) || 1;
+  const chipInputs = [...chipAmountsList.querySelectorAll('input')];
+  const players = names.map((input, index) => {
+    const requested = gameSettings.differentStacks ? Number(chipInputs[index]?.value) : fallbackChips;
+    const chips = Number.isInteger(requested) && requested > 0 ? requested : fallbackChips;
+    return {
+      id: index + 1,
+      name: input.value || `Player ${index + 1}`,
+      chips,
+    };
+  });
 
   gameState = createGameState({
     players,
@@ -1422,6 +1497,94 @@ function adjustRaiseBy(amount) {
 
 function closeButtonHelp() {
   buttonHelp.hidden = true;
+}
+
+function openBuyBack() {
+  if (!gameState) return;
+  selectedBuyBackPlayerId = null;
+  buyBackPlayers.replaceChildren();
+  viewPlayers().forEach((player) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.playerId = String(player.id);
+    button.textContent = player.name;
+    button.addEventListener('click', () => {
+      selectedBuyBackPlayerId = player.id;
+      [...buyBackPlayers.children].forEach((child) => {
+        child.classList.toggle('selected', Number(child.dataset.playerId) === player.id);
+      });
+    });
+    buyBackPlayers.append(button);
+  });
+  buyBackAmount.value = String(gameSettings?.startingMoney ?? 100);
+  buyBackScreen.hidden = false;
+}
+
+function confirmBuyBack() {
+  const amount = Math.max(0, Math.floor(Number(buyBackAmount.value) || 0));
+  const player = gameState?.players.find((candidate) => candidate.id === selectedBuyBackPlayerId);
+  if (!player || amount <= 0) return;
+  player.chips += amount;
+  if (player.eliminated) player.eliminated = false;
+  buyBackScreen.hidden = true;
+  renderGameState();
+}
+
+function openAlterSettings() {
+  if (!gameSettings) return;
+  const smallBlind = gameState?.smallBlind ?? gameSettings.smallBlind ?? 1;
+  alterLimit.value = gameState?.bettingLimit || gameSettings.bettingLimit || 'no-limit';
+  alterFixedBet.value = String(gameState?.fixedLimitBet ?? gameSettings.fixedLimitBet ?? Math.max(1, smallBlind * 2));
+  alterSmallBlind.value = String(smallBlind);
+  alterBigBlind.checked = Boolean(gameState?.useBigBlind ?? gameSettings.useBigBlind);
+  alterBlindIncrease.value = String(gameState?.smallBlindIncrease ?? gameSettings.smallBlindIncrease ?? 0);
+  alterAnte.checked = Boolean(gameSettings.useAnte);
+  alterAnteAmount.value = String(gameSettings.ante || 1);
+  alterPlayerNames.replaceChildren();
+  viewPlayers().forEach((player, index) => {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = player.name;
+    input.placeholder = `Player ${index + 1}`;
+    input.setAttribute('aria-label', `Name for player ${index + 1}`);
+    alterPlayerNames.append(input);
+  });
+  alterSettingsScreen.hidden = false;
+}
+
+function saveAlterSettings() {
+  if (!gameSettings || !gameState) return;
+  const limit = alterLimit.value;
+  const fixedBet = Math.max(1, Math.floor(Number(alterFixedBet.value) || 1));
+  const smallBlind = Math.max(0, Math.floor(Number(alterSmallBlind.value) || 0));
+  const increase = Math.max(0, Math.floor(Number(alterBlindIncrease.value) || 0));
+  const useBigBlind = alterBigBlind.checked;
+  const useAnte = alterAnte.checked;
+  const anteAmount = Math.max(1, Math.floor(Number(alterAnteAmount.value) || 1));
+
+  gameSettings.bettingLimit = limit;
+  gameSettings.fixedLimitBet = fixedBet;
+  gameSettings.smallBlind = smallBlind;
+  gameSettings.smallBlindIncrease = increase;
+  gameSettings.useBigBlind = useBigBlind;
+  gameSettings.useAnte = useAnte;
+  gameSettings.ante = useAnte ? anteAmount : 0;
+
+  gameState.bettingLimit = limit;
+  gameState.fixedLimitBet = fixedBet;
+  gameState.smallBlind = smallBlind;
+  gameState.smallBlindIncrease = increase;
+  gameState.useBigBlind = useBigBlind;
+
+  [...alterPlayerNames.querySelectorAll('input')].forEach((input, index) => {
+    if (!gameState.players[index]) return;
+    gameState.players[index].name = input.value.trim() || `Player ${index + 1}`;
+  });
+  gameSettings.playerNames = gameState.players.map((player) => player.name);
+
+  saveLastGameSettings();
+  alterSettingsScreen.hidden = true;
+  renderGameState();
 }
 
 function undoIsActive() {
@@ -1928,10 +2091,12 @@ function cardsAreDealt(narrate = true) {
 
 playerCount.addEventListener('change', () => {
   drawPlayerNames();
+  refreshChipAmountLabels();
   useBigBlindCheckbox.checked = Number(playerCount.value) >= 6;
 });
 bettingLimitSelect.addEventListener('change', updateFixedLimitSetting);
 useAnteCheckbox.addEventListener('change', updateAnteSetting);
+differentStacksCheckbox.addEventListener('change', updateStartingMoneyMode);
 debugFeaturesCheckbox.addEventListener('change', updateDebugFeatures);
 debugPresetSelect.addEventListener('change', selectDebugPreset);
 enableAudioFileInputCheckbox.addEventListener('change', updateDebugFeatures);
@@ -2028,8 +2193,29 @@ helpButton.addEventListener('click', () => {
   closeHelpButton.focus();
 });
 closeHelpButton.addEventListener('click', closeButtonHelp);
+otherButton.addEventListener('click', () => {
+  otherScreen.hidden = false;
+  otherBackButton.focus();
+});
+otherBackButton.addEventListener('click', () => {
+  otherScreen.hidden = true;
+});
+buyBackButton.addEventListener('click', openBuyBack);
+buyBackConfirmButton.addEventListener('click', confirmBuyBack);
+buyBackCancelButton.addEventListener('click', () => {
+  buyBackScreen.hidden = true;
+});
+alterSettingsButton.addEventListener('click', openAlterSettings);
+alterSettingsSaveButton.addEventListener('click', saveAlterSettings);
+alterSettingsCancelButton.addEventListener('click', () => {
+  alterSettingsScreen.hidden = true;
+});
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !buttonHelp.hidden) closeButtonHelp();
+  if (event.key !== 'Escape') return;
+  if (!buttonHelp.hidden) closeButtonHelp();
+  if (!buyBackScreen.hidden) buyBackScreen.hidden = true;
+  if (!alterSettingsScreen.hidden) alterSettingsScreen.hidden = true;
+  if (!otherScreen.hidden) otherScreen.hidden = true;
 });
 function spinCornerButton(button) {
   button.classList.remove('spinning');
@@ -2052,6 +2238,8 @@ form.addEventListener('submit', (event) => {
   gameSettings = {
     playerCount: Number(playerCount.value),
     startingMoney: Number(document.querySelector('#starting-money').value),
+    differentStacks: differentStacksCheckbox.checked,
+    playerChips: [...chipAmountsList.querySelectorAll('input')].map((input) => Number(input.value)),
     smallBlind: Number(document.querySelector('#small-blind').value),
     smallBlindIncrease: Number(document.querySelector('#small-blind-increase').value),
     useBigBlind: useBigBlindCheckbox.checked,

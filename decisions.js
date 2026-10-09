@@ -281,6 +281,12 @@ function valueForKind(entry, snapshot) {
     case 'bigBlind': return snapshot?.game?.bigBlind?.amount ?? null;
     case 'ante': return snapshot?.game?.ante?.amount ?? null;
     case 'sidePotCount': return (snapshot?.sidePotAmounts || []).length;
+    case 'nonEliminatedPlayerCount': return (snapshot?.players || []).filter((player) => !player.eliminated).length;
+    case 'inHandPlayerCount': return (snapshot?.players || []).filter((player) => !player.folded && !player.eliminated).length;
+    case 'amountToCall': return snapshot?.currentPlayer?.amountToCall ?? 0;
+    case 'nonEliminatedPlayerCount': return (snapshot?.players || []).filter((player) => !player.eliminated).length;
+    case 'inHandPlayerCount': return (snapshot?.players || []).filter((player) => !player.folded && !player.eliminated).length;
+    case 'amountToCall': return snapshot?.currentPlayer?.amountToCall ?? 0;
     case 'playerChips': return { name: entry.context.name, chips: entry.context.chips };
     case 'playerRoundBet': return { name: entry.context.name, round_bet: entry.context.roundBet };
     case 'sidePotAmount': return entry.context.amount ?? null;
