@@ -1,0 +1,8 @@
+{
+  "streets": [
+    "Deal three cards face down to each player.",
+    "Each player discards one card, Burn one card, then deal the flop.",
+    "Burn one card, then deal the turn.",
+    "Burn one card, then deal the river."
+  ]
+}

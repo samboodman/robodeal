@@ -1,0 +1,9 @@
+{
+  "streets": [
+    "Deal two cards face down and one card face up to each player.",
+    "Deal fourth street face up to each active player.",
+    "Deal fifth street face up to each active player.",
+    "Deal sixth street face up to each active player.",
+    "Deal seventh street face down to each active player."
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "streets": [
+    "Deal three cards face down to each player. Players keep all three cards for the whole hand.",
+    "Burn one card, then deal the flop.",
+    "Burn one card, then deal the turn.",
+    "Burn one card, then deal the river."
+  ],
+  "showdown": "Everyone still in the hand: find your best two cards and use those to find your hand"
+}
