@@ -40,10 +40,15 @@ const gameScreen = document.querySelector('#game-screen');
 const gameWinnerScreen = document.querySelector('#game-winner-screen');
 const gameWinnerMessage = document.querySelector('#game-winner-message');
 const playerSeats = document.querySelector('#player-seats');
+const seatMarkers = document.querySelector('#seat-markers');
+const dealerMarker = document.querySelector('#dealer-marker');
+const smallBlindMarker = document.querySelector('#small-blind-marker');
+const bigBlindMarker = document.querySelector('#big-blind-marker');
 const lockSeatsButton = document.querySelector('#lock-seats-button');
 const turnControl = document.querySelector('#turn-control');
 const turnIndicator = document.querySelector('#turn-indicator');
-const undoButton = document.querySelector('#undo-button');
+const undoButton = document.querySelector('#undo-corner-button');
+const redoButton = document.querySelector('#redo-corner-button');
 const actionMenu = document.querySelector('#action-menu');
 const callActionButton = document.querySelector('#call-action-button');
 const checkActionButton = document.querySelector('#check-action-button');
@@ -65,7 +70,6 @@ const sidePotValue = document.querySelector('#side-pot-value');
 const winnerPicker = document.querySelector('#winner-picker');
 const winnerQuestion = document.querySelector('#winner-question');
 const winnerOptions = document.querySelector('#winner-options');
-const showdownUndoButton = document.querySelector('#showdown-undo-button');
 const dealPrompt = document.querySelector('#deal-prompt');
 const dealMessage = document.querySelector('#deal-message');
 const dealOkButton = document.querySelector('#deal-ok-button');
@@ -96,8 +100,8 @@ let pendingBet = 0;
 let pendingFold = false;
 let renderedPotLayerCount = 0;
 let potAnimationTimer = null;
-let lastTurnState = null;
-let lastTurnEndedHandByFold = false;
+let undoStack = [];
+let redoStack = [];
 let chipDisplayMode = 'value';
 let screenWakeLock = null;
 let voiceAgent = null;
@@ -275,6 +279,7 @@ function isLegalPendingBet(player, amount) {
 
 function invokeGame(action, { narrate = false, origin = 'ui' } = {}) {
   if (!gameState) throw new Error('The game state has not been initialized.');
+  recordUndoState();
   const stateBefore = narrate ? getVoiceSnapshot() : null;
   gameState = executeTransition(gameState, action);
   if (narrate && voiceAgent?.connected) {
@@ -574,7 +579,6 @@ function getVoiceSnapshot() {
   const currentPlayerNumber = viewActionPlayerNumber();
   const player = viewPlayer(currentPlayerNumber) || null;
   const maximumBet = bettingBoundsForView(player).maxAdditionalChips;
-  const undoFromShowdown = !winnerPicker.hidden;
   return {
     game: {
       variant: "Texas Hold'em",
@@ -614,11 +618,7 @@ function getVoiceSnapshot() {
     highestRoundBet: viewHighestRoundBet(),
     pendingBet,
     pendingFold,
-    canUndo: !gameScreen.hidden
-      && dealPrompt.hidden
-      && gameWinnerScreen.hidden
-      && !viewIsGameWon()
-      && canUndoLastTurn(undoFromShowdown),
+    canUndo: undoIsActive(),
     pot: totalPotAmount(),
     availableActions: currentGameActions(),
     dealInstruction: dealPrompt.hidden ? null : dealMessage.textContent,
@@ -639,17 +639,9 @@ function executeVoiceTool(name, args) {
   const actor = (player) => ({ id: player.id, name: player.name });
 
   if (name === 'undo') {
-    const fromShowdown = !winnerPicker.hidden;
-    if (gameScreen.hidden || !dealPrompt.hidden || !gameWinnerScreen.hidden || viewIsGameWon() || !canUndoLastTurn(fromShowdown)) {
-      return finish({ ok: false, errorCode: 'NOTHING_TO_UNDO' });
-    }
-    const restoredPlayer = lastTurnState.players
-      .find((player) => player.id === lastTurnState.actionPlayerId) || null;
-    undoLastTurn(fromShowdown, false);
-    return finish({
-      ok: true,
-      action: { type: 'undo', restoredActionPlayer: restoredPlayer ? actor(restoredPlayer) : null },
-    });
+    if (!undoIsActive()) return finish({ ok: false, errorCode: 'NOTHING_TO_UNDO' });
+    undo({ narrate: false });
+    return finish({ ok: true, action: { type: 'undo' } });
   }
 
   if (name === 'cardsDealt') {
@@ -1071,6 +1063,43 @@ function positionSeatElement(seat, playerId) {
   seat.style.setProperty('--rotation', `${angle - Math.PI / 2}rad`);
 }
 
+function positionSeatMarkers() {
+  const markers = [
+    { order: 0, playerId: gameState?.dealerId ?? null, el: dealerMarker },
+    { order: 1, playerId: gameState?.smallBlindPlayerId ?? null, el: smallBlindMarker },
+    { order: 2, playerId: gameState?.bigBlindPlayerId ?? null, el: bigBlindMarker },
+  ];
+  const show = Boolean(gameState) && !seatingMode && !gameScreen.hidden;
+  seatMarkers.hidden = !show;
+  if (!show) return;
+
+  const bounds = playerSeats.getBoundingClientRect();
+  const groups = new Map();
+  markers.forEach((marker) => {
+    if (marker.playerId == null) {
+      marker.el.hidden = true;
+      return;
+    }
+    if (!groups.has(marker.playerId)) groups.set(marker.playerId, []);
+    groups.get(marker.playerId).push(marker);
+  });
+
+  const orbit = 0.4;
+  const offsetX = 26 + 13 + 2;
+  groups.forEach((group, playerId) => {
+    group.sort((first, second) => first.order - second.order);
+    const angle = seatAngles[playerId] ?? 0;
+    const centerX = bounds.width * (0.5 + Math.cos(angle) * orbit);
+    const centerY = bounds.height * (0.5 + Math.sin(angle) * orbit);
+    group.forEach((marker, index) => {
+      const side = index === 0 ? -1 : 1;
+      marker.el.hidden = false;
+      marker.el.style.left = `${centerX + side * offsetX}px`;
+      marker.el.style.top = `${centerY}px`;
+    });
+  });
+}
+
 function pointerSeatAngle(event) {
   const bounds = gameScreen.getBoundingClientRect();
   const horizontal = (event.clientX - (bounds.left + bounds.width / 2)) / Math.max(1, bounds.width);
@@ -1195,6 +1224,8 @@ function drawPlayerSeats() {
     playerSeats.append(seat);
   });
 
+  positionSeatMarkers();
+
   const activeAngle = seatAngles[currentPlayerNumber];
   if (Number.isFinite(activeAngle)) {
     turnControl.style.setProperty('--rotation', `${activeAngle - Math.PI / 2}rad`);
@@ -1244,8 +1275,7 @@ function updateBetControls() {
   confirmRaiseButton.disabled = !isLegalPendingBet(player, pendingBet);
   actionMenu.hidden = raiseMode;
   raisePanel.hidden = !raiseMode;
-  const undoIsAvailable = canUndoLastTurn();
-  undoButton.disabled = !undoIsAvailable;
+  updateUndoRedoButtons();
 }
 
 function enterRaiseMode() {
@@ -1314,27 +1344,56 @@ function closeButtonHelp() {
   buttonHelp.hidden = true;
 }
 
-function captureTurnState() {
-  return structuredClone(gameState);
+function undoIsActive() {
+  return Boolean(gameState) && !seatingMode && setupScreen.hidden;
 }
 
-function canUndoLastTurn(fromShowdown = false) {
-  return lastTurnState !== null && (fromShowdown || gameState.actionPlayerId !== lastTurnState.actionPlayerId);
+function recordUndoState() {
+  if (!gameState || gameState.phase === GamePhase.SETUP) return;
+  undoStack.push(structuredClone(gameState));
+  redoStack = [];
 }
 
-function undoLastTurn(fromShowdown = false, narrate = true) {
-  if (!canUndoLastTurn(fromShowdown)) return;
+function resetUndoHistory() {
+  undoStack = [];
+  redoStack = [];
+}
 
-  const stateBefore = narrate ? getVoiceSnapshot() : null;
+function updateUndoRedoButtons() {
+  const active = undoIsActive();
+  undoButton.hidden = !active;
+  redoButton.hidden = !active;
+  undoButton.disabled = !active;
+  redoButton.disabled = redoStack.length === 0;
+}
+
+function restoreSnapshot(snapshot) {
+  if (!snapshot || snapshot.phase === GamePhase.SETUP) {
+    goToSetup();
+    return;
+  }
   raiseMode = false;
-  gameState = structuredClone(lastTurnState);
+  pendingFold = false;
+  pendingChipStream = null;
+  gameState = structuredClone(snapshot);
+  gameWinnerScreen.hidden = true;
+  gameScreen.hidden = false;
   const player = viewPlayer(viewActionPlayerNumber());
   pendingBet = player ? amountToCallForView(player) : 0;
-  pendingFold = false;
-  lastTurnState = null;
-  lastTurnEndedHandByFold = false;
   renderGameState();
-  if (narrate && voiceAgent?.connected) {
+}
+
+function undo({ narrate = true } = {}) {
+  if (!undoIsActive()) return;
+  const stateBefore = narrate ? getVoiceSnapshot() : null;
+  if (undoStack.length === 0) {
+    goToSetup();
+  } else {
+    const previous = undoStack.pop();
+    if (gameState) redoStack.push(structuredClone(gameState));
+    restoreSnapshot(previous);
+  }
+  if (narrate && voiceAgent?.connected && gameState) {
     requestDealerNarration({
       type: 'state_transition',
       origin: 'ui',
@@ -1343,6 +1402,33 @@ function undoLastTurn(fromShowdown = false, narrate = true) {
       stateAfter: getVoiceSnapshot(),
     }).catch((error) => setVoiceStatus(`AI error: ${error.message}`));
   }
+}
+
+function redo() {
+  if (!undoIsActive() || redoStack.length === 0) return;
+  const next = redoStack.pop();
+  if (gameState) undoStack.push(structuredClone(gameState));
+  restoreSnapshot(next);
+}
+
+function goToSetup() {
+  resetUndoHistory();
+  raiseMode = false;
+  pendingBet = 0;
+  pendingFold = false;
+  pendingChipStream = null;
+  gameState = null;
+  dealPrompt.hidden = true;
+  winnerPicker.hidden = true;
+  gameWinnerScreen.hidden = true;
+  turnIndicator.hidden = true;
+  gameScreen.hidden = true;
+  setupScreen.hidden = false;
+  voiceCustomizationScreen.hidden = true;
+  chipDenominationsScreen.hidden = true;
+  if (voiceAgent?.connected) voiceAgent.disconnect();
+  updateRecordingButton();
+  updateUndoRedoButtons();
 }
 
 function showHandCompleteFromGameState() {
@@ -1356,13 +1442,12 @@ function showHandCompleteFromGameState() {
   nextHandButton.type = 'button';
   nextHandButton.textContent = 'Next hand';
   nextHandButton.addEventListener('click', startNewHand);
-  showdownUndoButton.hidden = false;
-  showdownUndoButton.disabled = !lastTurnEndedHandByFold || !canUndoLastTurn(true);
-  winnerOptions.append(nextHandButton, showdownUndoButton);
+  winnerOptions.append(nextHandButton);
   drawPlayerSeats();
 }
 
 function renderGameState() {
+  updateUndoRedoButtons();
   if (!gameState) return;
   const phase = gameState.phase;
   const betting = [GamePhase.BETTING_PREFLOP, GamePhase.BETTING_FLOP, GamePhase.BETTING_TURN, GamePhase.BETTING_RIVER].includes(phase);
@@ -1535,9 +1620,6 @@ function showPotWinnerPicker(question, players, awardFunction, splitFunction = n
     winnerOptions.append(splitButton, confirmSplitButton);
   }
 
-  showdownUndoButton.hidden = false;
-  showdownUndoButton.disabled = !canUndoLastTurn(true);
-  winnerOptions.append(showdownUndoButton);
   winnerPicker.hidden = false;
 }
 
@@ -1567,8 +1649,6 @@ function takeAnte() {
 }
 
 function startHand() {
-  lastTurnState = null;
-  lastTurnEndedHandByFold = false;
   pendingBet = 0;
   pendingFold = false;
   pendingChipStream = null;
@@ -1578,8 +1658,6 @@ function startHand() {
 }
 
 function startNewHand({ narrate = true } = {}) {
-  lastTurnState = null;
-  lastTurnEndedHandByFold = false;
   pendingBet = 0;
   pendingFold = false;
   pendingChipStream = null;
@@ -1702,19 +1780,20 @@ function lockSeatsAndStartGame() {
   lockSeatsButton.hidden = true;
   turnControl.hidden = false;
   updateDebugFeatures();
+  resetUndoHistory();
   if (gameSettings.debugPreset === 'normal') {
     startHand();
   } else {
     gameState = createDebugGameState(gameState, gameSettings.debugPreset);
     renderGameState();
   }
+  updateUndoRedoButtons();
   connectVoiceForCurrentGame();
 }
 
 function confirmTurn(narrate = true) {
   const currentPlayerNumber = gameState.actionPlayerId;
   const player = viewPlayer(currentPlayerNumber);
-  lastTurnState = captureTurnState();
   const amountToCall = amountToCallForView(player);
   const legalActions = currentGameActions();
   let action;
@@ -1732,7 +1811,6 @@ function confirmTurn(narrate = true) {
   const chipsMoved = action.type === Transition.CHECK || action.type === Transition.FOLD ? 0 : pendingBet;
   if (chipsMoved > 0) pendingChipStream = { playerId: currentPlayerNumber, amount: chipsMoved };
   invokeGame(action, { narrate });
-  lastTurnEndedHandByFold = action.type === Transition.FOLD && gameState.phase === GamePhase.HAND_COMPLETE;
   pendingFold = false;
   renderGameState();
 }
@@ -1873,8 +1951,19 @@ closeHelpButton.addEventListener('click', closeButtonHelp);
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && !buttonHelp.hidden) closeButtonHelp();
 });
-undoButton.addEventListener('click', () => undoLastTurn());
-showdownUndoButton.addEventListener('click', () => undoLastTurn(true));
+function spinCornerButton(button) {
+  button.classList.remove('spinning');
+  void button.offsetWidth;
+  button.classList.add('spinning');
+}
+undoButton.addEventListener('click', () => {
+  spinCornerButton(undoButton);
+  undo();
+});
+redoButton.addEventListener('click', () => {
+  spinCornerButton(redoButton);
+  redo();
+});
 dealOkButton.addEventListener('click', cardsAreDealt);
 recordingButton.addEventListener('click', toggleRecording);
 lockSeatsButton.addEventListener('click', lockSeatsAndStartGame);
@@ -1901,6 +1990,7 @@ form.addEventListener('submit', (event) => {
     enableAudioFileInput: debugFeaturesCheckbox.checked && enableAudioFileInputCheckbox.checked,
   };
   saveLastGameSettings();
+  resetUndoHistory();
   makePlayers();
   setupScreen.hidden = true;
   voiceCustomizationScreen.hidden = true;
@@ -1911,6 +2001,7 @@ form.addEventListener('submit', (event) => {
   dealPrompt.hidden = true;
   keepScreenAwake();
   beginSeatPositioning();
+  updateUndoRedoButtons();
 });
 
 drawPlayerNames();

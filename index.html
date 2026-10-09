@@ -206,6 +206,11 @@
 
       <section id="game-screen" class="game-screen" aria-label="Poker game" hidden>
         <div id="player-seats" class="player-seats" aria-label="Players around the table"></div>
+        <div id="seat-markers" class="seat-markers" hidden>
+          <span id="dealer-marker" class="seat-marker marker-dealer" aria-hidden="true">D</span>
+          <span id="small-blind-marker" class="seat-marker marker-small-blind" aria-hidden="true">SB</span>
+          <span id="big-blind-marker" class="seat-marker marker-big-blind" aria-hidden="true">BB</span>
+        </div>
         <button id="lock-seats-button" class="lock-seats-button" type="button" hidden>Lock seats and start game</button>
         <p id="voice-transcript" class="voice-transcript" aria-live="polite" hidden></p>
         <div id="turn-control" class="turn-control">
@@ -219,7 +224,6 @@
                 <button id="fold-action-button" type="button">Fold</button>
                 <button id="all-in-action-button" type="button">All in</button>
                 <button id="raise-action-button" type="button">Raise</button>
-                <button id="undo-button" type="button" disabled>Undo</button>
                 <button id="help-button" class="help-button" type="button">Help</button>
               </div>
               <div id="raise-panel" class="raise-panel" hidden>
@@ -257,7 +261,6 @@
         <section id="winner-picker" class="winner-picker" aria-live="polite" hidden>
           <p id="winner-question">Who had the best cards?</p>
           <div id="winner-options" class="winner-options"></div>
-          <button id="showdown-undo-button" type="button" hidden>Revert to last turn</button>
         </section>
         <section id="deal-prompt" class="winner-picker" aria-live="polite" hidden>
           <p id="deal-message"></p>
@@ -271,7 +274,8 @@
             <div><dt>Fold</dt><dd>Leave the current hand.</dd></div>
             <div><dt>All in</dt><dd>Bet all of your remaining chips when the table can cover them.</dd></div>
             <div><dt>Raise</dt><dd>Increase the current bet, then confirm the total.</dd></div>
-            <div><dt>Undo</dt><dd>Restore the immediately previous turn when available.</dd></div>
+            <div><dt>Undo</dt><dd>Step back through every previous turn and phase; once there is nothing left it returns to setup.</dd></div>
+            <div><dt>Redo</dt><dd>Step forward again through turns you have undone.</dd></div>
           </dl>
           <button id="close-help-button" type="button">Back to game</button>
         </section>
@@ -281,6 +285,12 @@
         <h1 id="game-winner-message"></h1>
       </section>
     </main>
+    <button id="undo-corner-button" class="corner-button undo-corner" type="button" aria-label="Undo" hidden>
+      <span class="corner-button-icon" aria-hidden="true">&#8634;</span>
+    </button>
+    <button id="redo-corner-button" class="corner-button redo-corner" type="button" aria-label="Redo" hidden disabled>
+      <span class="corner-button-icon" aria-hidden="true">&#8635;</span>
+    </button>
     <script type="module" src="app.js"></script>
   </body>
 </html>

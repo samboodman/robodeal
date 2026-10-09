@@ -1,0 +1,97 @@
+{
+  "model": "gpt-6-luna",
+  "narrationPrefix": "DEALER FACTS:",
+  "placeNames": {
+    "1": "ones",
+    "10": "tens",
+    "100": "hundreds",
+    "1000": "thousands",
+    "10000": "ten thousands",
+    "100000": "hundred thousands",
+    "1000000": "millions",
+    "10000000": "ten millions",
+    "100000000": "hundred millions",
+    "1000000000": "billions"
+  },
+  "action": {
+    "name": "action",
+    "instructions": "What does the current player want to do? Choose narrateValues when they ask about the state of the game. Choose nextHand to deal the next hand after a hand has finished. Choose undo only for a clear request to undo the last confirmed turn. Choose nothing for background chatter or unclear speech.",
+    "choices": {
+      "check": { "description": "Check when nothing is owed." },
+      "call": { "description": "Match the current bet." },
+      "bet": { "description": "Make a bet with the stated amount." },
+      "raise": { "description": "Raise over the current bet." },
+      "fold": { "description": "Give up the hand." },
+      "allIn": { "description": "Move all remaining chips in." },
+      "cardsDealt": { "description": "The requested physical cards have been dealt." },
+      "undo": { "description": "Undo the most recent change to the game." },
+      "nextHand": { "description": "Deal the next hand." },
+      "narrateValues": { "description": "Report one or more state values the player asked to hear." },
+      "nothing": { "description": "Background chatter, unrelated speech, or unclear speech." }
+    },
+    "fromTransition": {
+      "CHECK": "check",
+      "CALL": "call",
+      "BET": "bet",
+      "FOLD": "fold",
+      "ALL_IN": "allIn",
+      "CARDS_DEALT": "cardsDealt",
+      "START_NEXT_HAND": "nextHand"
+    },
+    "undoChoice": "undo",
+    "raiseChoice": "raise",
+    "narrateValuesChoice": "narrateValues",
+    "nothingChoice": "nothing",
+    "amountChoices": ["bet", "raise"]
+  },
+  "raiseTarget": {
+    "name": "raise_target",
+    "instructions": "If the player is raising or betting, did they mean a total for the round (raiseTo) or an amount on top of the call (raiseBy)?",
+    "toChoice": "raiseTo",
+    "byChoice": "raiseBy",
+    "choices": {
+      "raiseTo": { "description": "The number is the total the player wants to have bet this round." },
+      "raiseBy": { "description": "The number is on top of the amount needed to call." }
+    }
+  },
+  "amount": {
+    "field": "amount",
+    "questionName": "{field}_digit_{place}",
+    "instructions": "In the {field} the user stated, what digit is in the {place} place?",
+    "choices": {
+      "0": {},
+      "1": {},
+      "2": {},
+      "3": {},
+      "4": {},
+      "5": {},
+      "6": {},
+      "7": {},
+      "8": {},
+      "9": {}
+    }
+  },
+  "values": {
+    "questionName": "value_{name}",
+    "instructions": "Does the user want to know {label}?",
+    "yesChoice": "yes",
+    "choices": {
+      "yes": { "description": "Yes." },
+      "no": { "description": "No." }
+    },
+    "reportable": [
+      { "kind": "pot", "name": "pot", "label": "the total pot" },
+      { "kind": "playerCount", "name": "player_count", "label": "how many players are at the table" },
+      { "kind": "currentPlayer", "name": "current_player", "label": "whose turn it is" },
+      { "kind": "round", "name": "round", "label": "the current betting round" },
+      { "kind": "dealer", "name": "dealer", "label": "who the dealer is" },
+      { "kind": "smallBlind", "name": "small_blind", "label": "the small blind amount" },
+      { "kind": "bigBlind", "name": "big_blind", "label": "the big blind amount" },
+      { "kind": "ante", "name": "ante", "label": "the ante amount" },
+      { "kind": "sidePotCount", "name": "side_pot_count", "label": "how many side pots there are" },
+      { "kind": "playerChips", "from": "players", "name": "player_{number}_chips", "label": "how many chips {name} has" },
+      { "kind": "playerRoundBet", "from": "players", "name": "player_{number}_round_bet", "label": "how much {name} has bet this round" },
+      { "kind": "sidePotAmount", "from": "sidePots", "name": "side_pot_{index}", "label": "the amount in side pot {index}" }
+    ]
+  }
+}
