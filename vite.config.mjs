@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv } from 'vite';
 import {
   apiError,
-  createDealerResponse,
+  createDecisionsResponse,
   createLiveSession,
   readJsonBody,
   sendJson,
@@ -23,15 +23,15 @@ function localOpenAIApi(apiKey) {
         }
       });
 
-      server.middlewares.use('/api/dealer-turn', async (request, response) => {
+      server.middlewares.use('/api/decisions', async (request, response) => {
         if (request.method !== 'POST') {
-          sendJson(response, 405, { error: 'Use POST for a Terra dealer turn.' });
+          sendJson(response, 405, { error: 'Use POST for a Decisions turn.' });
           return;
         }
         try {
-          sendJson(response, 200, await createDealerResponse(apiKey, await readJsonBody(request)));
+          sendJson(response, 200, await createDecisionsResponse(apiKey, await readJsonBody(request)));
         } catch (error) {
-          apiError(response, error, 'Local Terra dealer turn failed');
+          apiError(response, error, 'Local Decisions turn failed');
         }
       });
     },

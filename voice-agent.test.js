@@ -43,7 +43,7 @@ test('recognizes complete and partial voice backchannels', () => {
   assert.equal(isBackchannelPrefix('Sam'), false);
 });
 
-test('collects native GPT-Live transcript deltas and sends client delegation to Terra', async () => {
+test('collects native GPT-Live transcript deltas and sends client delegation to Decisions', async () => {
   const delegations = [];
   const { agent, sent } = testAgent({
     onDelegation: async (delegation) => {
@@ -111,7 +111,7 @@ test('starts speculative reasoning from stable transcript text without executing
   assert.equal(delegations[0].preparedTurn, preparedTurn);
 });
 
-test('a silent Terra result resolves the delegation without spoken commentary', async () => {
+test('a silent Decisions result resolves the delegation without spoken commentary', async () => {
   const { agent, sent } = testAgent({
     onDelegation: async () => ({ speak: false, kind: 'ignored', utterance: '' }),
   });
@@ -129,7 +129,7 @@ test('a silent Terra result resolves the delegation without spoken commentary', 
   assert.match(sent[0].content, /Continue listening silently/);
 });
 
-test('a Terra failure stays silent and reports the problem in the UI', async () => {
+test('a Decisions failure stays silent and reports the problem in the UI', async () => {
   const statuses = [];
   const { agent, sent } = testAgent({
     onDelegation: async () => { throw new Error('backend offline'); },
@@ -168,18 +168,18 @@ test('reports backend and GPT-Live speech-start latency', async () => {
   const { agent } = testAgent({ onLatency: (timing) => samples.push(timing) });
   agent.audio = { muted: true };
 
-  agent.speak('Sam checks.', null, { initialTerraMs: 12, javascriptMs: 1 });
+  agent.speak('Sam checks.', null, { decisionsMs: 12, javascriptMs: 1 });
   await agent.handleEvent({ type: 'session.output_transcript.delta', delta: 'Sam ' });
   await agent.handleEvent({ type: 'session.output_transcript.done' });
 
   assert.equal(samples.length, 1);
-  assert.equal(samples[0].initialTerraMs, 12);
+  assert.equal(samples[0].decisionsMs, 12);
   assert.equal(samples[0].javascriptMs, 1);
   assert.ok(samples[0].gptLiveSpeechStartMs >= 0);
   assert.ok(samples[0].estimatedEndOfSpeechToAudioMs >= 12);
 });
 
-test('mutes any Live speech that was not opened by Terra-approved commentary', async () => {
+test('mutes any Live speech that was not opened by backend-approved commentary', async () => {
   const { agent } = testAgent();
   agent.audio = { muted: true };
 
@@ -190,7 +190,7 @@ test('mutes any Live speech that was not opened by Terra-approved commentary', a
   assert.deepEqual(agent.conversation, []);
 });
 
-test('suppresses a backchannel while Terra-approved commentary is pending', async () => {
+test('suppresses a backchannel while backend-approved commentary is pending', async () => {
   const statuses = [];
   const { agent } = testAgent({
     onStatus: (status) => statuses.push(status),

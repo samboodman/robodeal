@@ -1,20 +1,89 @@
+import {
+  buildDecisionInput,
+  buildPokerDecisionRequest,
+  narrationContent,
+  placeValuesUpTo,
+  PokerDecision,
+  RaiseTarget,
+  readPokerDecision,
+  selectedValueFacts,
+  valueQuestionsFor,
+} from './decisions.js';
+
+function toolCallFor(action, raiseTarget, amount) {
+  switch (action) {
+    case PokerDecision.CHECK: return { name: 'check', args: {} };
+    case PokerDecision.CALL: return { name: 'call', args: {} };
+    case PokerDecision.FOLD: return { name: 'fold', args: {} };
+    case PokerDecision.ALL_IN: return { name: 'allIn', args: {} };
+    case PokerDecision.CARDS_DEALT: return { name: 'cardsDealt', args: {} };
+    case PokerDecision.UNDO: return { name: 'undo', args: {} };
+    case PokerDecision.BET: return { name: 'bet', args: { total: amount } };
+    case PokerDecision.RAISE: return raiseTarget === RaiseTarget.RAISE_BY
+      ? { name: 'raise', args: { amount } }
+      : { name: 'bet', args: { total: amount } };
+    default: return { name: null, args: {} };
+  }
+}
+
+function resultFacts({ action, toolName, output }) {
+  if (output?.ok) {
+    return {
+      requested: action,
+      tool: toolName,
+      actor: output.action?.actor?.name ?? null,
+      chips_moved: output.action?.chipsMoved ?? null,
+      total_round_bet: output.action?.totalRoundBet ?? null,
+      pot_after: output.stateAfter?.pot ?? null,
+      next_player: output.stateAfter?.currentPlayer?.name ?? null,
+    };
+  }
+  return {
+    requested: action,
+    rejected: true,
+    error: output?.errorCode ?? 'UNKNOWN',
+    details: output?.details ?? null,
+    amount_to_call: output?.stateAfter?.currentPlayer?.amountToCall ?? null,
+    valid_options: (output?.stateAfter?.availableActions || []).map((entry) => entry.type),
+    next_player: output?.stateAfter?.currentPlayer?.name ?? null,
+  };
+}
+
+function announcementFacts(sourceEvent) {
+  if (sourceEvent.type === 'game_started') {
+    return { event: 'game_started', setup: sourceEvent.setup, instruction: sourceEvent.dealInstruction };
+  }
+  if (sourceEvent.type === 'new_hand_started') {
+    return {
+      event: 'new_hand_started',
+      hand_number: sourceEvent.handNumber,
+      setup: sourceEvent.setup,
+      instruction: sourceEvent.dealInstruction,
+    };
+  }
+  if (sourceEvent.type === 'state_transition') {
+    return { event: 'state_transition', action: sourceEvent.action, state: sourceEvent.stateAfter };
+  }
+  return { event: sourceEvent.type, sourceEvent };
+}
+
 export class DealerAgent {
   constructor({
     getGameState,
-    tools,
     executeTool,
+    instructions = '',
     onStatus = () => {},
     onTiming = () => {},
     fetchImplementation = (...args) => fetch(...args),
-    maxToolRounds = 3,
+    decisionsPath = '/api/decisions',
   }) {
     this.getGameState = getGameState;
-    this.tools = tools;
     this.executeTool = executeTool;
+    this.instructions = instructions;
     this.onStatus = onStatus;
     this.onTiming = onTiming;
     this.fetchImplementation = fetchImplementation;
-    this.maxToolRounds = maxToolRounds;
+    this.decisionsPath = decisionsPath;
     this.queue = Promise.resolve();
   }
 
@@ -30,32 +99,33 @@ export class DealerAgent {
     return turn;
   }
 
+  voiceRequestBody(sourceEvent, snapshot) {
+    return buildPokerDecisionRequest({
+      instructions: this.instructions,
+      gameState: snapshot,
+      transcript: sourceEvent.transcript,
+      maxAmount: snapshot?.currentPlayer?.chips ?? 0,
+    });
+  }
+
   prepare(sourceEvent, recentConversation = []) {
-    const stateSentToDealer = this.getGameState();
+    if (sourceEvent.type !== 'voice_utterance') return null;
+    const snapshot = this.getGameState();
     const preparedAt = Date.now();
-    const request = this.request({
-      envelope: {
-        sourceEvent,
-        gameState: stateSentToDealer,
-        recentConversation: recentConversation.slice(-12),
-      },
-      tools: this.tools,
-    }).then(
-      (response) => ({ response, initialTerraMs: Date.now() - preparedAt }),
-      (error) => ({ error, initialTerraMs: Date.now() - preparedAt }),
+    const request = this.decide(this.voiceRequestBody(sourceEvent, snapshot)).then(
+      (response) => ({ response, decisionsMs: Date.now() - preparedAt }),
+      (error) => ({ error, decisionsMs: Date.now() - preparedAt }),
     );
     return {
-      sourceEvent: JSON.stringify(sourceEvent),
-      recentConversation: JSON.stringify(recentConversation.slice(-12)),
-      stateSentToDealer,
-      stateFingerprint: JSON.stringify(stateSentToDealer),
+      sourceEventKey: JSON.stringify(sourceEvent),
+      stateFingerprint: JSON.stringify(snapshot),
       preparedAt,
       request,
     };
   }
 
-  async request(body) {
-    const response = await this.fetchImplementation('/api/dealer-turn', {
+  async decide(body) {
+    const response = await this.fetchImplementation(this.decisionsPath, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -67,157 +137,95 @@ export class DealerAgent {
     } catch {
       data = null;
     }
-    if (!response.ok) throw new Error(data?.error || text || 'The dealer backend failed.');
+    if (!response.ok) throw new Error(data?.error || text || 'The Decisions backend failed.');
     return data;
   }
 
   async runTurn(sourceEvent, recentConversation, queuedAt = Date.now(), preparedTurn = null) {
     const startedAt = Date.now();
-    const timing = {
-      queueMs: startedAt - queuedAt,
-      initialTerraMs: 0,
-      javascriptMs: 0,
-      postToolTerraMs: 0,
-    };
+    const timing = { queueMs: startedAt - queuedAt, decisionsMs: 0, javascriptMs: 0, totalBackendMs: 0 };
+
+    if (sourceEvent.type !== 'voice_utterance') {
+      timing.totalBackendMs = Date.now() - startedAt;
+      this.onTiming(timing);
+      return { speak: true, kind: 'announcement', utterance: narrationContent(announcementFacts(sourceEvent)), timing };
+    }
+
     this.onStatus('Processing…');
-    const initialRequestAt = Date.now();
-    const sourceEventKey = JSON.stringify(sourceEvent);
-    const recentConversationKey = JSON.stringify(recentConversation.slice(-12));
+    const snapshot = this.getGameState();
+    const stateFingerprint = JSON.stringify(snapshot);
     const preparedMatches = preparedTurn
-      && preparedTurn.sourceEvent === sourceEventKey
-      && preparedTurn.recentConversation === recentConversationKey;
-    let stateSentToDealer;
-    let stateFingerprint;
-    let response;
+      && preparedTurn.sourceEventKey === JSON.stringify(sourceEvent)
+      && preparedTurn.stateFingerprint === stateFingerprint;
 
+    let decision;
     if (preparedMatches) {
-      stateSentToDealer = preparedTurn.stateSentToDealer;
-      stateFingerprint = preparedTurn.stateFingerprint;
-      timing.speculativeTerraLeadMs = Math.max(0, startedAt - preparedTurn.preparedAt);
-      if (JSON.stringify(this.getGameState()) !== stateFingerprint) {
-        timing.initialTerraMs = 0;
-        timing.initialTerraWaitMs = 0;
-        timing.totalBackendMs = Date.now() - startedAt;
-        timing.staleStateIgnored = true;
-        this.onTiming(timing);
-        return { speak: false, kind: 'ignored', utterance: '', timing };
-      }
       const preparedResult = await preparedTurn.request;
-      timing.initialTerraMs = preparedResult.initialTerraMs;
-      timing.initialTerraWaitMs = Date.now() - initialRequestAt;
+      timing.decisionsMs = preparedResult.decisionsMs;
+      timing.speculativeLeadMs = Math.max(0, startedAt - preparedTurn.preparedAt);
       if (preparedResult.error) throw preparedResult.error;
-      response = preparedResult.response;
+      decision = preparedResult.response;
     } else {
-      stateSentToDealer = this.getGameState();
-      stateFingerprint = JSON.stringify(stateSentToDealer);
-      response = await this.request({
-        envelope: {
-          sourceEvent,
-          gameState: stateSentToDealer,
-          recentConversation: recentConversation.slice(-12),
-        },
-        tools: this.tools,
-      });
-      timing.initialTerraMs = Date.now() - initialRequestAt;
-      timing.initialTerraWaitMs = timing.initialTerraMs;
-    }
-    timing.serviceTier = response.serviceTier || null;
-
-    for (let round = 0; response.type === 'tool_calls' && round < this.maxToolRounds; round += 1) {
-      this.onStatus('Applying action…');
-      const toolOutputs = [];
-      const toolStartedAt = Date.now();
-      for (const [index, call] of response.calls.entries()) {
-        let output;
-        let args = {};
-        try {
-          args = JSON.parse(call.arguments || '{}');
-        } catch {
-          output = {
-            ok: false,
-            errorCode: 'INVALID_TOOL_ARGUMENTS',
-            stateAfter: this.getGameState(),
-          };
-        }
-        const optimisticNarration = typeof args.narration === 'string'
-          ? args.narration.trim()
-          : '';
-        delete args.narration;
-
-        if (index > 0) {
-          output = {
-            ok: false,
-            errorCode: 'MULTIPLE_ACTIONS_NOT_ALLOWED',
-            stateAfter: this.getGameState(),
-          };
-        } else if (!output && JSON.stringify(this.getGameState()) !== stateFingerprint) {
-          output = {
-            ok: false,
-            errorCode: 'STALE_GAME_STATE',
-            details: { reason: 'The game changed while the spoken action was being interpreted.' },
-            stateAfter: this.getGameState(),
-          };
-        } else if (!output) {
-          try {
-            output = await this.executeTool(call.name, args);
-          } catch (error) {
-            output = {
-              ok: false,
-              errorCode: 'TOOL_EXECUTION_FAILED',
-              details: { reason: error.message },
-              stateAfter: this.getGameState(),
-            };
-          }
-        }
-        toolOutputs.push({ callId: call.callId, output, optimisticNarration });
-      }
-      timing.javascriptMs += Date.now() - toolStartedAt;
-
-      const staleState = response.calls.length === 1
-        && toolOutputs[0].output?.errorCode === 'STALE_GAME_STATE';
-      if (staleState) {
-        timing.totalBackendMs = Date.now() - startedAt;
-        timing.staleStateIgnored = true;
-        this.onTiming(timing);
-        return {
-          speak: false,
-          kind: 'ignored',
-          utterance: '',
-          timing,
-        };
-      }
-
-      const successfulFastPath = response.calls.length === 1
-        && toolOutputs[0].output?.ok === true
-        && toolOutputs[0].optimisticNarration;
-      if (successfulFastPath) {
-        timing.totalBackendMs = Date.now() - startedAt;
-        timing.optimisticNarration = true;
-        this.onTiming(timing);
-        return {
-          speak: true,
-          kind: 'action_result',
-          utterance: toolOutputs[0].optimisticNarration,
-          timing,
-        };
-      }
-
-      const continuationStartedAt = Date.now();
-      response = await this.request({
-        previousResponseId: response.responseId,
-        toolOutputs: toolOutputs.map(({ callId, output }) => ({ callId, output })),
-        // The action has already been attempted. The continuation may only
-        // turn the verified JavaScript result into dealer speech.
-        tools: [],
-      });
-      timing.serviceTier = response.serviceTier || timing.serviceTier;
-      timing.postToolTerraMs += Date.now() - continuationStartedAt;
+      const requestedAt = Date.now();
+      decision = await this.decide(this.voiceRequestBody(sourceEvent, snapshot));
+      timing.decisionsMs = Date.now() - requestedAt;
     }
 
-    if (response.type === 'tool_calls') throw new Error('The dealer exceeded the action-tool limit.');
-    if (response.type !== 'result' || !response.result) throw new Error('The dealer returned an invalid result.');
+    if (JSON.stringify(this.getGameState()) !== stateFingerprint) {
+      timing.staleStateIgnored = true;
+      timing.totalBackendMs = Date.now() - startedAt;
+      this.onTiming(timing);
+      return { speak: false, kind: 'ignored', utterance: '', timing };
+    }
+
+    const places = placeValuesUpTo(snapshot?.currentPlayer?.chips ?? 0);
+    const { action, raiseTarget, amount } = readPokerDecision(decision, { places });
+
+    if (!action || action === PokerDecision.NOTHING) {
+      timing.totalBackendMs = Date.now() - startedAt;
+      this.onTiming(timing);
+      return { speak: false, kind: 'ignored', utterance: '', timing };
+    }
+
+    if (action === PokerDecision.NARRATE_VALUES) {
+      const valuesDecision = await this.decide({
+        input: buildDecisionInput({
+          instructions: this.instructions,
+          gameState: snapshot,
+          transcript: sourceEvent.transcript,
+        }),
+        questions: valueQuestionsFor(snapshot),
+      });
+      const facts = selectedValueFacts(valuesDecision, snapshot);
+      timing.totalBackendMs = Date.now() - startedAt;
+      this.onTiming(timing);
+      if (Object.keys(facts).length === 0) return { speak: false, kind: 'ignored', utterance: '', timing };
+      return { speak: true, kind: 'answer', utterance: narrationContent(facts), timing };
+    }
+
+    this.onStatus('Applying action…');
+    const { name, args } = toolCallFor(action, raiseTarget, amount);
+    const toolStartedAt = Date.now();
+    let output;
+    try {
+      output = await this.executeTool(name, args);
+    } catch (error) {
+      output = {
+        ok: false,
+        errorCode: 'TOOL_EXECUTION_FAILED',
+        details: { reason: error.message },
+        stateAfter: this.getGameState(),
+      };
+    }
+    timing.javascriptMs = Date.now() - toolStartedAt;
     timing.totalBackendMs = Date.now() - startedAt;
     this.onTiming(timing);
-    return { ...response.result, timing };
+
+    return {
+      speak: true,
+      kind: output?.ok ? 'action_result' : 'clarification',
+      utterance: narrationContent(resultFacts({ action, toolName: name, output })),
+      timing,
+    };
   }
 }

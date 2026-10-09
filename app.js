@@ -626,39 +626,13 @@ function getVoiceSnapshot() {
       number: viewPlayerNumber(candidate),
       name: candidate.name,
       chips: candidate.chips,
+      roundBet: candidate.roundBet,
       folded: candidate.folded,
       eliminated: candidate.eliminated,
     })),
+    sidePotAmounts: (gameState?.pots || []).slice(1).map((pot) => pot.amount),
   };
 }
-
-function voiceTool(name, description, properties = {}, required = []) {
-  return {
-    type: 'function',
-    name,
-    description,
-    parameters: {
-      type: 'object',
-      properties: {
-        ...properties,
-        narration: { type: 'string', description: prompts.toolDescriptions.narration },
-      },
-      required: [...required, 'narration'],
-      additionalProperties: false,
-    },
-  };
-}
-
-const voiceTools = [
-  voiceTool('check', prompts.toolDescriptions.check),
-  voiceTool('call', prompts.toolDescriptions.call),
-  voiceTool('bet', prompts.toolDescriptions.bet, { total: { type: 'number', description: prompts.toolDescriptions.betTotal } }, ['total']),
-  voiceTool('raise', prompts.toolDescriptions.raise, { amount: { type: 'number', description: prompts.toolDescriptions.raiseAmount } }, ['amount']),
-  voiceTool('fold', prompts.toolDescriptions.fold),
-  voiceTool('allIn', prompts.toolDescriptions.allIn),
-  voiceTool('cardsDealt', prompts.toolDescriptions.cardsDealt),
-  voiceTool('undo', prompts.toolDescriptions.undo),
-];
 
 function executeVoiceTool(name, args) {
   const finish = (result) => ({ ...result, stateAfter: getVoiceSnapshot() });
@@ -821,8 +795,8 @@ function getDealerAgent() {
   if (!dealerAgent) {
     dealerAgent = new DealerAgent({
       getGameState: getVoiceSnapshot,
-      tools: voiceTools,
       executeTool: executeVoiceTool,
+      instructions: prompts.decisionsInstructions,
       onStatus: setVoiceStatus,
     });
   }

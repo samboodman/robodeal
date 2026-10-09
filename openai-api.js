@@ -1,32 +1,12 @@
 import { readFileSync } from 'node:fs';
+import { DECISIONS_MODEL } from './decisions.js';
 
 const prompts = JSON.parse(readFileSync(new URL('./Prompts.json', import.meta.url), 'utf8'));
-const allowedToolNames = new Set([
-  'check',
-  'call',
-  'bet',
-  'raise',
-  'fold',
-  'allIn',
-  'cardsDealt',
-  'undo',
-]);
 
 function fillPrompt(template, values) {
   return template.replace(/\{\{([A-Z_]+)\}\}/g, (placeholder, key) => (
     Object.hasOwn(values, key) ? String(values[key]) : placeholder
   ));
-}
-
-function normalizeTool(tool) {
-  if (tool?.type !== 'function' || !allowedToolNames.has(tool.name)) return null;
-  return {
-    type: 'function',
-    name: tool.name,
-    description: String(tool.description || ''),
-    parameters: tool.parameters || { type: 'object', properties: {}, additionalProperties: false },
-    strict: true,
-  };
 }
 
 export function buildLiveSessionRequest({ sdp, voice = 'marin', accent = 'neutral', pace = 'natural', preview = false }) {
@@ -46,89 +26,25 @@ export function buildLiveSessionRequest({ sdp, voice = 'marin', accent = 'neutra
   };
 }
 
-export function buildDealerResponseRequest({ envelope, previousResponseId = null, toolOutputs = [], tools = [] }) {
-  const isContinuation = Boolean(previousResponseId);
-  const normalizedTools = isContinuation ? [] : tools.map(normalizeTool).filter(Boolean);
-  const input = previousResponseId
-    ? toolOutputs.map(({ callId, output }) => ({
-      type: 'function_call_output',
-      call_id: callId,
-      output: JSON.stringify(output),
-    }))
-    : [{
-      role: 'user',
-      content: [{ type: 'input_text', text: JSON.stringify(envelope) }],
-    }];
-
-  if (previousResponseId && input.length === 0) {
-    throw new Error('Tool outputs are required to continue a dealer response.');
+export function buildDecisionsRequest({ input, questions }) {
+  if (typeof input !== 'string' || input.length === 0) {
+    throw new Error('A Decisions input is required.');
   }
-
+  if (!Array.isArray(questions) || questions.length === 0) {
+    throw new Error('At least one Decisions question is required.');
+  }
   return {
-    model: 'gpt-5.6-terra',
-    service_tier: 'priority',
-    instructions: prompts.terraInstructions,
+    model: DECISIONS_MODEL,
     input,
-    ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
-    tools: normalizedTools,
-    tool_choice: isContinuation || normalizedTools.length === 0 ? 'none' : 'auto',
-    parallel_tool_calls: false,
-    reasoning: { effort: 'none' },
-    text: {
-      verbosity: 'low',
-      format: {
-        type: 'json_schema',
-        name: 'dealer_response',
-        strict: true,
-        schema: prompts.dealerResponseSchema,
-      },
-    },
-    max_output_tokens: isContinuation ? 300 : 800,
-    store: true,
+    questions,
   };
 }
 
-function responseText(response) {
-  return (response.output || [])
-    .filter((item) => item.type === 'message')
-    .flatMap((item) => item.content || [])
-    .filter((content) => content.type === 'output_text')
-    .map((content) => content.text)
-    .join('');
-}
-
-export function parseDealerResponse(response) {
-  if (!response?.id) throw new Error('Terra returned a response without an ID.');
-  if (response.status === 'failed') {
-    throw new Error(response.error?.message || 'Terra could not complete the dealer turn.');
+export function parseDecisionsResponse(response) {
+  if (!response || !Array.isArray(response.answers)) {
+    throw new Error('The Decisions API returned no answers.');
   }
-
-  const calls = (response.output || [])
-    .filter((item) => item.type === 'function_call')
-    .map((item) => ({
-      callId: item.call_id,
-      name: item.name,
-      arguments: item.arguments || '{}',
-    }));
-  const serviceTier = response.service_tier || null;
-
-  if (calls.length > 0) {
-    return { type: 'tool_calls', responseId: response.id, serviceTier, calls };
-  }
-
-  const text = responseText(response);
-  if (!text) throw new Error('Terra returned no dealer response.');
-  let result;
-  try {
-    result = JSON.parse(text);
-  } catch {
-    throw new Error('Terra returned an invalid dealer response.');
-  }
-  if (typeof result.speak !== 'boolean' || typeof result.kind !== 'string' || typeof result.utterance !== 'string') {
-    throw new Error('Terra returned an incomplete dealer response.');
-  }
-  if (!result.speak) result.utterance = '';
-  return { type: 'result', responseId: response.id, serviceTier, result };
+  return { answers: response.answers };
 }
 
 export async function callOpenAI(apiKey, path, body, fetchImplementation = fetch) {
@@ -158,14 +74,14 @@ export async function createLiveSession(apiKey, requestBody, fetchImplementation
   return callOpenAI(apiKey, 'live/sessions', buildLiveSessionRequest(requestBody), fetchImplementation);
 }
 
-export async function createDealerResponse(apiKey, requestBody, fetchImplementation = fetch) {
+export async function createDecisionsResponse(apiKey, requestBody, fetchImplementation = fetch) {
   const response = await callOpenAI(
     apiKey,
-    'responses',
-    buildDealerResponseRequest(requestBody),
+    'decisions',
+    buildDecisionsRequest(requestBody),
     fetchImplementation,
   );
-  return parseDealerResponse(response);
+  return parseDecisionsResponse(response);
 }
 
 export async function readJsonBody(request) {

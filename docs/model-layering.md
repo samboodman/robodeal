@@ -14,8 +14,8 @@ This document uses role names throughout:
 - **reasoning model** for language understanding and response composition; and
 - **state machine** for authoritative poker rules and state transitions.
 
-GPT-Live 1 and GPT-5.6 Terra are the current choices for the speech and
-reasoning roles. They can be replaced without changing the responsibilities of
+GPT-Live 1 fills the speech role, and the Decisions API (gpt-6-luna) fills the
+reasoning role. Either can be replaced without changing the responsibilities of
 the roles.
 
 The document describes both the current separation of responsibilities and one
@@ -102,7 +102,7 @@ flowchart TB
     subgraph Stack["Four responsibility layers"]
         direction TB
         L1["Layer 1 — Speech model<br/><b>Current choice: GPT-Live 1</b><br/>speech recognition, timing, and voice delivery"]
-        L2["Layer 2 — Reasoning model<br/><b>Current choice: GPT-5.6 Terra</b><br/>intent, questions, tool choice, and narration wording"]
+        L2["Layer 2 — Reasoning model<br/><b>Current choice: Decisions API (gpt-6-luna)</b><br/>intent, bounded questions, and value selection"]
         L3["Layer 3 — JavaScript state machine and API<br/><b>Deterministic authority</b><br/>rules, validation, revisions, and events"]
         L4["Layer 4 — Server API<br/><b>Secure transport boundary</b><br/>credentials and normalized model requests"]
     end
@@ -152,32 +152,34 @@ or game authority.
 
 ### Layer 2 — Reasoning model
 
-The reasoning model is the semantic dealer. The current implementation uses
-GPT-5.6 Terra. It receives an envelope containing:
+The reasoning model is the semantic classifier. The current implementation uses
+the Decisions API with gpt-6-luna. It receives one input string containing:
 
-- the source event, such as a voice transcript or verified state-change event;
-- a snapshot of authoritative game state and its revision;
-- recent conversation needed to interpret short utterances and corrections;
-  and
-- the tools that JavaScript currently permits it to request.
+- the current player's latest transcript; and
+- a snapshot of authoritative game state,
+
+together with a list of bounded questions, including:
+
+- which action the current player wants (check, call, bet, raise, fold, all-in,
+  cards-dealt, undo, a state-value narration, or nothing);
+- for a bet or raise, the digits of the amount by place; and
+- which game values the player asked to hear.
 
 The reasoning model:
 
 - distinguishes a committed declaration from a question, coaching, quotation,
   hypothetical, or background discussion;
-- resolves natural and creative poker phrasing into an exposed tool request;
-- answers questions about the current player, pot, stacks, legal actions, and
-  next required step from supplied state;
-- explains rejected actions using the returned legal state; and
-- writes concise, varied dealer narration grounded in verified event facts.
+- selects the best-matching bounded answer for every question in one request;
+- reports state values that JavaScript hands to the speech model; and
+- never composes narration wording itself; GPT-Live phrases the dealer facts.
 
-It cannot mutate game state directly. A tool call is a proposal, never evidence
-that a move occurred. It must wait for JavaScript's result before describing a
-proposed mutation as fact.
+It cannot mutate game state directly. A chosen action is a proposal, never
+evidence that a move occurred. It must wait for JavaScript's result before
+describing a proposed mutation as fact.
 
-**Why this choice:** It advances G2 by concentrating nuanced language judgment
-in the strongest language model, G5 by giving narration organic phrasing, and
-G1 by withholding authority from that model.
+**Why this choice:** It advances G2 by concentrating the bounded judgment in a
+dedicated classifier, G5 by letting GPT-Live phrase the dealer facts, and G1 by
+withholding authority from the model.
 
 ### Layer 3 — JavaScript state machine and application API
 
@@ -215,8 +217,8 @@ The server routes are intentionally thin:
 
 - `POST /api/live-session` creates the speech-model WebRTC session and returns
   the SDP answer.
-- `POST /api/dealer-turn` sends a reasoning-model request and returns
-  normalized tool calls or a validated structured dealer result.
+- `POST /api/decisions` sends a Decisions request and returns the typed answers
+  for each bounded question.
 
 The server holds the OpenAI API key. It does not own poker state and does not
 decide whether a move is legal.
@@ -471,11 +473,12 @@ races but does not provide the full stale-state guarantee described by G4.
 - `voice-agent.js`: speech-model WebRTC transport, transcripts, delegation,
   and output gate.
 - `dealer-agent.js`: serialized reasoning-model tool loop.
-- `app.js`: state snapshots, voice tools, UI events, and tool execution.
+- `app.js`: state snapshots, UI events, and tool execution.
+- `decisions.js`: Decisions question construction and answer reading.
 - `game-state.js`: authoritative poker transition engine.
 - `openai-api.js`: OpenAI request construction and response normalization.
 - `api/live-session.js`: server route for speech-model session creation.
-- `api/dealer-turn.js`: server route for reasoning-model turns.
+- `api/decisions.js`: server route for Decisions turns.
 
 ## Reference
 

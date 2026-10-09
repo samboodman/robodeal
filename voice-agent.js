@@ -606,7 +606,7 @@ export class VoiceAgent {
         delete latency.speechStarted;
         const backendMs = Number.isFinite(latency.totalBackendMs)
           ? latency.totalBackendMs
-          : [latency.queueMs, latency.initialTerraMs, latency.javascriptMs, latency.postToolTerraMs]
+          : [latency.queueMs, latency.decisionsMs, latency.javascriptMs]
             .filter(Number.isFinite)
             .reduce((total, duration) => total + duration, 0);
         latency.estimatedEndOfSpeechToAudioMs = [
