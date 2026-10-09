@@ -658,6 +658,14 @@ function executeVoiceTool(name, args) {
     return finish({ ok: true, action: { type: 'cards_dealt', phaseBefore, phaseAfter: gameState.phase } });
   }
 
+  if (name === 'nextHand') {
+    if (!gameState || gameState.phase !== GamePhase.HAND_COMPLETE) {
+      return finish({ ok: false, errorCode: 'NOT_BETWEEN_HANDS' });
+    }
+    startNewHand({ narrate: false });
+    return finish({ ok: true, action: { type: 'next_hand' } });
+  }
+
   const currentPlayerNumber = viewActionPlayerNumber();
   const player = viewPlayer(currentPlayerNumber);
   if (!player) return finish({ ok: false, errorCode: 'NO_CURRENT_PLAYER' });
@@ -1568,7 +1576,7 @@ function startHand() {
   renderGameState();
 }
 
-function startNewHand() {
+function startNewHand({ narrate = true } = {}) {
   lastTurnState = null;
   lastTurnEndedHandByFold = false;
   pendingBet = 0;
@@ -1577,7 +1585,7 @@ function startNewHand() {
   invokeGame({ type: Transition.START_NEXT_HAND });
   takeAnte();
   renderGameState();
-  if (voiceAgent?.connected) {
+  if (narrate && voiceAgent?.connected) {
     requestDealerNarration({
       type: 'new_hand_started',
       handNumber: gameState.handNumber,

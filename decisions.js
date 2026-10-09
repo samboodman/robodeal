@@ -19,6 +19,7 @@ export const PokerDecision = Object.freeze({
   ALL_IN: 'allIn',
   CARDS_DEALT: 'cardsDealt',
   UNDO: 'undo',
+  NEXT_HAND: 'nextHand',
   NARRATE_VALUES: 'narrateValues',
   NOTHING: 'nothing',
 });
@@ -35,6 +36,7 @@ const decisionForTransition = Object.freeze({
   [Transition.FOLD]: PokerDecision.FOLD,
   [Transition.ALL_IN]: PokerDecision.ALL_IN,
   [Transition.CARDS_DEALT]: PokerDecision.CARDS_DEALT,
+  [Transition.START_NEXT_HAND]: PokerDecision.NEXT_HAND,
 });
 
 const decisionsThatNeedAmount = Object.freeze([PokerDecision.BET, PokerDecision.RAISE]);
@@ -123,7 +125,7 @@ export function legalActionChoices(snapshot) {
 export function actionChoiceQuestion({ snapshot }) {
   return multipleChoiceQuestion({
     name: 'action',
-    instructions: 'What does the current player want to do? Choose narrateValues when they ask about the state of the game. Choose undo only for a clear request to undo the last confirmed turn. Choose nothing for background chatter or unclear speech.',
+    instructions: 'What does the current player want to do? Choose narrateValues when they ask about the state of the game. Choose nextHand to deal the next hand after a hand has finished. Choose undo only for a clear request to undo the last confirmed turn. Choose nothing for background chatter or unclear speech.',
     choices: legalActionChoices(snapshot),
   });
 }

@@ -18,6 +18,7 @@ function toolCallFor(action, raiseTarget, amount) {
     case PokerDecision.ALL_IN: return { name: 'allIn', args: {} };
     case PokerDecision.CARDS_DEALT: return { name: 'cardsDealt', args: {} };
     case PokerDecision.UNDO: return { name: 'undo', args: {} };
+    case PokerDecision.NEXT_HAND: return { name: 'nextHand', args: {} };
     case PokerDecision.BET: return { name: 'bet', args: { total: amount } };
     case PokerDecision.RAISE: return raiseTarget === RaiseTarget.RAISE_BY
       ? { name: 'raise', args: { amount } }
@@ -36,6 +37,7 @@ function resultFacts({ action, toolName, output }) {
       total_round_bet: output.action?.totalRoundBet ?? null,
       pot_after: output.stateAfter?.pot ?? null,
       next_player: output.stateAfter?.currentPlayer?.name ?? null,
+      instruction: output.stateAfter?.dealInstruction ?? null,
     };
   }
   return {

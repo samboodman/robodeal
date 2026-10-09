@@ -97,6 +97,23 @@ test('maps raise-by to the raise-above-call tool', async () => {
   assert.deepEqual(toolCalls, [{ name: 'raise', args: { amount: 305 } }]);
 });
 
+test('maps a next-hand choice to the nextHand tool', async () => {
+  const toolCalls = [];
+  const agent = new DealerAgent({
+    getGameState: () => snapshot({ phase: 'HAND_COMPLETE', availableActions: [{ type: 'START_NEXT_HAND' }] }),
+    executeTool: async (name, args) => {
+      toolCalls.push({ name, args });
+      return { ok: true, action: { type: 'next_hand' }, stateAfter: snapshot({ dealInstruction: 'Deal two cards.' }) };
+    },
+    fetchImplementation: async () => jsonResponse({ answers: [{ type: 'choice', name: 'action', choice: 'nextHand' }] }),
+  });
+
+  const result = await agent.run({ type: 'voice_utterance', transcript: 'next hand' });
+
+  assert.deepEqual(toolCalls, [{ name: 'nextHand', args: {} }]);
+  assert.match(result.utterance, /Deal two cards\./);
+});
+
 test('answers a state question with a second bundled yes/no request', async () => {
   const responses = [
     { answers: [{ type: 'choice', name: 'action', choice: 'narrateValues' }] },
