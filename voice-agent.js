@@ -77,6 +77,8 @@ export class VoiceAgent {
     this.channel = null;
     this.sender = null;
     this.audio = null;
+    this.silentInputContext = null;
+    this.silentInputTrack = null;
     this.outputAudioContext = null;
     this.outputAudioSource = null;
     this.outputAnalyser = null;
@@ -114,6 +116,22 @@ export class VoiceAgent {
     return Boolean(this.microphoneStream);
   }
 
+  createSilentInputTrack() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+    const context = new AudioContextClass();
+    const destination = context.createMediaStreamDestination();
+    const gain = context.createGain();
+    gain.gain.value = 0;
+    const oscillator = context.createOscillator();
+    oscillator.connect(gain);
+    gain.connect(destination);
+    oscillator.start();
+    this.silentInputContext = context;
+    this.silentInputTrack = destination.stream.getAudioTracks()[0];
+    return this.silentInputTrack;
+  }
+
   async connect(voice = 'marin', { accent = 'neutral', pace = 'natural', preview = false } = {}) {
     this.disconnect();
     this.onStatus('Connecting…');
@@ -127,6 +145,10 @@ export class VoiceAgent {
 
     this.connection = new RTCPeerConnection();
     this.sender = this.connection.addTransceiver('audio', { direction: 'sendrecv' }).sender;
+    if (preview) {
+      const silentTrack = this.createSilentInputTrack();
+      if (silentTrack) await this.sender.replaceTrack(silentTrack);
+    }
     this.connection.addEventListener('track', (event) => {
       if (!this.audio) {
         this.audio = document.createElement('audio');
@@ -187,6 +209,14 @@ export class VoiceAgent {
   }
 
   speak(text, delegationId = null, timing = null) {
+    this.sendSpoken('session.commentary.append', text, delegationId, timing);
+  }
+
+  instruct(text) {
+    this.sendSpoken('session.instructions.append', text, null, null);
+  }
+
+  sendSpoken(type, text, delegationId, timing) {
     if (!this.connected || !text) return;
     this.pendingSpeechCount += 1;
     this.pendingSpeechTelemetry.push({
@@ -199,7 +229,7 @@ export class VoiceAgent {
     this.setOutputGate(false);
     this.onStatus('Speaking…');
     this.send({
-      type: 'session.commentary.append',
+      type,
       event_id: eventId('dealer'),
       delegation_id: delegationId,
       content: text,
@@ -298,6 +328,10 @@ export class VoiceAgent {
     this.outputAnalyserSamples = null;
     this.outputDelay = null;
     this.outputGate = null;
+    this.silentInputTrack?.stop();
+    this.silentInputTrack = null;
+    this.silentInputContext?.close().catch(() => {});
+    this.silentInputContext = null;
     this.outputAudioContext?.close().catch(() => {});
     this.outputAudioContext = null;
     this.audioTestContext?.close().catch(() => {});

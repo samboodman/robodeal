@@ -878,10 +878,11 @@ async function previewVoice() {
   voicePreviewAgent?.disconnect();
   voicePreviewAgent = new VoiceAgent({
     onStatus: (status) => { voicePreviewStatus.textContent = status; },
+    onTranscript: (text) => { voicePreviewStatus.textContent = text; },
   });
   try {
     await voicePreviewAgent.connect(voiceChoice.value, { preview: true });
-    voicePreviewAgent.speak(prompts.voicePreviewText);
+    voicePreviewAgent.instruct(`Greet the user now in English by saying exactly this line and nothing else: "${prompts.voicePreviewText}". Then pause and listen.`);
     window.setTimeout(() => {
       voicePreviewAgent?.disconnect();
       voicePreviewStatus.textContent = '';
