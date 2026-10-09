@@ -12,6 +12,7 @@ export const DecisionQuestionType = Object.freeze({
 
 const actionConfig = config.action;
 const raiseTargetConfig = config.raiseTarget;
+const winnerConfig = config.winner;
 const amountConfig = config.amount;
 const valuesConfig = config.values;
 
@@ -26,6 +27,7 @@ export const PokerDecision = Object.freeze({
   CARDS_DEALT: actionConfig.fromTransition[Transition.CARDS_DEALT],
   UNDO: actionConfig.undoChoice,
   NEXT_HAND: actionConfig.fromTransition[Transition.START_NEXT_HAND],
+  PICK_WINNER: actionConfig.pickWinnerChoice,
   NARRATE_VALUES: actionConfig.narrateValuesChoice,
   NOTHING: actionConfig.nothingChoice,
 });
@@ -110,6 +112,7 @@ export function legalActionChoices(snapshot) {
     .map((action) => actionConfig.fromTransition[action.type])
     .filter(Boolean);
   if (snapshot?.canUndo) choices.push(actionConfig.undoChoice);
+  if (snapshot?.showdown) choices.push(actionConfig.pickWinnerChoice);
   choices.push(actionConfig.narrateValuesChoice, actionConfig.nothingChoice);
   return [...new Set(choices)];
 }
@@ -301,4 +304,21 @@ export function selectedValueFacts(decision, snapshot) {
     if (choiceFor(decision, questionName) === valuesConfig.yesChoice) selected[entry.name] = facts[entry.name];
   });
   return selected;
+}
+
+export function winnerQuestions(snapshot) {
+  const eligible = snapshot?.showdown?.eligiblePlayers || [];
+  return eligible.map((player) => multipleChoiceQuestion({
+    name: fillTemplate(winnerConfig.questionName, { number: player.number, name: player.name }),
+    instructions: fillTemplate(winnerConfig.instructions, { name: player.name, number: player.number }),
+    choices: winnerConfig.choices,
+  }));
+}
+
+export function winnersFromDecision(decision, snapshot) {
+  const eligible = snapshot?.showdown?.eligiblePlayers || [];
+  return eligible.filter((player) => (
+    choiceFor(decision, fillTemplate(winnerConfig.questionName, { number: player.number, name: player.name }))
+      === winnerConfig.yesChoice
+  ));
 }

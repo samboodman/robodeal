@@ -13,6 +13,8 @@ import { DealerAgent } from './dealer-agent.js';
 import { VoiceAgent } from './voice-agent.js';
 import { restoredPlayerName } from './game-settings.js';
 import { clockwisePlayerIds, normalizeSeatAngle, snapSeatAngle } from './seat-order.js';
+import chipSlideUrl from './sound-effects/chip-slide.mp3';
+import chipClinkUrl from './sound-effects/chip-clink.mp3';
 import promptsText from './Prompts.json?raw';
 
 const prompts = JSON.parse(promptsText);
@@ -575,6 +577,17 @@ function updateRecordingButton() {
   recordingButton.textContent = recording ? 'Stop recording' : 'Start recording';
 }
 
+function currentShowdownInfo() {
+  if (gameState?.phase !== GamePhase.SHOWDOWN) return null;
+  const pot = gameState.pots?.[gameState.potAwardIndex];
+  if (!pot || pot.amount <= 0) return null;
+  const eligiblePlayers = pot.eligiblePlayerNumbers
+    .map((id) => viewPlayer(id))
+    .filter((player) => player && !player.folded && !player.eliminated)
+    .map((player) => ({ number: player.id, name: player.name }));
+  return { potIndex: gameState.potAwardIndex, potAmount: pot.amount, eligiblePlayers };
+}
+
 function getVoiceSnapshot() {
   const currentPlayerNumber = viewActionPlayerNumber();
   const player = viewPlayer(currentPlayerNumber) || null;
@@ -622,6 +635,7 @@ function getVoiceSnapshot() {
     pot: totalPotAmount(),
     availableActions: currentGameActions(),
     dealInstruction: dealPrompt.hidden ? null : dealMessage.textContent,
+    showdown: currentShowdownInfo(),
     players: viewPlayers().map((candidate) => ({
       number: viewPlayerNumber(candidate),
       name: candidate.name,
@@ -656,6 +670,24 @@ function executeVoiceTool(name, args) {
     }
     startNewHand({ narrate: false });
     return finish({ ok: true, action: { type: 'next_hand' } });
+  }
+
+  if (name === 'chooseWinner' || name === 'splitPot') {
+    const showdown = currentShowdownInfo();
+    if (!showdown) return finish({ ok: false, errorCode: 'NO_SHOWDOWN_POT' });
+    const eligible = new Set(showdown.eligiblePlayers.map((entry) => entry.number));
+    if (name === 'chooseWinner') {
+      const winnerId = Number(args?.playerNumber);
+      if (!eligible.has(winnerId)) return finish({ ok: false, errorCode: 'NOT_ELIGIBLE' });
+      awardPot(showdown.potIndex, winnerId, false);
+      return finish({ ok: true, action: { type: 'award_pot', winnerId } });
+    }
+    const winnerIds = [...new Set((Array.isArray(args?.playerNumbers) ? args.playerNumbers : []).map(Number))];
+    if (winnerIds.length < 2 || !winnerIds.every((id) => eligible.has(id))) {
+      return finish({ ok: false, errorCode: 'NOT_ELIGIBLE' });
+    }
+    awardSplitPot(showdown.potIndex, winnerIds, false);
+    return finish({ ok: true, action: { type: 'split_pot', winnerIds } });
   }
 
   const currentPlayerNumber = viewActionPlayerNumber();
@@ -972,6 +1004,50 @@ const CHIP_STREAM_MAX_CHIPS = 40;
 const CHIP_STREAM_STAGGER_MS = 55;
 const CHIP_STREAM_TRAVEL_MS = 650;
 
+let chipSlideAudio = null;
+let chipClinkAudio = null;
+
+function ensureChipAudio() {
+  if (!chipSlideAudio) {
+    chipSlideAudio = new Audio(chipSlideUrl);
+    chipSlideAudio.volume = 0.4;
+  }
+  if (!chipClinkAudio) {
+    chipClinkAudio = new Audio(chipClinkUrl);
+    chipClinkAudio.volume = 0.8;
+  }
+}
+
+function startChipSlide() {
+  ensureChipAudio();
+  try {
+    chipSlideAudio.currentTime = 0;
+  } catch {
+    // audio not seekable yet
+  }
+  chipSlideAudio.play().catch(() => {});
+}
+
+function stopChipSlide() {
+  if (!chipSlideAudio) return;
+  chipSlideAudio.pause();
+  try {
+    chipSlideAudio.currentTime = 0;
+  } catch {
+    // ignore reset errors
+  }
+}
+
+function playChipClink() {
+  ensureChipAudio();
+  try {
+    chipClinkAudio.currentTime = 0;
+  } catch {
+    // audio not seekable yet
+  }
+  chipClinkAudio.play().catch(() => {});
+}
+
 function animateChipStream({ playerId, amount }) {
   const seat = playerSeats.querySelector(`.player-seat[data-player-id="${playerId}"]`);
   if (!seat || !(amount > 0)) return;
@@ -1004,10 +1080,14 @@ function animateChipStream({ playerId, amount }) {
   });
 
   document.body.append(layer);
-  window.setTimeout(
-    () => layer.remove(),
-    CHIP_STREAM_TRAVEL_MS + colors.length * CHIP_STREAM_STAGGER_MS + 100,
-  );
+  startChipSlide();
+
+  const travelMs = (colors.length - 1) * CHIP_STREAM_STAGGER_MS + CHIP_STREAM_TRAVEL_MS;
+  window.setTimeout(() => {
+    stopChipSlide();
+    playChipClink();
+    layer.remove();
+  }, travelMs + 30);
 }
 
 function makePlayerChipPiles(amount) {
@@ -1623,13 +1703,13 @@ function showPotWinnerPicker(question, players, awardFunction, splitFunction = n
   winnerPicker.hidden = false;
 }
 
-function awardPot(potIndex, winnerNumber) {
-  invokeGame({ type: Transition.AWARD_POT, potIndex, winnerId: winnerNumber }, { narrate: true });
+function awardPot(potIndex, winnerNumber, narrate = true) {
+  invokeGame({ type: Transition.AWARD_POT, potIndex, winnerId: winnerNumber }, { narrate });
   renderGameState();
 }
 
-function awardSplitPot(potIndex, winnerNumbers) {
-  invokeGame({ type: Transition.SPLIT_POT, potIndex, winnerIds: winnerNumbers }, { narrate: true });
+function awardSplitPot(potIndex, winnerNumbers, narrate = true) {
+  invokeGame({ type: Transition.SPLIT_POT, potIndex, winnerIds: winnerNumbers }, { narrate });
   renderGameState();
 }
 

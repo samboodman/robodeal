@@ -34,6 +34,13 @@ export function isBackchannelPrefix(text) {
   return backchannels.some((backchannel) => backchannel.startsWith(compact));
 }
 
+const APPEND_MAX_CHARS = 1200;
+
+function clampAppend(content) {
+  const text = String(content ?? '');
+  return text.length <= APPEND_MAX_CHARS ? text : `${text.slice(0, APPEND_MAX_CHARS)}…`;
+}
+
 function eventId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -204,7 +211,7 @@ export class VoiceAgent {
       type: 'session.thinking.append',
       event_id: eventId('state'),
       delegation_id: null,
-      content: String(context).slice(0, 2_000),
+      content: clampAppend(context),
     });
   }
 
@@ -232,7 +239,7 @@ export class VoiceAgent {
       type,
       event_id: eventId('dealer'),
       delegation_id: delegationId,
-      content: text,
+      content: clampAppend(text),
     });
     this.scheduleOutputCompletion(this.outputResponseTimeoutMs);
   }

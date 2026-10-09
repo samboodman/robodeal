@@ -15,7 +15,7 @@
   },
   "action": {
     "name": "action",
-    "instructions": "What does the current player want to do? Choose narrateValues when they ask about the state of the game. Choose nextHand to deal the next hand after a hand has finished. Choose undo only for a clear request to undo the last confirmed turn. Choose nothing for background chatter or unclear speech.",
+    "instructions": "What does the current player want to do? Choose narrateValues when they ask about the state of the game. Choose nextHand to deal the next hand after a hand has finished. Choose pickWinner when a showdown pot is waiting to be awarded. Choose undo only for a clear request to undo the last confirmed turn. Choose nothing for background chatter or unclear speech.",
     "choices": {
       "check": { "description": "Check when nothing is owed." },
       "call": { "description": "Match the current bet." },
@@ -26,6 +26,7 @@
       "cardsDealt": { "description": "The requested physical cards have been dealt." },
       "undo": { "description": "Undo the most recent change to the game." },
       "nextHand": { "description": "Deal the next hand." },
+      "pickWinner": { "description": "Award the current showdown pot to the winning player or players." },
       "narrateValues": { "description": "Report one or more state values the player asked to hear." },
       "nothing": { "description": "Background chatter, unrelated speech, or unclear speech." }
     },
@@ -40,6 +41,7 @@
     },
     "undoChoice": "undo",
     "raiseChoice": "raise",
+    "pickWinnerChoice": "pickWinner",
     "narrateValuesChoice": "narrateValues",
     "nothingChoice": "nothing",
     "amountChoices": ["bet", "raise"]
@@ -52,6 +54,15 @@
     "choices": {
       "raiseTo": { "description": "The number is the total the player wants to have bet this round." },
       "raiseBy": { "description": "The number is on top of the amount needed to call." }
+    }
+  },
+  "winner": {
+    "questionName": "winner_{number}",
+    "instructions": "Did {name} win this pot? Choose yes for every player who won the pot; if more than one player won, split the pot between them.",
+    "yesChoice": "yes",
+    "choices": {
+      "yes": { "description": "Yes, this player won (or tied for) the pot." },
+      "no": { "description": "No, this player did not win." }
     }
   },
   "amount": {

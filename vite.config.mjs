@@ -40,5 +40,8 @@ function localOpenAIApi(apiKey) {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  return { plugins: [localOpenAIApi(env.OPENAI_API_KEY)] };
+  return {
+    build: { assetsInlineLimit: 0 },
+    plugins: [localOpenAIApi(env.OPENAI_API_KEY)],
+  };
 });
