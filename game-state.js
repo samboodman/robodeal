@@ -35,6 +35,8 @@ export const BettingLimit = Object.freeze({
   FIXED_LIMIT: 'fixed-limit',
 });
 
+const MAX_BETS_PER_ROUND = 4;
+
 const bettingPhases = [
   GamePhase.BETTING_PREFLOP,
   GamePhase.BETTING_FLOP,
@@ -132,6 +134,31 @@ function postBlind(state, playerId, requestedAmount, countsAsInitialAction = tru
   state.highestRoundBet = Math.max(state.highestRoundBet, player.roundBet);
 }
 
+function postAntes(state) {
+  if (!state.ante) return;
+  state.players.forEach((player) => {
+    if (player.eliminated) return;
+    const amount = Math.min(state.ante, player.chips);
+    player.chips -= amount;
+    player.handContribution += amount;
+  });
+}
+
+function orderWinnersFromDealersLeft(state, winnerIds) {
+  const remaining = new Set(winnerIds);
+  const ordered = [];
+  const dealerIndex = state.players.findIndex((player) => player.id === state.dealerId);
+  for (let step = 1; step <= state.players.length && remaining.size > 0; step += 1) {
+    const player = state.players[(dealerIndex + step) % state.players.length];
+    if (remaining.has(player.id)) {
+      ordered.push(player.id);
+      remaining.delete(player.id);
+    }
+  }
+  remaining.forEach((id) => ordered.push(id));
+  return ordered;
+}
+
 function phaseAfterBetting(state) {
   const nextPhase = dealPhaseFor[state.phase];
   if (nextPhase === GamePhase.SHOWDOWN) return GamePhase.SHOWDOWN;
@@ -182,15 +209,14 @@ function assertBettingTurn(state, action) {
 
 function prepareNextBettingRound(state) {
   state.highestRoundBet = 0;
+  state.betsThisRound = 0;
   state.lastFullRaiseSize = minimumFullBetForRound(state);
   state.players.forEach((player) => {
     player.roundBet = 0;
     player.hasActedThisRound = false;
+    player.canRaiseThisRound = true;
   });
-  const first = playerById(state, state.smallBlindPlayerId);
-  state.actionPlayerId = first && !first.folded && !first.eliminated && first.chips > 0
-    ? first.id
-    : nextPlayerFrom(state, state.smallBlindPlayerId);
+  state.actionPlayerId = nextPlayerFrom(state, state.dealerId);
 }
 
 function advanceAward(state) {
@@ -219,12 +245,14 @@ export function createGameState({
   useBigBlind = false,
   bettingLimit = BettingLimit.NO_LIMIT,
   fixedLimitBet = Math.max(1, smallBlind * 2),
+  ante = 0,
 }) {
   if (!Array.isArray(players) || players.length < 2) throw new Error('At least two players are required.');
   if (!Number.isInteger(smallBlind) || smallBlind < 0) throw new Error('Small blind must be a non-negative integer.');
   if (!players.some((player) => player.id === dealerId)) throw new Error('The dealer must be a player.');
   if (!Object.values(BettingLimit).includes(bettingLimit)) throw new Error('Betting limit is not supported.');
   if (!Number.isInteger(fixedLimitBet) || fixedLimitBet <= 0) throw new Error('Fixed-limit bet must be a positive integer.');
+  if (!Number.isInteger(ante) || ante < 0) throw new Error('Ante must be a non-negative integer.');
 
   return {
     phase: GamePhase.SETUP,
@@ -237,12 +265,14 @@ export function createGameState({
       roundBet: 0,
       handContribution: 0,
       hasActedThisRound: false,
+      canRaiseThisRound: true,
     })),
     smallBlind,
     smallBlindIncrease,
     useBigBlind,
     bettingLimit,
     fixedLimitBet,
+    ante,
     dealerId,
     firstDealerId: dealerId,
     actionPlayerId: null,
@@ -253,6 +283,7 @@ export function createGameState({
       ? fixedLimitBet
       : Math.max(1, smallBlind * (useBigBlind ? 2 : 1)),
     round: 1,
+    betsThisRound: 0,
     pots: [],
     handNumber: 0,
     potAwardIndex: 0,
@@ -331,9 +362,11 @@ export function createDebugGameState(gameState, presetName) {
     player.roundBet = preset.contributions[index];
     player.handContribution = preset.contributions[index];
     player.hasActedThisRound = false;
+    player.canRaiseThisRound = true;
     player.folded = false;
     player.eliminated = preset.phase === GamePhase.GAME_COMPLETE && player.chips === 0;
   });
+  state.betsThisRound = 0;
   refreshPots(state);
   return state;
 }
@@ -364,14 +397,16 @@ export function getAvailableActions(state) {
     minRaiseAdditionalChips: minimumBet,
     maxAdditionalChips: maximumBet,
   } = getBettingBounds(state, player.id);
+  const raiseCapReached = state.bettingLimit === BettingLimit.FIXED_LIMIT && state.betsThisRound >= MAX_BETS_PER_ROUND;
+  const mayRaise = player.canRaiseThisRound !== false && !raiseCapReached;
   const actions = [makeAction(Transition.FOLD)];
   if (callAmount === 0) actions.push(makeAction(Transition.CHECK));
   if (callAmount > 0) actions.push(makeAction(Transition.CALL, { additionalChips: callAmount }));
-  if (maximumBet >= minimumBet) actions.push(makeAction(Transition.BET, {
+  if (mayRaise && maximumBet >= minimumBet) actions.push(makeAction(Transition.BET, {
     minAdditionalChips: minimumBet,
     maxAdditionalChips: maximumBet,
   }));
-  if (maximumBet === player.chips && maximumBet > 0) actions.push(makeAction(Transition.ALL_IN, { additionalChips: maximumBet }));
+  if (mayRaise && maximumBet === player.chips && maximumBet > 0) actions.push(makeAction(Transition.ALL_IN, { additionalChips: maximumBet }));
   return actions;
 }
 
@@ -398,14 +433,21 @@ export function executeTransition(gameState, action) {
     state.pots = [];
     state.potAwardIndex = 0;
     state.handWinnerIds = [];
+    state.betsThisRound = 0;
     state.players.forEach((player) => {
       player.folded = player.eliminated;
       player.roundBet = 0;
       player.handContribution = 0;
       player.hasActedThisRound = false;
+      player.canRaiseThisRound = true;
     });
-    state.smallBlindPlayerId = playerToDealersLeft(state, state.dealerId);
-    state.bigBlindPlayerId = state.useBigBlind ? playerToDealersLeft(state, state.smallBlindPlayerId) : null;
+    const activeCount = state.players.filter((player) => !player.eliminated).length;
+    const headsUp = activeCount === 2;
+    state.smallBlindPlayerId = headsUp ? state.dealerId : playerToDealersLeft(state, state.dealerId);
+    state.bigBlindPlayerId = state.useBigBlind
+      ? (headsUp ? playerToDealersLeft(state, state.dealerId) : playerToDealersLeft(state, state.smallBlindPlayerId))
+      : null;
+    postAntes(state);
     postBlind(state, state.smallBlindPlayerId, state.smallBlind);
     if (state.bigBlindPlayerId !== null) postBlind(state, state.bigBlindPlayerId, state.smallBlind * 2, false);
     refreshPots(state);
@@ -442,7 +484,7 @@ export function executeTransition(gameState, action) {
     if (action.type === Transition.AWARD_POT && winnerIds.length !== 1) throw new Error('AWARD_POT requires exactly one winner.');
     if (action.type === Transition.SPLIT_POT && new Set(winnerIds).size < 2) throw new Error('SPLIT_POT requires at least two distinct winners.');
 
-    const awards = splitPotAmount(pot.amount, winnerIds);
+    const awards = splitPotAmount(pot.amount, orderWinnersFromDealersLeft(state, winnerIds));
     awards.forEach(({ number: winnerId, amount }) => {
       playerById(state, winnerId).chips += amount;
       if (!state.handWinnerIds.includes(winnerId)) state.handWinnerIds.push(winnerId);
@@ -486,6 +528,15 @@ export function executeTransition(gameState, action) {
     throw new Error(`Unknown transition: ${action.type}.`);
   }
 
+  if ((action.type === Transition.BET || action.type === Transition.ALL_IN) && player.canRaiseThisRound === false) {
+    throw new Error('Raising is not allowed after a short all-in.');
+  }
+  if (action.type === Transition.BET
+    && state.bettingLimit === BettingLimit.FIXED_LIMIT
+    && state.betsThisRound >= MAX_BETS_PER_ROUND) {
+    throw new Error('The fixed-limit raise cap for this round is reached.');
+  }
+
   const previousHighestRoundBet = state.highestRoundBet;
   const newRoundBet = player.roundBet + additionalChips;
   const raiseSize = Math.max(0, newRoundBet - previousHighestRoundBet);
@@ -494,8 +545,22 @@ export function executeTransition(gameState, action) {
   player.roundBet = newRoundBet;
   player.handContribution += additionalChips;
   player.hasActedThisRound = true;
-  if (raiseSize >= state.lastFullRaiseSize) state.lastFullRaiseSize = raiseSize;
   state.highestRoundBet = Math.max(state.highestRoundBet, player.roundBet);
+
+  if (raiseSize > 0) {
+    if (raiseSize >= state.lastFullRaiseSize) {
+      state.betsThisRound += 1;
+      state.lastFullRaiseSize = raiseSize;
+      state.players.forEach((candidate) => {
+        if (candidate.id !== player.id) candidate.canRaiseThisRound = true;
+      });
+    } else {
+      state.players.forEach((candidate) => {
+        if (candidate.id !== player.id && candidate.hasActedThisRound) candidate.canRaiseThisRound = false;
+      });
+    }
+  }
+
   refreshPots(state);
   resolveBetting(state);
   return state;

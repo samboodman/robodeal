@@ -1064,6 +1064,7 @@ function makePlayers() {
     useBigBlind: gameSettings.useBigBlind,
     bettingLimit: gameSettings.bettingLimit,
     fixedLimitBet: gameSettings.fixedLimitBet,
+    ante: gameSettings.useAnte ? gameSettings.ante : 0,
   });
 }
 
@@ -1575,6 +1576,7 @@ function saveAlterSettings() {
   gameState.smallBlind = smallBlind;
   gameState.smallBlindIncrease = increase;
   gameState.useBigBlind = useBigBlind;
+  gameState.ante = useAnte ? anteAmount : 0;
 
   [...alterPlayerNames.querySelectorAll('input')].forEach((input, index) => {
     if (!gameState.players[index]) return;
@@ -1883,20 +1885,11 @@ function showGameWinner(winner) {
   gameWinnerScreen.hidden = false;
 }
 
-function takeAnte() {
-  for (let i = 0; i < gameState.players.length; i++) {
-    gameState.players[i].chips -= gameSettings.ante;
-    gameState.players[i].handContribution += gameSettings.ante;
-  }
-  gameState.pots[0].amount += gameState.players.length * gameSettings.ante;
-}
-
 function startHand() {
   pendingBet = 0;
   pendingFold = false;
   pendingChipStream = null;
   invokeGame({ type: Transition.START_HAND });
-  takeAnte();
   renderGameState();
 }
 
@@ -1905,7 +1898,6 @@ function startNewHand({ narrate = true } = {}) {
   pendingFold = false;
   pendingChipStream = null;
   invokeGame({ type: Transition.START_NEXT_HAND });
-  takeAnte();
   renderGameState();
   if (narrate && voiceAgent?.connected) {
     requestDealerNarration({

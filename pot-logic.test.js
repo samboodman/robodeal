@@ -12,27 +12,27 @@ function player(number, handContribution, { chips = 0, folded = false, eliminate
   return { number, handContribution, chips, folded, eliminated };
 }
 
-test('limits a wager to the amount a heads-up opponent can cover', () => {
+test('lets a player wager their whole stack even if an opponent cannot cover it', () => {
   assert.equal(maximumAdditionalBet([
     player(1, 0, { chips: 170 }),
     player(2, 0, { chips: 120 }),
-  ], 1), 120);
+  ], 1), 170);
 });
 
-test('includes chips already contributed when calculating effective stacks', () => {
+test('does not reduce the maximum because of chips already contributed', () => {
   assert.equal(maximumAdditionalBet([
     player(1, 5, { chips: 170 }),
     player(2, 20, { chips: 120 }),
-  ], 1), 135);
+  ], 1), 170);
 });
 
-test('uses the richest active opponent and ignores folded stacks', () => {
+test('ignores folded and eliminated stacks', () => {
   assert.equal(maximumAdditionalBet([
     player(1, 10, { chips: 200 }),
     player(2, 10, { chips: 40 }),
     player(3, 25, { chips: 75 }),
     player(4, 10, { chips: 500, folded: true }),
-  ], 1), 90);
+  ], 1), 200);
 });
 
 test('keeps unequal active bets in one pot when nobody is all-in', () => {

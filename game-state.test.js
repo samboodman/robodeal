@@ -449,3 +449,90 @@ test('fixed-limit uses the configured bet before and on the flop, then doubles i
     maxAdditionalChips: 30,
   });
 });
+
+test('heads-up makes the button the small blind and first to act preflop', () => {
+  const base = createGameState({
+    players: [{ id: 1, name: 'A', chips: 100 }, { id: 2, name: 'B', chips: 100 }],
+    smallBlind: 5,
+    dealerId: 1,
+    useBigBlind: true,
+  });
+  let state = executeTransition(base, { type: Transition.START_HAND });
+  assert.equal(state.smallBlindPlayerId, 1);
+  assert.equal(state.bigBlindPlayerId, 2);
+  assert.equal(state.actionPlayerId, 1);
+
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+  assert.equal(state.actionPlayerId, 1);
+  state = action(state, Transition.CALL);
+  state = action(state, Transition.CHECK);
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+  assert.equal(state.phase, GamePhase.BETTING_FLOP);
+  assert.equal(state.actionPlayerId, 2);
+});
+
+test('antes are posted by every live player and capped at their stack', () => {
+  const base = createGameState({
+    players: [
+      { id: 1, chips: 3 },
+      { id: 2, chips: 100 },
+      { id: 3, chips: 100 },
+      { id: 4, chips: 0, eliminated: true },
+    ],
+    smallBlind: 5,
+    dealerId: 1,
+    useBigBlind: true,
+    ante: 10,
+  });
+  const state = executeTransition(base, { type: Transition.START_HAND });
+  const player1 = state.players.find((player) => player.id === 1);
+  const player4 = state.players.find((player) => player.id === 4);
+  assert.equal(player1.chips, 0);
+  assert.equal(player1.handContribution, 3);
+  assert.equal(player4.chips, 0);
+  assert.equal(player4.handContribution, 0);
+});
+
+test('a short all-in does not reopen raising for players who already acted', () => {
+  let state = createGameState({
+    players: [{ id: 1, chips: 250 }, { id: 2, chips: 145 }, { id: 3, chips: 250 }],
+    smallBlind: 5,
+    dealerId: 1,
+    useBigBlind: true,
+  });
+  state = executeTransition(state, { type: Transition.START_HAND });
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+  state = action(state, Transition.BET, { additionalChips: 100 });
+  state = action(state, Transition.ALL_IN);
+  assert.equal(state.actionPlayerId, 3);
+  assert.ok(getAvailableActions(state).some(({ type }) => type === Transition.BET));
+
+  state = action(state, Transition.CALL);
+  assert.equal(state.actionPlayerId, 1);
+  const reopen = getAvailableActions(state);
+  assert.equal(reopen.some(({ type }) => type === Transition.BET), false);
+  assert.equal(reopen.some(({ type }) => type === Transition.ALL_IN), false);
+  assert.ok(reopen.some(({ type }) => type === Transition.CALL));
+});
+
+test('an all-in over a shorter stack returns the uncalled chips', () => {
+  let state = createGameState({
+    players: [{ id: 1, chips: 1000 }, { id: 2, chips: 100 }],
+    smallBlind: 5,
+    dealerId: 1,
+    useBigBlind: true,
+  });
+  state = executeTransition(state, { type: Transition.START_HAND });
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+  assert.ok(getAvailableActions(state).some(({ type }) => type === Transition.ALL_IN));
+  state = action(state, Transition.ALL_IN);
+  state = action(state, Transition.CALL);
+  assert.equal(state.phase, GamePhase.ALL_IN_RUNOUT);
+
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+  assert.equal(state.phase, GamePhase.SHOWDOWN);
+  state = executeTransition(state, { type: Transition.AWARD_POT, potIndex: state.potAwardIndex, winnerId: 2 });
+  state = executeTransition(state, { type: Transition.AWARD_POT, potIndex: state.potAwardIndex, winnerId: 1 });
+  assert.equal(state.players.find((player) => player.id === 1).chips, 900);
+  assert.equal(state.players.find((player) => player.id === 2).chips, 200);
+});
