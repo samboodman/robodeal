@@ -1834,6 +1834,7 @@ async function confirmFreeClaim() {
     applyBalance(data.balanceCents);
     if (data.granted) {
       freeClaimSection.hidden = true;
+      topUpStatusEl.textContent = 'Card saved — 2 hours of play added.';
     } else {
       freeClaimStatus.textContent = 'That card was already used for the free credit.';
     }

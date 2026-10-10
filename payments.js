@@ -5,7 +5,7 @@ const STRIPE_API = 'https://api.stripe.com/v1';
 const PAYER_COOKIE = 'payer';
 
 export const PRICE_CENTS_PER_HOUR = 400;
-export const INITIAL_FREE_HOURS = 3;
+export const INITIAL_FREE_HOURS = 2;
 const INITIAL_FREE_CENTS = INITIAL_FREE_HOURS * PRICE_CENTS_PER_HOUR;
 
 let client = null;
