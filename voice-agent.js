@@ -52,6 +52,7 @@ export class VoiceAgent {
     onTranscript = () => {},
     onStatus = () => {},
     onLatency = () => {},
+    silentAppend = '',
     delegationDelayMs = 60,
     speculationDelayMs = 250,
     outputSilenceThreshold = 0.008,
@@ -69,6 +70,7 @@ export class VoiceAgent {
     this.onTranscript = onTranscript;
     this.onStatus = onStatus;
     this.onLatency = onLatency;
+    this.silentAppend = silentAppend;
     this.delegationDelayMs = delegationDelayMs;
     this.speculationDelayMs = speculationDelayMs;
     this.outputSilenceThreshold = outputSilenceThreshold;
@@ -249,12 +251,14 @@ export class VoiceAgent {
       this.speak(result.utterance, delegationId, result.timing);
       return;
     }
-    this.send({
-      type: 'session.thinking.append',
-      event_id: eventId('silent'),
-      delegation_id: delegationId,
-      content: 'The backend determined that no response or action is required. Continue listening silently.',
-    });
+    if (this.silentAppend) {
+      this.send({
+        type: 'session.thinking.append',
+        event_id: eventId('silent'),
+        delegation_id: delegationId,
+        content: this.silentAppend,
+      });
+    }
     if (this.pendingSpeechCount === 0) this.setOutputGate(false);
     this.onStatus(this.idleStatus());
   }

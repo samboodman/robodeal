@@ -144,13 +144,14 @@ export function buildPokerDecisionQuestions({ snapshot, maxAmount, field = amoun
 }
 
 export function buildDecisionInput({ instructions, gameState, transcript }) {
+  const labels = config.decisionInput;
   return [
     instructions,
     '',
-    'Current game state:',
+    labels.gameStateLabel,
     JSON.stringify(gameState),
     '',
-    'What the user said:',
+    labels.transcriptLabel,
     String(transcript || '').trim(),
   ].join('\n');
 }

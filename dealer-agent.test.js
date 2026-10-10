@@ -18,155 +18,121 @@ function snapshot(overrides = {}) {
   };
 }
 
-test('classifies a voice utterance with the Decisions API and applies the move', async () => {
+test('posts state and transcript to /api/dealer and applies the returned tool', async () => {
   const requests = [];
   const toolCalls = [];
   const agent = new DealerAgent({
     getGameState: () => snapshot(),
-    instructions: 'classify the move',
     executeTool: async (name, args) => {
       toolCalls.push({ name, args });
-      return { ok: true, action: { type: 'call', actor: { name: 'Sam' }, chipsMoved: 5 }, stateAfter: snapshot({ pot: 35 }) };
+      return { ok: true };
     },
     fetchImplementation: async (url, options) => {
       requests.push({ url, body: JSON.parse(options.body) });
-      return jsonResponse({ answers: [{ type: 'choice', name: 'action', choice: 'call' }] });
+      return jsonResponse({
+        speak: true,
+        kind: 'action_result',
+        utterance: 'DEALER FACTS: {"requested":"call"}',
+        toolName: 'call',
+        toolArgs: {},
+      });
     },
   });
 
   const result = await agent.run({ type: 'voice_utterance', transcript: 'I call' });
 
-  assert.equal(requests[0].url, '/api/decisions');
-  assert.match(requests[0].body.input, /classify the move/);
-  assert.match(requests[0].body.input, /I call/);
-  assert.ok(requests[0].body.questions.some((question) => question.name === 'action'));
+  assert.equal(requests[0].url, '/api/dealer');
+  assert.equal(requests[0].body.transcript, 'I call');
+  assert.equal(requests[0].body.gameState.currentPlayer.name, 'Sam');
   assert.deepEqual(toolCalls, [{ name: 'call', args: {} }]);
   assert.equal(result.speak, true);
   assert.equal(result.kind, 'action_result');
-  assert.match(result.utterance, /DEALER FACTS:/);
   assert.match(result.utterance, /"requested":"call"/);
-  assert.ok(result.timing.decisionsMs >= 0);
+  assert.ok(result.timing.serverMs >= 0);
   assert.ok(result.timing.javascriptMs >= 0);
 });
 
-test('reconstructs digit amounts and maps raise-to to a total bet', async () => {
-  const toolCalls = [];
+test('asks the server for a rejection line when the tool call fails', async () => {
+  const requests = [];
+  let call = 0;
   const agent = new DealerAgent({
     getGameState: () => snapshot(),
-    executeTool: async (name, args) => {
-      toolCalls.push({ name, args });
-      return { ok: true, action: { type: 'bet' }, stateAfter: snapshot() };
+    executeTool: async () => ({ ok: false, errorCode: 'CHIPS_OWED', details: { amountToCall: 10 } }),
+    fetchImplementation: async (_url, options) => {
+      call += 1;
+      requests.push(JSON.parse(options.body));
+      if (call === 1) {
+        return jsonResponse({
+          speak: true,
+          kind: 'action_result',
+          utterance: 'DEALER FACTS: {"requested":"check"}',
+          toolName: 'check',
+          toolArgs: {},
+        });
+      }
+      return jsonResponse({
+        speak: true,
+        kind: 'clarification',
+        utterance: 'DEALER FACTS: {"rejected":true,"error":"CHIPS_OWED"}',
+      });
     },
+  });
+
+  const result = await agent.run({ type: 'voice_utterance', transcript: 'check' });
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].toolOutput.errorCode, 'CHIPS_OWED');
+  assert.equal(requests[1].toolName, 'check');
+  assert.equal(result.kind, 'clarification');
+  assert.match(result.utterance, /CHIPS_OWED/);
+});
+
+test('speaks a state answer that needs no tool', async () => {
+  const agent = new DealerAgent({
+    getGameState: () => snapshot(),
+    executeTool: async () => { throw new Error('no tool should run'); },
     fetchImplementation: async () => jsonResponse({
-      answers: [
-        { type: 'choice', name: 'action', choice: 'raise' },
-        { type: 'choice', name: 'raise_target', choice: 'raiseTo' },
-        { type: 'choice', name: 'amount_digit_1', choice: '5' },
-        { type: 'choice', name: 'amount_digit_10', choice: '0' },
-        { type: 'choice', name: 'amount_digit_100', choice: '3' },
-      ],
+      speak: true,
+      kind: 'answer',
+      utterance: 'DEALER FACTS: {"pot":30}',
     }),
-  });
-
-  await agent.run({ type: 'voice_utterance', transcript: 'raise to 305' });
-
-  assert.deepEqual(toolCalls, [{ name: 'bet', args: { total: 305 } }]);
-});
-
-test('maps raise-by to the raise-above-call tool', async () => {
-  const toolCalls = [];
-  const agent = new DealerAgent({
-    getGameState: () => snapshot(),
-    executeTool: async (name, args) => {
-      toolCalls.push({ name, args });
-      return { ok: true, action: { type: 'raise' }, stateAfter: snapshot() };
-    },
-    fetchImplementation: async () => jsonResponse({
-      answers: [
-        { type: 'choice', name: 'action', choice: 'raise' },
-        { type: 'choice', name: 'raise_target', choice: 'raiseBy' },
-        { type: 'choice', name: 'amount_digit_1', choice: '5' },
-        { type: 'choice', name: 'amount_digit_10', choice: '0' },
-        { type: 'choice', name: 'amount_digit_100', choice: '3' },
-      ],
-    }),
-  });
-
-  await agent.run({ type: 'voice_utterance', transcript: 'raise 305' });
-
-  assert.deepEqual(toolCalls, [{ name: 'raise', args: { amount: 305 } }]);
-});
-
-test('maps a next-hand choice to the nextHand tool', async () => {
-  const toolCalls = [];
-  const agent = new DealerAgent({
-    getGameState: () => snapshot({ phase: 'HAND_COMPLETE', availableActions: [{ type: 'START_NEXT_HAND' }] }),
-    executeTool: async (name, args) => {
-      toolCalls.push({ name, args });
-      return { ok: true, action: { type: 'next_hand' }, stateAfter: snapshot({ dealInstruction: 'Deal two cards.' }) };
-    },
-    fetchImplementation: async () => jsonResponse({ answers: [{ type: 'choice', name: 'action', choice: 'nextHand' }] }),
-  });
-
-  const result = await agent.run({ type: 'voice_utterance', transcript: 'next hand' });
-
-  assert.deepEqual(toolCalls, [{ name: 'nextHand', args: {} }]);
-  assert.match(result.utterance, /Deal two cards\./);
-});
-
-test('answers a state question with a second bundled yes/no request', async () => {
-  const responses = [
-    { answers: [{ type: 'choice', name: 'action', choice: 'narrateValues' }] },
-    { answers: [
-      { type: 'choice', name: 'value_pot', choice: 'yes' },
-      { type: 'choice', name: 'value_current_player', choice: 'no' },
-    ] },
-  ];
-  let calls = 0;
-  const agent = new DealerAgent({
-    getGameState: () => snapshot(),
-    executeTool: async () => { throw new Error('no action should run for a question'); },
-    fetchImplementation: async () => {
-      calls += 1;
-      return jsonResponse(responses.shift());
-    },
   });
 
   const result = await agent.run({ type: 'voice_utterance', transcript: 'how big is the pot?' });
 
-  assert.equal(calls, 2);
   assert.equal(result.kind, 'answer');
   assert.match(result.utterance, /"pot":30/);
-  assert.doesNotMatch(result.utterance, /current_player/);
 });
 
-test('ignores background speech with no matching action', async () => {
+test('ignores background speech', async () => {
   const agent = new DealerAgent({
     getGameState: () => snapshot(),
-    executeTool: async () => { throw new Error('no action should run'); },
-    fetchImplementation: async () => jsonResponse({ answers: [{ type: 'choice', name: 'action', choice: 'nothing' }] }),
+    executeTool: async () => { throw new Error('no tool should run'); },
+    fetchImplementation: async () => jsonResponse({ speak: false, kind: 'ignored', utterance: '' }),
   });
 
-  const result = await agent.run({ type: 'voice_utterance', transcript: 'nice weather today' });
+  const result = await agent.run({ type: 'voice_utterance', transcript: 'nice weather' });
 
   assert.equal(result.speak, false);
   assert.equal(result.kind, 'ignored');
 });
 
-test('announces UI events as facts without calling Decisions', async () => {
-  let calls = 0;
+test('asks the server for UI announcements', async () => {
+  const requests = [];
   const agent = new DealerAgent({
     getGameState: () => snapshot(),
     executeTool: async () => {},
-    fetchImplementation: async () => { calls += 1; return jsonResponse({}); },
+    fetchImplementation: async (_url, options) => {
+      requests.push(JSON.parse(options.body));
+      return jsonResponse({ speak: true, kind: 'announcement', utterance: 'DEALER FACTS: {"event":"game_started"}' });
+    },
   });
 
   const result = await agent.run({ type: 'game_started', setup: { smallBlind: 5 }, dealInstruction: 'Deal two cards.' });
 
-  assert.equal(calls, 0);
+  assert.equal(requests[0].sourceEvent.type, 'game_started');
   assert.equal(result.kind, 'announcement');
   assert.match(result.utterance, /game_started/);
-  assert.match(result.utterance, /Deal two cards\./);
 });
 
 test('does not act when the game state changed during the decision', async () => {
@@ -180,7 +146,13 @@ test('does not act when the game state changed during the decision', async () =>
     },
     fetchImplementation: async () => {
       state = snapshot({ currentPlayer: { name: 'Maya', chips: 100, amountToCall: 0 } });
-      return jsonResponse({ answers: [{ type: 'choice', name: 'action', choice: 'call' }] });
+      return jsonResponse({
+        speak: true,
+        kind: 'action_result',
+        utterance: 'DEALER FACTS: {"requested":"call"}',
+        toolName: 'call',
+        toolArgs: {},
+      });
     },
   });
 
@@ -200,12 +172,18 @@ test('prepares the decision early but waits for the delegation before executing'
     getGameState: () => snapshot(),
     executeTool: async () => {
       toolExecutions += 1;
-      return { ok: true, action: { type: 'check', actor: { name: 'Sam' } }, stateAfter: snapshot() };
+      return { ok: true };
     },
     fetchImplementation: async () => {
       requestCount += 1;
       await decisionGate;
-      return jsonResponse({ answers: [{ type: 'choice', name: 'action', choice: 'check' }] });
+      return jsonResponse({
+        speak: true,
+        kind: 'action_result',
+        utterance: 'DEALER FACTS: {"requested":"check"}',
+        toolName: 'check',
+        toolArgs: {},
+      });
     },
   });
 
@@ -236,7 +214,7 @@ test('serializes turns so concurrent speech cannot race the state machine', asyn
       order.push(`start-${current}`);
       if (current === 1) await firstBlocked;
       order.push(`end-${current}`);
-      return jsonResponse({ answers: [{ type: 'choice', name: 'action', choice: 'nothing' }] });
+      return jsonResponse({ speak: false, kind: 'ignored', utterance: '' });
     },
   });
 

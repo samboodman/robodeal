@@ -10,7 +10,11 @@ import {
 
 function testAgent(options = {}) {
   const sent = [];
-  const agent = new VoiceAgent({ delegationDelayMs: 0, ...options });
+  const agent = new VoiceAgent({
+    delegationDelayMs: 0,
+    silentAppend: 'The backend determined that no response or action is required. Continue listening silently.',
+    ...options,
+  });
   agent.channel = {
     readyState: 'open',
     send: (event) => sent.push(JSON.parse(event)),

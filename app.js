@@ -15,9 +15,13 @@ import { restoredPlayerName } from './game-settings.js';
 import { clockwisePlayerIds, normalizeSeatAngle, snapSeatAngle } from './seat-order.js';
 import chipSlideUrl from './sound-effects/chip-slide.mp3';
 import chipClinkUrl from './sound-effects/chip-clink.mp3';
-import promptsText from './Prompts.json?raw';
 
-const prompts = JSON.parse(promptsText);
+let uiPrompts = { thinkingSilence: '', previewGreeting: '', voicePreviewText: '' };
+fetch('/api/ui-prompts')
+  .then((response) => (response.ok ? response.json() : null))
+  .then((value) => { if (value) uiPrompts = value; })
+  .catch(() => {});
+
 const playerCount = document.querySelector('#player-count');
 const playerNames = document.querySelector('#player-names');
 const form = document.querySelector('#setup-form');
@@ -93,6 +97,23 @@ const alterAnteAmount = document.querySelector('#alter-ante-amount');
 const alterPlayerNames = document.querySelector('#alter-player-names');
 const alterSettingsSaveButton = document.querySelector('#alter-settings-save-button');
 const alterSettingsCancelButton = document.querySelector('#alter-settings-cancel-button');
+const addMoneyButton = document.querySelector('#add-money-button');
+const setupAddMoneyButton = document.querySelector('#setup-add-money-button');
+const debugZeroBalanceButton = document.querySelector('#debug-zero-balance-button');
+const topUpScreen = document.querySelector('#topup-screen');
+const topUpBalanceValue = document.querySelector('#topup-balance-value');
+const topUpAmount = document.querySelector('#topup-amount');
+const topUpMinus = document.querySelector('#topup-minus');
+const topUpPlus = document.querySelector('#topup-plus');
+const topUpPaymentElementMount = document.querySelector('#topup-payment-element');
+const topUpConfirmButton = document.querySelector('#topup-confirm-button');
+const topUpCancelButton = document.querySelector('#topup-cancel-button');
+const topUpStatusEl = document.querySelector('#topup-status');
+const freeClaimSection = document.querySelector('#free-claim-section');
+const freeClaimButton = document.querySelector('#free-claim-button');
+const freeCardElement = document.querySelector('#free-card-element');
+const freeCardConfirmButton = document.querySelector('#free-card-confirm-button');
+const freeClaimStatus = document.querySelector('#free-claim-status');
 const potValue = document.querySelector('#pot-value');
 const sidePotValue = document.querySelector('#side-pot-value');
 const winnerPicker = document.querySelector('#winner-picker');
@@ -142,6 +163,15 @@ let seatingMode = false;
 let seatAngles = {};
 let pendingChipStream = null;
 let selectedBuyBackPlayerId = null;
+let stripeInstance = null;
+let topUpElements = null;
+let topUpPaymentElementNode = null;
+let topUpIntentId = null;
+let topUpBalanceCents = 0;
+let topUpPrepareToken = 0;
+let freeSetupElements = null;
+let freeCardElementNode = null;
+let freeSetupIntentId = null;
 const lastGameSettingsKey = 'robodeal-last-game-settings';
 const isLocalDebugEnvironment = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 const bettingLimitLabels = Object.freeze({
@@ -860,7 +890,6 @@ function getDealerAgent() {
     dealerAgent = new DealerAgent({
       getGameState: getVoiceSnapshot,
       executeTool: executeVoiceTool,
-      instructions: prompts.decisionsInstructions,
       onStatus: setVoiceStatus,
     });
   }
@@ -878,8 +907,14 @@ async function connectVoiceAgent() {
   if (voiceAgent?.connected) return voiceAgent;
   if (voiceConnectionPromise) return voiceConnectionPromise;
 
+  await refreshBalance();
+  if (topUpBalanceCents <= 0) {
+    throw new Error('Balance is empty; add money to keep playing.');
+  }
+
   voiceAgent?.disconnect();
   voiceAgent = new VoiceAgent({
+    silentAppend: uiPrompts.thinkingSilence,
     onSpeculativeDelegation: ({ transcript, recentConversation }) => getDealerAgent().prepare({
       type: 'voice_utterance',
       transcript,
@@ -909,7 +944,10 @@ async function connectVoiceAgent() {
     accent: voice.accent,
     pace: voice.pace,
   })
-    .then(() => voiceAgent)
+    .then(() => {
+      startMetering();
+      return voiceAgent;
+    })
     .finally(() => { voiceConnectionPromise = null; });
   return voiceConnectionPromise;
 }
@@ -933,12 +971,13 @@ async function previewVoice() {
   voicePreviewStatus.textContent = 'Loading voice…';
   voicePreviewAgent?.disconnect();
   voicePreviewAgent = new VoiceAgent({
+    silentAppend: uiPrompts.thinkingSilence,
     onStatus: (status) => { voicePreviewStatus.textContent = status; },
     onTranscript: (text) => { voicePreviewStatus.textContent = text; },
   });
   try {
     await voicePreviewAgent.connect(voiceChoice.value, { preview: true });
-    voicePreviewAgent.instruct(`Greet the user now in English by saying exactly this line and nothing else: "${prompts.voicePreviewText}". Then pause and listen.`);
+    voicePreviewAgent.instruct(uiPrompts.previewGreeting.replace('{{LINE}}', uiPrompts.voicePreviewText));
     window.setTimeout(() => {
       voicePreviewAgent?.disconnect();
       voicePreviewStatus.textContent = '';
@@ -1589,6 +1628,221 @@ function saveAlterSettings() {
   renderGameState();
 }
 
+async function loadStripe() {
+  if (stripeInstance) return stripeInstance;
+  const key = import.meta.env.VITE_NONSECRET_STRIPE_KEY;
+  if (!key) throw new Error('Missing VITE_NONSECRET_STRIPE_KEY in .env.local.');
+  await new Promise((resolve, reject) => {
+    if (window.Stripe) {
+      resolve();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://js.stripe.com/v3/';
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('Stripe.js failed to load.'));
+    document.head.append(script);
+  });
+  stripeInstance = window.Stripe(key);
+  return stripeInstance;
+}
+
+function topUpAmountCents() {
+  return Math.round(Math.max(0, Number(topUpAmount.value) || 0) * 100);
+}
+
+function renderTopUpSummary() {}
+
+function enforceZeroBalance() {
+  if (voiceAgent?.connected) {
+    voiceAgent.disconnect();
+    updateRecordingButton();
+  }
+  if (topUpScreen.hidden) openTopUp();
+}
+
+function applyBalance(cents) {
+  topUpBalanceCents = cents;
+  topUpBalanceValue.textContent = `$${(cents / 100).toFixed(2)}`;
+  topUpBalanceValue.classList.toggle('balance-empty', cents <= 0);
+  topUpCancelButton.disabled = cents <= 0;
+  if (cents <= 0) enforceZeroBalance();
+}
+
+async function refreshBalance() {
+  try {
+    const response = await fetch('/api/balance');
+    const data = await response.json();
+    if (!response.ok) return;
+    applyBalance(data.balanceCents);
+  } catch {}
+}
+
+const SELL_CENTS_PER_SECOND = 400 / 3600;
+let meteringTimer = null;
+let meteringStartedAt = 0;
+let meteringBilledCents = 0;
+
+function stopMetering() {
+  window.clearInterval(meteringTimer);
+  meteringTimer = null;
+  meteringStartedAt = 0;
+}
+
+async function meteringTick() {
+  if (!voiceAgent?.connected) {
+    stopMetering();
+    return;
+  }
+  const elapsedSeconds = (Date.now() - meteringStartedAt) / 1000;
+  const targetCents = Math.floor(elapsedSeconds * SELL_CENTS_PER_SECOND);
+  const dueCents = targetCents - meteringBilledCents;
+  if (dueCents <= 0) return;
+  meteringBilledCents = targetCents;
+  try {
+    const response = await fetch('/api/debit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cents: dueCents }),
+    });
+    const data = await response.json();
+    if (response.ok) applyBalance(data.balanceCents);
+  } catch {}
+}
+
+function startMetering() {
+  meteringStartedAt = Date.now();
+  meteringBilledCents = 0;
+  window.clearInterval(meteringTimer);
+  meteringTimer = window.setInterval(meteringTick, 1000);
+}
+
+async function prepareTopUpPayment() {
+  const cents = topUpAmountCents();
+  if (cents < 500) {
+    topUpStatusEl.textContent = 'Minimum top-up is $5.';
+    return;
+  }
+  const token = (topUpPrepareToken += 1);
+  topUpStatusEl.textContent = 'Loading card form…';
+  try {
+    const response = await fetch('/api/topup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amountCents: cents }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error || 'Top-up failed.');
+    if (token !== topUpPrepareToken) return;
+    topUpIntentId = data.paymentIntentId;
+    const stripe = await loadStripe();
+    if (token !== topUpPrepareToken) return;
+    if (topUpPaymentElementNode) {
+      topUpPaymentElementNode.destroy();
+      topUpPaymentElementNode = null;
+    }
+    topUpElements = stripe.elements({ clientSecret: data.clientSecret });
+    topUpPaymentElementNode = topUpElements.create('payment');
+    topUpPaymentElementNode.mount('#topup-payment-element');
+    topUpStatusEl.textContent = '';
+  } catch (error) {
+    topUpStatusEl.textContent = error.message;
+  }
+}
+
+async function openTopUp() {
+  otherScreen.hidden = true;
+  topUpScreen.hidden = false;
+  topUpConfirmButton.disabled = false;
+  renderTopUpSummary();
+  await refreshBalance();
+  await prepareTopUpPayment();
+}
+
+async function confirmTopUp() {
+  if (!topUpElements || !topUpIntentId) {
+    topUpStatusEl.textContent = 'The card form is not ready yet.';
+    return;
+  }
+  topUpConfirmButton.disabled = true;
+  topUpStatusEl.textContent = 'Processing…';
+  try {
+    const stripe = await loadStripe();
+    const { error } = await stripe.confirmPayment({ elements: topUpElements, redirect: 'if_required' });
+    if (error) throw new Error(error.message);
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const response = await fetch('/api/topup-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentIntentId: topUpIntentId }),
+      });
+      const data = await response.json();
+      if (response.ok && data.status === 'succeeded') {
+        topUpConfirmButton.disabled = false;
+        applyBalance(data.balanceCents);
+        topUpScreen.hidden = true;
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 750));
+    }
+    topUpStatusEl.textContent = 'Payment is still processing; try again in a moment.';
+  } catch (error) {
+    topUpStatusEl.textContent = error.message;
+  }
+  topUpConfirmButton.disabled = false;
+}
+
+async function startFreeClaim() {
+  freeClaimStatus.textContent = 'Loading card form…';
+  try {
+    const response = await fetch('/api/save-card', { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error || 'Could not start card setup.');
+    freeSetupIntentId = data.setupIntentId;
+    const stripe = await loadStripe();
+    if (freeCardElementNode) {
+      freeCardElementNode.destroy();
+      freeCardElementNode = null;
+    }
+    freeSetupElements = stripe.elements({ clientSecret: data.clientSecret });
+    freeCardElementNode = freeSetupElements.create('payment');
+    freeCardElementNode.mount('#free-card-element');
+    freeCardElement.hidden = false;
+    freeClaimButton.hidden = true;
+    freeCardConfirmButton.hidden = false;
+    freeClaimStatus.textContent = '';
+  } catch (error) {
+    freeClaimStatus.textContent = error.message;
+  }
+}
+
+async function confirmFreeClaim() {
+  if (!freeSetupElements || !freeSetupIntentId) return;
+  freeCardConfirmButton.disabled = true;
+  freeClaimStatus.textContent = 'Saving card…';
+  try {
+    const stripe = await loadStripe();
+    const { error } = await stripe.confirmSetup({ elements: freeSetupElements, redirect: 'if_required' });
+    if (error) throw new Error(error.message);
+    const response = await fetch('/api/claim-free', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ setupIntentId: freeSetupIntentId }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error || 'Could not claim.');
+    applyBalance(data.balanceCents);
+    if (data.granted) {
+      freeClaimSection.hidden = true;
+    } else {
+      freeClaimStatus.textContent = 'That card was already used for the free credit.';
+    }
+  } catch (error) {
+    freeClaimStatus.textContent = error.message;
+  }
+  freeCardConfirmButton.disabled = false;
+}
+
 function undoIsActive() {
   return Boolean(gameState) && !seatingMode && setupScreen.hidden;
 }
@@ -2202,11 +2456,43 @@ alterSettingsSaveButton.addEventListener('click', saveAlterSettings);
 alterSettingsCancelButton.addEventListener('click', () => {
   alterSettingsScreen.hidden = true;
 });
+addMoneyButton.addEventListener('click', openTopUp);
+setupAddMoneyButton.addEventListener('click', openTopUp);
+if (['localhost', '127.0.0.1'].includes(location.hostname)) {
+  debugZeroBalanceButton.hidden = false;
+}
+debugZeroBalanceButton.addEventListener('click', async () => {
+  try {
+    await fetch('/api/debug/zero-balance', { method: 'POST' });
+  } catch {}
+  await refreshBalance();
+});
+topUpMinus.addEventListener('click', () => {
+  topUpAmount.value = String(Math.max(5, topUpAmountCents() / 100 - 5));
+  renderTopUpSummary();
+  prepareTopUpPayment();
+});
+topUpPlus.addEventListener('click', () => {
+  topUpAmount.value = String(topUpAmountCents() / 100 + 5);
+  renderTopUpSummary();
+  prepareTopUpPayment();
+});
+topUpAmount.addEventListener('change', () => {
+  renderTopUpSummary();
+  prepareTopUpPayment();
+});
+topUpConfirmButton.addEventListener('click', confirmTopUp);
+freeClaimButton.addEventListener('click', startFreeClaim);
+freeCardConfirmButton.addEventListener('click', confirmFreeClaim);
+topUpCancelButton.addEventListener('click', () => {
+  topUpScreen.hidden = true;
+});
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
   if (!buttonHelp.hidden) closeButtonHelp();
   if (!buyBackScreen.hidden) buyBackScreen.hidden = true;
   if (!alterSettingsScreen.hidden) alterSettingsScreen.hidden = true;
+  if (!topUpScreen.hidden && topUpBalanceCents > 0) topUpScreen.hidden = true;
   if (!otherScreen.hidden) otherScreen.hidden = true;
 });
 function spinCornerButton(button) {

@@ -1,6 +1,10 @@
 {
   "model": "gpt-6-luna",
   "narrationPrefix": "DEALER FACTS:",
+  "decisionInput": {
+    "gameStateLabel": "Current game state:",
+    "transcriptLabel": "What the user said:"
+  },
   "placeNames": {
     "1": "ones",
     "10": "tens",

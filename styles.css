@@ -576,8 +576,8 @@ body {
   box-shadow: 0 4px 0 #31483e;
 }
 .dialog-screen {
-  position: absolute;
-  z-index: 7;
+  position: fixed;
+  z-index: 80;
   left: 50%;
   top: 50%;
   display: flex;
@@ -630,14 +630,60 @@ body {
   margin: 0;
 }
 #buy-back-confirm-button,
-#alter-settings-save-button {
+#alter-settings-save-button,
+#topup-confirm-button {
   background: #2875c7;
   box-shadow: 0 4px 0 #174f91;
 }
 #buy-back-cancel-button,
-#alter-settings-cancel-button {
+#alter-settings-cancel-button,
+#topup-cancel-button {
   background: #6b4f3b;
   box-shadow: 0 4px 0 #45200f;
+}
+.topup-balance {
+  margin: 0;
+  font-weight: 750;
+}
+#topup-balance-value.balance-empty {
+  color: #d9272e;
+}
+#free-claim-button,
+#free-card-confirm-button {
+  width: 100%;
+  min-height: 46px;
+  margin: 0;
+  background: #2875c7;
+  box-shadow: 0 4px 0 #174f91;
+}
+.topup-amount-row {
+  display: grid;
+  grid-template-columns: 48px 1fr 48px;
+  gap: 8px;
+  align-items: stretch;
+}
+.topup-amount-row input {
+  min-height: 48px;
+  text-align: center;
+  font-size: 1.4rem;
+}
+.topup-amount-row button {
+  min-height: 48px;
+  margin: 0;
+  font-size: 1.4rem;
+  background: #557066;
+  box-shadow: 0 4px 0 #31483e;
+}
+.dialog-screen > * {
+  flex: 0 0 auto;
+}
+.dialog-screen button:disabled {
+  background: #c8cbc9 !important;
+  color: #6f7773 !important;
+  cursor: default;
+}
+.topup-payment-element {
+  min-height: 140px;
 }
 .alter-grid {
   display: grid;

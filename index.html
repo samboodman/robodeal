@@ -111,6 +111,7 @@
           </label>
           <button id="voice-customization-button" class="voice-customization-button" type="button">Voice customization</button>
           <button id="chip-denominations-button" class="chip-denominations-button" type="button">Chip denominations</button>
+          <button id="setup-add-money-button" class="chip-denominations-button" type="button">Add money</button>
           <button type="submit">Start game</button>
           <p id="message" class="message" role="status"></p>
         </form>
@@ -293,6 +294,8 @@
           <div class="other-actions">
             <button id="buy-back-button" class="other-action-button" type="button">Buy back</button>
             <button id="alter-settings-button" class="other-action-button" type="button">Alter settings</button>
+            <button id="add-money-button" class="other-action-button" type="button">Add money</button>
+            <button id="debug-zero-balance-button" class="other-action-button" type="button" hidden>Zero balance (debug)</button>
           </div>
           <button id="other-back-button" class="other-back-button" type="button">Back to game</button>
         </section>
@@ -345,6 +348,27 @@
     <button id="redo-corner-button" class="corner-button redo-corner" type="button" aria-label="Redo" hidden disabled>
       <span class="corner-button-icon" aria-hidden="true">&#8635;</span>
     </button>
+    <section id="topup-screen" class="dialog-screen" aria-labelledby="topup-title" hidden>
+      <h2 id="topup-title">Add money</h2>
+      <p class="topup-balance">Balance: <strong id="topup-balance-value">$0.00</strong></p>
+      <div id="free-claim-section">
+        <button id="free-claim-button" type="button">Get $12 free — save a card</button>
+        <div id="free-card-element" class="topup-payment-element" hidden></div>
+        <button id="free-card-confirm-button" type="button" hidden>Save card &amp; claim $12</button>
+        <p id="free-claim-status" class="field-note" role="status"></p>
+      </div>
+      <label for="topup-amount">Amount to add (USD)</label>
+      <div class="topup-amount-row">
+        <button id="topup-minus" type="button" aria-label="Less">−</button>
+        <input id="topup-amount" type="number" min="5" step="5" value="20" inputmode="numeric" aria-label="Amount in dollars" />
+        <button id="topup-plus" type="button" aria-label="More">+</button>
+      </div>
+      <p class="field-note">Every <strong>$20</strong> buys <strong>5 hours</strong> of play.</p>
+      <div id="topup-payment-element" class="topup-payment-element"></div>
+      <button id="topup-confirm-button" type="button">Pay</button>
+      <button id="topup-cancel-button" type="button">Cancel</button>
+      <p id="topup-status" class="field-note" role="status"></p>
+    </section>
     <script type="module" src="app.js"></script>
   </body>
 </html>

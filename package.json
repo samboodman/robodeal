@@ -23,5 +23,8 @@
   "homepage": "https://github.com/samboodman/robodeal#readme",
   "devDependencies": {
     "vite": "^8.2.1"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.3"
   }
 }
