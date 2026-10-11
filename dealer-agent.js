@@ -1,3 +1,9 @@
+function markVoiceStage(name) {
+  if (!globalThis.window?.performance) return;
+  globalThis.window.__robodealVoiceStages ||= {};
+  globalThis.window.__robodealVoiceStages[name] = globalThis.window.performance.now();
+}
+
 export class DealerAgent {
   constructor({
     getGameState,
@@ -90,6 +96,7 @@ export class DealerAgent {
       response = await this.post({ sourceEvent, gameState, transcript: sourceEvent.transcript });
       timing.serverMs = Date.now() - requestedAt;
     }
+    markVoiceStage('decisionReady');
 
     if (JSON.stringify(this.getGameState()) !== stateFingerprint) {
       timing.staleStateIgnored = true;
@@ -110,6 +117,7 @@ export class DealerAgent {
       output = { ok: false, errorCode: 'TOOL_EXECUTION_FAILED', details: { reason: error.message } };
     }
     timing.javascriptMs = Date.now() - toolStartedAt;
+    markVoiceStage('gameActionApplied');
 
     if (output?.ok) {
       return finish({ speak: true, kind: 'action_result', utterance: response.utterance });

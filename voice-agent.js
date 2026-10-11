@@ -36,6 +36,12 @@ export function isBackchannelPrefix(text) {
 
 const APPEND_MAX_CHARS = 1200;
 
+function markVoiceStage(name) {
+  if (!globalThis.window?.performance) return;
+  globalThis.window.__robodealVoiceStages ||= {};
+  globalThis.window.__robodealVoiceStages[name] = globalThis.window.performance.now();
+}
+
 function clampAppend(content) {
   const text = String(content ?? '');
   return text.length <= APPEND_MAX_CHARS ? text : `${text.slice(0, APPEND_MAX_CHARS)}…`;
@@ -44,6 +50,9 @@ function clampAppend(content) {
 function eventId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
+
+const VAD_POLL_MS = 50;
+const VAD_RMS_THRESHOLD = 0.012;
 
 export class VoiceAgent {
   constructor({
@@ -64,6 +73,7 @@ export class VoiceAgent {
     outputResponseTimeoutMs = 5_000,
     outputTranscriptIdleMs = 800,
     outputAuthorizationDelayMs = 150,
+    eagerEndOfTurnMs = 200,
   } = {}) {
     this.onDelegation = onDelegation;
     this.onSpeculativeDelegation = onSpeculativeDelegation;
@@ -115,6 +125,14 @@ export class VoiceAgent {
     this.pendingSpeechTelemetry = [];
     this.pendingSpeechCount = 0;
     this.lastInputEndMs = null;
+    this.eagerEndOfTurnMs = eagerEndOfTurnMs;
+    this.eagerDelegated = false;
+    this.eagerInFlight = false;
+    this.vadContext = null;
+    this.vadAnalyser = null;
+    this.vadSamples = null;
+    this.vadTimer = null;
+    this.lastVoiceAt = 0;
   }
 
   get connected() {
@@ -272,10 +290,93 @@ export class VoiceAgent {
       audio: microphoneAudioConstraints(supported),
     });
     await this.sender.replaceTrack(this.microphoneStream.getAudioTracks()[0]);
+    this.startInputVad(this.microphoneStream);
     this.onStatus('Listening');
   }
 
+  startInputVad(stream) {
+    this.stopInputVad();
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    try {
+      const context = new AudioContextClass();
+      const source = context.createMediaStreamSource(stream);
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      this.vadContext = context;
+      this.vadAnalyser = analyser;
+      this.vadSamples = new Float32Array(analyser.fftSize);
+      this.lastVoiceAt = Date.now();
+      this.vadTimer = setInterval(() => this.pollInputVad(), VAD_POLL_MS);
+    } catch {
+      this.vadContext = null;
+      this.vadAnalyser = null;
+      this.vadSamples = null;
+      this.vadTimer = null;
+    }
+  }
+
+  pollInputVad() {
+    if (!this.vadAnalyser || !this.vadSamples) return;
+    this.vadAnalyser.getFloatTimeDomainData(this.vadSamples);
+    let sum = 0;
+    for (let index = 0; index < this.vadSamples.length; index += 1) sum += this.vadSamples[index] * this.vadSamples[index];
+    const rms = Math.sqrt(sum / this.vadSamples.length);
+    const now = Date.now();
+    if (rms > VAD_RMS_THRESHOLD) {
+      this.lastVoiceAt = now;
+      return;
+    }
+    // Local silence is enough to commit the turn: don't wait for the server to
+    // decide we stopped. The speculative dealer turn (if already prepared) is
+    // reused, so this removes the end-of-turn detection wait.
+    if (!this.recording || this.eagerDelegated || this.eagerInFlight) return;
+    if (!this.inputTranscript.trim()) return;
+    if (now - this.lastVoiceAt < this.eagerEndOfTurnMs) return;
+    if (this.pendingDelegations.length > 0) return;
+    this.maybeEagerEndOfTurn();
+  }
+
+  async maybeEagerEndOfTurn() {
+    this.eagerInFlight = true;
+    try {
+      const transcript = this.inputTranscript.trim();
+      const turn = this.speculativeTurn;
+      // Only commit early when the speculative dealer turn matches exactly this
+      // transcript — i.e. the decision for this exact wording is ready.
+      if (!turn || turn.transcript !== transcript) return;
+      const prepared = await turn.preparedTurn;
+      if (!prepared || prepared.error || !prepared.response) return;
+      // Never commit a partial/no-op utterance: only commit when the model
+      // returned a concrete action for it.
+      if (!prepared.response.speak || !prepared.response.toolName) return;
+      if (this.eagerDelegated || this.pendingDelegations.length > 0) return;
+      this.eagerDelegated = true;
+      this.pendingDelegations.push({
+        id: eventId('eager'),
+        offsetMs: null,
+        inputEndMs: this.lastInputEndMs,
+        receivedAt: Date.now(),
+        eager: true,
+      });
+      this.scheduleDelegations();
+    } finally {
+      this.eagerInFlight = false;
+    }
+  }
+
+  stopInputVad() {
+    clearInterval(this.vadTimer);
+    this.vadTimer = null;
+    this.vadContext?.close().catch(() => {});
+    this.vadContext = null;
+    this.vadAnalyser = null;
+    this.vadSamples = null;
+  }
+
   async stopMicrophone() {
+    this.stopInputVad();
     await this.sender?.replaceTrack(null);
     this.microphoneStream?.getTracks().forEach((track) => track.stop());
     this.microphoneStream = null;
@@ -330,6 +431,7 @@ export class VoiceAgent {
     clearTimeout(this.speculationTimer);
     clearTimeout(this.outputTranscriptTimer);
     clearTimeout(this.outputDrainTimer);
+    this.stopInputVad();
     this.channel = null;
     this.connection = null;
     this.sender = null;
@@ -366,6 +468,8 @@ export class VoiceAgent {
     this.pendingSpeechTelemetry = [];
     this.pendingSpeechCount = 0;
     this.lastInputEndMs = null;
+    this.eagerDelegated = false;
+    this.eagerInFlight = false;
   }
 
   send(event) {
@@ -473,6 +577,7 @@ export class VoiceAgent {
       : null;
     this.speculativeTurn = null;
     this.onStatus('Processing…');
+    markVoiceStage('delegationFlushed');
     const backendStartedAt = Date.now();
     try {
       const result = await this.onDelegation({
@@ -489,9 +594,10 @@ export class VoiceAgent {
           ? Math.max(0, delegation.offsetMs - delegation.inputEndMs)
           : null,
       };
-      this.returnDelegation(result, delegation.id);
+      markVoiceStage('delegationCompleted');
+      this.returnDelegation(result, delegation.eager ? null : delegation.id);
     } catch (error) {
-      this.returnDelegation({ speak: false, kind: 'error', utterance: '' }, delegation.id);
+      this.returnDelegation({ speak: false, kind: 'error', utterance: '' }, delegation.eager ? null : delegation.id);
       this.onStatus(`AI error: ${error.message}`);
       this.onTranscript(`Dealer error: ${error.message}`);
     }
@@ -605,6 +711,7 @@ export class VoiceAgent {
         && event.start_ms - this.lastInputEndMs > 1_500
       ) {
         this.inputTranscript = '';
+        this.eagerDelegated = false;
       }
       this.inputTranscript = `${this.inputTranscript}${event.delta || ''}`.slice(-4_000);
       this.scheduleSpeculation();
@@ -618,6 +725,10 @@ export class VoiceAgent {
       return;
     }
     if (event.type === 'session.delegation.created' && event.delegation?.target === 'client') {
+      markVoiceStage('delegationReceived');
+      // If we already committed this turn locally (eager end-of-turn), ignore
+      // the server's duplicate delegation.
+      if (this.eagerDelegated) return;
       this.pendingDelegations.push({
         id: event.delegation.id,
         offsetMs: event.offset_ms,

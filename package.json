@@ -8,7 +8,11 @@
     "test": "node --test",
     "dev": "vite",
     "start": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "ai-speed": "node ai-speed-test.mjs",
+    "voice-speed": "node ai-voice-speed-test.mjs",
+    "e2e-speed": "node ai-e2e-latency.mjs",
+    "human-speed": "node ai-human-latency.mjs"
   },
   "repository": {
     "type": "git",
@@ -22,6 +26,7 @@
   },
   "homepage": "https://github.com/samboodman/robodeal#readme",
   "devDependencies": {
+    "playwright": "^1.64.0",
     "vite": "^8.2.1"
   },
   "dependencies": {

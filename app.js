@@ -55,6 +55,7 @@ const seatMarkers = document.querySelector('#seat-markers');
 const dealerMarker = document.querySelector('#dealer-marker');
 const smallBlindMarker = document.querySelector('#small-blind-marker');
 const bigBlindMarker = document.querySelector('#big-blind-marker');
+const turnMarker = document.querySelector('#turn-marker');
 const lockSeatsButton = document.querySelector('#lock-seats-button');
 const turnControl = document.querySelector('#turn-control');
 const turnIndicator = document.querySelector('#turn-indicator');
@@ -114,8 +115,12 @@ const freeClaimButton = document.querySelector('#free-claim-button');
 const freeCardElement = document.querySelector('#free-card-element');
 const freeCardConfirmButton = document.querySelector('#free-card-confirm-button');
 const freeClaimStatus = document.querySelector('#free-claim-status');
+const potDisplay = document.querySelector('#pot-display');
 const potValue = document.querySelector('#pot-value');
-const sidePotValue = document.querySelector('#side-pot-value');
+const inactivePots = document.querySelector('#inactive-pots');
+const inactivePotValues = document.querySelector('#inactive-pot-values');
+const inactivePotNoun = document.querySelector('#inactive-pot-noun');
+const activePotTitle = document.querySelector('#active-pot-title');
 const winnerPicker = document.querySelector('#winner-picker');
 const winnerQuestion = document.querySelector('#winner-question');
 const winnerOptions = document.querySelector('#winner-options');
@@ -509,29 +514,28 @@ function potLayerName(index) {
 function drawPotLayers(layerCount, animateNewLayer = false) {
   const visibleLayers = viewPots().slice(0, layerCount);
   const activeLayerIndex = visibleLayers.length - 1;
-  const archivedLayerIndexes = visibleLayers
+  const inactiveLayerIndexes = visibleLayers
     .slice(0, -1)
     .map((_, index) => index)
     .reverse();
-  const existingArchivedLayers = new Map(
-    [...sidePotValue.children].map((element) => [Number(element.dataset.layerIndex), element]),
+  const existingInactiveLayers = new Map(
+    [...inactivePotValues.children].map((element) => [Number(element.dataset.layerIndex), element]),
   );
 
-  archivedLayerIndexes.forEach((layerIndex, stackIndex) => {
-    let amount = existingArchivedLayers.get(layerIndex);
-    const isNewArchivedLayer = !amount;
+  inactiveLayerIndexes.forEach((layerIndex) => {
+    let amount = existingInactiveLayers.get(layerIndex);
+    const isNewInactiveLayer = !amount;
     if (!amount) {
       amount = document.createElement('span');
       amount.dataset.layerIndex = layerIndex;
-      sidePotValue.append(amount);
+      inactivePotValues.append(amount);
     }
 
     amount.textContent = visibleLayers[layerIndex].amount;
     amount.setAttribute('aria-label', `${potLayerName(layerIndex)}: ${visibleLayers[layerIndex].amount}`);
-    amount.style.setProperty('--stack-index', stackIndex);
-    existingArchivedLayers.delete(layerIndex);
+    existingInactiveLayers.delete(layerIndex);
 
-    if (animateNewLayer && isNewArchivedLayer && layerIndex === activeLayerIndex - 1) {
+    if (animateNewLayer && isNewInactiveLayer && layerIndex === activeLayerIndex - 1) {
       amount.classList.add('pot-layer-archiving');
       requestAnimationFrame(() => {
         requestAnimationFrame(() => amount.classList.remove('pot-layer-archiving'));
@@ -539,14 +543,13 @@ function drawPotLayers(layerCount, animateNewLayer = false) {
     }
   });
 
-  existingArchivedLayers.forEach((element) => element.remove());
-  sidePotValue.hidden = archivedLayerIndexes.length === 0;
-  sidePotValue.setAttribute(
-    'aria-label',
-    archivedLayerIndexes.length === 0
-      ? 'No completed pots'
-      : `Completed pots: ${archivedLayerIndexes.map((index) => `${potLayerName(index)}, ${visibleLayers[index].amount}`).join('. ')}`,
-  );
+  existingInactiveLayers.forEach((element) => element.remove());
+
+  const hasInactivePots = inactiveLayerIndexes.length > 0;
+  inactivePots.hidden = !hasInactivePots;
+  activePotTitle.hidden = !hasInactivePots;
+  potDisplay.classList.toggle('split', hasInactivePots);
+  inactivePotNoun.textContent = inactiveLayerIndexes.length > 1 ? 'pots' : 'pot';
 
   const activeLayer = visibleLayers[activeLayerIndex];
   if (!activeLayer) {
@@ -555,8 +558,9 @@ function drawPotLayers(layerCount, animateNewLayer = false) {
     return;
   }
 
+  const activeLabel = hasInactivePots ? 'Current pot' : potLayerName(activeLayerIndex);
   potValue.textContent = animateNewLayer ? 0 : activeLayer.amount;
-  potValue.setAttribute('aria-label', `${potLayerName(activeLayerIndex)}: ${activeLayer.amount}`);
+  potValue.setAttribute('aria-label', `${activeLabel}: ${activeLayer.amount}`);
   if (animateNewLayer) {
     potValue.classList.remove('pot-value-entering');
     void potValue.offsetWidth;
@@ -1280,19 +1284,36 @@ function positionSeatMarkers() {
   });
 
   const orbit = 0.4;
-  const offsetX = 26 + 13 + 2;
+  const offset = 26 + 13 + 2;
   groups.forEach((group, playerId) => {
     group.sort((first, second) => first.order - second.order);
     const angle = seatAngles[playerId] ?? 0;
     const centerX = bounds.width * (0.5 + Math.cos(angle) * orbit);
     const centerY = bounds.height * (0.5 + Math.sin(angle) * orbit);
+    const leftX = -Math.sin(angle);
+    const leftY = Math.cos(angle);
     group.forEach((marker, index) => {
-      const side = index === 0 ? -1 : 1;
+      const side = index === 0 ? 1 : -1;
       marker.el.hidden = false;
-      marker.el.style.left = `${centerX + side * offsetX}px`;
-      marker.el.style.top = `${centerY}px`;
+      marker.el.style.setProperty('--rotation', `${angle - Math.PI / 2}rad`);
+      marker.el.style.left = `${centerX + side * leftX * offset}px`;
+      marker.el.style.top = `${centerY + side * leftY * offset}px`;
     });
   });
+
+  const turnPlayerId = gameState ? viewActionPlayerNumber() : null;
+  const turnAngle = turnPlayerId != null ? seatAngles[turnPlayerId] : null;
+  if (Number.isFinite(turnAngle)) {
+    const centerX = bounds.width * (0.5 + Math.cos(turnAngle) * orbit);
+    const centerY = bounds.height * (0.5 + Math.sin(turnAngle) * orbit);
+    const below = 50;
+    turnMarker.hidden = false;
+    turnMarker.style.setProperty('--rotation', `${turnAngle - Math.PI / 2}rad`);
+    turnMarker.style.left = `${centerX + Math.cos(turnAngle) * below}px`;
+    turnMarker.style.top = `${centerY + Math.sin(turnAngle) * below}px`;
+  } else {
+    turnMarker.hidden = true;
+  }
 }
 
 function pointerSeatAngle(event) {

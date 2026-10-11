@@ -220,6 +220,7 @@
           <span id="dealer-marker" class="seat-marker marker-dealer" aria-hidden="true">D</span>
           <span id="small-blind-marker" class="seat-marker marker-small-blind" aria-hidden="true">SB</span>
           <span id="big-blind-marker" class="seat-marker marker-big-blind" aria-hidden="true">BB</span>
+          <span id="turn-marker" class="seat-marker marker-turn" aria-hidden="true">TURN</span>
         </div>
         <button id="lock-seats-button" class="lock-seats-button" type="button" hidden>Lock seats and start game</button>
         <p id="voice-transcript" class="voice-transcript" aria-live="polite" hidden></p>
@@ -257,8 +258,14 @@
             <section class="pot-panel" aria-label="Pot total">
               <p>Pot</p>
               <div id="pot-display" class="pot-display">
-                <output id="pot-value" class="pot-value" aria-label="Pot">0</output>
-                <output id="side-pot-value" class="side-pot-value" aria-label="Side pot" hidden>0</output>
+                <div id="inactive-pots" class="inactive-pots" hidden>
+                  <span class="pot-column-title">inactive <span id="inactive-pot-noun">pot</span>:</span>
+                  <div id="inactive-pot-values" class="inactive-pot-values" aria-label="Inactive pots"></div>
+                </div>
+                <div class="active-pot">
+                  <span id="active-pot-title" class="pot-column-title" hidden>active pot:</span>
+                  <output id="pot-value" class="pot-value" aria-label="Pot">0</output>
+                </div>
               </div>
             </section>
           </div>
