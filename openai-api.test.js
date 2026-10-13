@@ -24,7 +24,7 @@ test('creates a native GPT-Live client-delegation session without a separate tra
   assert.equal(JSON.stringify(request).includes('gpt-live-transcribe'), false);
   assert.match(request.session.instructions, /Vegas/);
   assert.match(request.session.instructions, /brisk/);
-  assert.match(request.session.instructions, /DEALER FACTS/);
+  assert.match(request.session.instructions, /word for word/);
   assert.deepEqual(request.transport, { type: 'webrtc', sdp: 'offer-sdp' });
 });
 

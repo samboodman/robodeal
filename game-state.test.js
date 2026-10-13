@@ -75,7 +75,7 @@ test('GameState creation validates the immutable table configuration', () => {
 });
 
 test('debug presets create authoritative states with working pots and transitions', () => {
-  const twoPots = createDebugGameState(game({ chips: [100, 100, 100] }), 'two-pots');
+  const twoPots = createDebugGameState(game({ chips: [100, 100, 100] }), 'multiple-pots', { potCount: 2 });
   assert.equal(twoPots.phase, GamePhase.BETTING_RIVER);
   assert.equal(twoPots.actionPlayerId, 2);
   assert.deepEqual(twoPots.pots.map((pot) => pot.amount), [75, 50]);
@@ -515,6 +515,61 @@ test('a short all-in does not reopen raising for players who already acted', () 
   assert.ok(reopen.some(({ type }) => type === Transition.CALL));
 });
 
+test('several short all-ins that add up to a full raise reopen the betting', () => {
+  let state = createGameState({
+    players: [{ id: 1, chips: 1000 }, { id: 2, chips: 150 }, { id: 3, chips: 200 }, { id: 4, chips: 1000 }, { id: 5, chips: 1000 }],
+    smallBlind: 5,
+    dealerId: 3,
+    useBigBlind: true,
+  });
+  state = executeTransition(state, { type: Transition.START_HAND });
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+  state = action(state, Transition.BET, { additionalChips: 100 });
+  state = action(state, Transition.ALL_IN);
+  state = action(state, Transition.ALL_IN);
+  assert.equal(state.players.find((player) => player.id === 1).canRaiseThisRound, true);
+});
+
+test('fixed-limit reopens on a half-bet all-in but not below it', () => {
+  const base = {
+    players: [{ id: 1, chips: 1000 }, { id: 2, chips: 25 }, { id: 3, chips: 1000 }],
+    smallBlind: 5,
+    dealerId: 1,
+    useBigBlind: true,
+    bettingLimit: BettingLimit.FIXED_LIMIT,
+    fixedLimitBet: 10,
+  };
+  let state = executeTransition(createGameState(base), { type: Transition.START_HAND });
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+  state = action(state, Transition.BET, { additionalChips: 20 });
+  state = action(state, Transition.ALL_IN);
+  assert.equal(state.players.find((player) => player.id === 1).canRaiseThisRound, true);
+
+  const short = { ...base, players: [{ id: 1, chips: 1000 }, { id: 2, chips: 24 }, { id: 3, chips: 1000 }] };
+  let locked = executeTransition(createGameState(short), { type: Transition.START_HAND });
+  locked = executeTransition(locked, { type: Transition.CARDS_DEALT });
+  locked = action(locked, Transition.BET, { additionalChips: 20 });
+  locked = action(locked, Transition.ALL_IN);
+  assert.equal(locked.players.find((player) => player.id === 1).canRaiseThisRound, false);
+});
+
+test('the fixed-limit raise cap is configurable', () => {
+  let state = createGameState({
+    players: [{ id: 1, chips: 1000 }, { id: 2, chips: 1000 }, { id: 3, chips: 1000 }],
+    smallBlind: 5,
+    dealerId: 1,
+    useBigBlind: true,
+    bettingLimit: BettingLimit.FIXED_LIMIT,
+    fixedLimitBet: 10,
+    fixedLimitRaiseCap: 1,
+  });
+  state = executeTransition(state, { type: Transition.START_HAND });
+  state = executeTransition(state, { type: Transition.CARDS_DEALT });
+  state = action(state, Transition.BET, { additionalChips: 20 });
+  assert.equal(state.betsThisRound, 1);
+  assert.equal(getAvailableActions(state).some(({ type }) => type === Transition.BET), false);
+});
+
 test('an all-in over a shorter stack returns the uncalled chips', () => {
   let state = createGameState({
     players: [{ id: 1, chips: 1000 }, { id: 2, chips: 100 }],
@@ -528,11 +583,15 @@ test('an all-in over a shorter stack returns the uncalled chips', () => {
   state = action(state, Transition.ALL_IN);
   state = action(state, Transition.CALL);
   assert.equal(state.phase, GamePhase.ALL_IN_RUNOUT);
+  // The uncalled portion is returned at the end of the round, so the over-shove
+  // leaves a single contested pot rather than a one-player side pot.
+  assert.equal(state.pots.length, 1);
+  assert.equal(state.pots[0].amount, 200);
+  assert.equal(state.players.find((player) => player.id === 1).chips, 900);
 
   state = executeTransition(state, { type: Transition.CARDS_DEALT });
   assert.equal(state.phase, GamePhase.SHOWDOWN);
   state = executeTransition(state, { type: Transition.AWARD_POT, potIndex: state.potAwardIndex, winnerId: 2 });
-  state = executeTransition(state, { type: Transition.AWARD_POT, potIndex: state.potAwardIndex, winnerId: 1 });
   assert.equal(state.players.find((player) => player.id === 1).chips, 900);
   assert.equal(state.players.find((player) => player.id === 2).chips, 200);
 });

@@ -72,7 +72,7 @@ test('collects native GPT-Live transcript deltas and sends client delegation to 
     type: 'session.commentary.append',
     event_id: sent[0].event_id,
     delegation_id: 'item_1',
-    content: 'Sam calls five.',
+    content: 'Say exactly this: Sam calls five.',
   });
 });
 
@@ -160,7 +160,7 @@ test('application narration stays muted until approved output begins', async () 
   assert.equal(sent.length, 1);
   assert.equal(sent[0].type, 'session.commentary.append');
   assert.equal(sent[0].delegation_id, null);
-  assert.equal(sent[0].content, 'No-limit Texas Hold’em, five-chip ante.');
+  assert.equal(sent[0].content, 'Say exactly this: No-limit Texas Hold’em, five-chip ante.');
   assert.equal(agent.audio.muted, true);
 
   await agent.handleEvent({ type: 'session.output_transcript.delta', delta: 'No-limit Texas Hold’em' });

@@ -236,7 +236,9 @@ export class VoiceAgent {
   }
 
   speak(text, delegationId = null, timing = null) {
-    this.sendSpoken('session.commentary.append', text, delegationId, timing);
+    // Commentary is an instruction to the live model, not dealer facts for it
+    // to turn into prose. The sentence itself stays owned by application code.
+    this.sendSpoken('session.commentary.append', `Say exactly this: ${text}`, delegationId, timing);
   }
 
   instruct(text) {

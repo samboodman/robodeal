@@ -2,3 +2,4 @@ node_modules/
 dist/
 .vercel
 .env*
+4-thousand-poker-hands/

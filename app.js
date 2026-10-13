@@ -31,6 +31,8 @@ const debugFeaturesSetting = document.querySelector('#debug-features-setting');
 const debugFeaturesCheckbox = document.querySelector('#debug-features');
 const debugOptions = document.querySelector('#debug-options');
 const debugPresetSelect = document.querySelector('#debug-preset');
+const debugPotCountSetting = document.querySelector('#debug-pot-count-setting');
+const debugPotCountInput = document.querySelector('#debug-pot-count');
 const enableAudioFileInputCheckbox = document.querySelector('#enable-audio-file-input');
 const useBigBlindCheckbox = document.querySelector('#use-big-blind');
 const useAnteCheckbox = document.querySelector('#use-ante');
@@ -44,6 +46,7 @@ const anteInput = document.querySelector('#ante');
 const bettingLimitSelect = document.querySelector('#betting-limit');
 const fixedLimitSetting = document.querySelector('#fixed-limit-setting');
 const fixedLimitBetInput = document.querySelector('#fixed-limit-bet');
+const fixedLimitRaiseCapInput = document.querySelector('#fixed-limit-raise-cap');
 const setupScreen = document.querySelector('#setup-screen');
 const voiceCustomizationScreen = document.querySelector('#voice-customization-screen');
 const chipDenominationsScreen = document.querySelector('#chip-denominations-screen');
@@ -90,6 +93,7 @@ const alterSettingsButton = document.querySelector('#alter-settings-button');
 const alterSettingsScreen = document.querySelector('#alter-settings-screen');
 const alterLimit = document.querySelector('#alter-limit');
 const alterFixedBet = document.querySelector('#alter-fixed-bet');
+const alterRaiseCap = document.querySelector('#alter-raise-cap');
 const alterSmallBlind = document.querySelector('#alter-small-blind');
 const alterBigBlind = document.querySelector('#alter-big-blind');
 const alterBlindIncrease = document.querySelector('#alter-blind-increase');
@@ -118,7 +122,7 @@ const freeClaimStatus = document.querySelector('#free-claim-status');
 const potDisplay = document.querySelector('#pot-display');
 const potValue = document.querySelector('#pot-value');
 const inactivePots = document.querySelector('#inactive-pots');
-const inactivePotValues = document.querySelector('#inactive-pot-values');
+const inactiveStacks = document.querySelector('#inactive-stacks');
 const inactivePotNoun = document.querySelector('#inactive-pot-noun');
 const activePotTitle = document.querySelector('#active-pot-title');
 const winnerPicker = document.querySelector('#winner-picker');
@@ -211,8 +215,6 @@ function updateDebugFeatures() {
 }
 
 const debugPresetPlayerCounts = Object.freeze({
-  'two-pots': 3,
-  'three-pots': 4,
   'all-in-runout': 3,
   'deal-flop': 3,
   showdown: 3,
@@ -264,12 +266,20 @@ export function convertAiAnswersToNumber(aiAnswer) {
   return Number(outputString)
 }
 
+function potCountValue() {
+  const value = Math.floor(Number(debugPotCountInput.value) || 1);
+  return Math.max(1, Math.min(20, value));
+}
+
 function selectDebugPreset() {
-  const requiredPlayerCount = debugPresetPlayerCounts[debugPresetSelect.value];
+  const preset = debugPresetSelect.value;
+  const isMultiplePots = preset === 'multiple-pots';
+  debugPotCountSetting.hidden = !isMultiplePots;
+  const requiredPlayerCount = isMultiplePots ? potCountValue() + 1 : debugPresetPlayerCounts[preset];
   if (!requiredPlayerCount) return;
   playerCount.value = String(requiredPlayerCount);
   drawPlayerNames();
-  useBigBlindCheckbox.checked = requiredPlayerCount >= 6;
+  useBigBlindCheckbox.checked = true;
 }
 
 function roundNumberFromGamePhase(phase) {
@@ -444,7 +454,7 @@ function restoreLastGameSettings() {
   document.querySelector('#starting-money').value = settings.startingMoney;
   smallBlindInput.value = smallBlind;
   smallBlindIncreaseInput.value = smallBlindIncrease;
-  useBigBlindCheckbox.checked = settings.useBigBlind ?? settings.playerCount >= 6;
+  useBigBlindCheckbox.checked = settings.useBigBlind ?? true;
   useAnteCheckbox.checked = settings.useAnte === true;
   if (Number.isInteger(settings.ante) && settings.ante > 0) anteInput.value = settings.ante;
   updateAnteSetting();
@@ -454,6 +464,9 @@ function restoreLastGameSettings() {
   fixedLimitBetInput.value = Number.isInteger(settings.fixedLimitBet) && settings.fixedLimitBet > 0
     ? settings.fixedLimitBet
     : Math.max(1, smallBlind * 2 || 1);
+  fixedLimitRaiseCapInput.value = Number.isInteger(settings.fixedLimitRaiseCap) && settings.fixedLimitRaiseCap > 0
+    ? settings.fixedLimitRaiseCap
+    : 4;
   updateFixedLimitSetting();
   drawPlayerNames();
 
@@ -514,42 +527,15 @@ function potLayerName(index) {
 function drawPotLayers(layerCount, animateNewLayer = false) {
   const visibleLayers = viewPots().slice(0, layerCount);
   const activeLayerIndex = visibleLayers.length - 1;
-  const inactiveLayerIndexes = visibleLayers
-    .slice(0, -1)
-    .map((_, index) => index)
-    .reverse();
-  const existingInactiveLayers = new Map(
-    [...inactivePotValues.children].map((element) => [Number(element.dataset.layerIndex), element]),
-  );
+  const inactiveAmounts = visibleLayers.slice(0, activeLayerIndex).map((layer) => layer.amount);
+  const hasInactivePots = inactiveAmounts.length > 0;
 
-  inactiveLayerIndexes.forEach((layerIndex) => {
-    let amount = existingInactiveLayers.get(layerIndex);
-    const isNewInactiveLayer = !amount;
-    if (!amount) {
-      amount = document.createElement('span');
-      amount.dataset.layerIndex = layerIndex;
-      inactivePotValues.append(amount);
-    }
-
-    amount.textContent = visibleLayers[layerIndex].amount;
-    amount.setAttribute('aria-label', `${potLayerName(layerIndex)}: ${visibleLayers[layerIndex].amount}`);
-    existingInactiveLayers.delete(layerIndex);
-
-    if (animateNewLayer && isNewInactiveLayer && layerIndex === activeLayerIndex - 1) {
-      amount.classList.add('pot-layer-archiving');
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => amount.classList.remove('pot-layer-archiving'));
-      });
-    }
-  });
-
-  existingInactiveLayers.forEach((element) => element.remove());
-
-  const hasInactivePots = inactiveLayerIndexes.length > 0;
   inactivePots.hidden = !hasInactivePots;
   activePotTitle.hidden = !hasInactivePots;
   potDisplay.classList.toggle('split', hasInactivePots);
-  inactivePotNoun.textContent = inactiveLayerIndexes.length > 1 ? 'pots' : 'pot';
+  inactivePotNoun.textContent = inactiveAmounts.length > 1 ? 'pots' : 'pot';
+  if (hasInactivePots) potDisplay.dataset.inactive = String(Math.min(inactiveAmounts.length, 3));
+  renderInactiveStacks(hasInactivePots ? inactiveAmounts : []);
 
   const activeLayer = visibleLayers[activeLayerIndex];
   if (!activeLayer) {
@@ -567,6 +553,41 @@ function drawPotLayers(layerCount, animateNewLayer = false) {
     potValue.classList.add('pot-value-entering');
   } else {
     potValue.classList.remove('pot-value-entering');
+  }
+}
+
+const POT_STACK_ROWS = 3;
+const POT_STACK_COLUMNS = 4;
+
+function renderInactiveStacks(amounts) {
+  inactiveStacks.replaceChildren();
+  const total = amounts.length;
+  if (total === 0) return;
+  // Largest first: fill the grid top-to-bottom, column-by-column, so the
+  // top-left cell is the biggest and the bottom-right is the smallest.
+  const ordered = [...amounts].sort((first, second) => second - first);
+  const columnCount = Math.min(POT_STACK_COLUMNS, Math.ceil(total / POT_STACK_ROWS));
+  const overflowCellIndex = POT_STACK_ROWS * POT_STACK_COLUMNS - 1;
+
+  for (let column = 0; column < columnCount; column += 1) {
+    const stack = document.createElement('div');
+    stack.className = 'pot-stack';
+    for (let row = 0; row < POT_STACK_ROWS; row += 1) {
+      const index = column * POT_STACK_ROWS + row;
+      const cell = document.createElement('span');
+      cell.className = 'inactive-pot';
+      if (index === overflowCellIndex && total >= POT_STACK_ROWS * POT_STACK_COLUMNS) {
+        cell.textContent = '…';
+        cell.classList.add('inactive-pot-overflow');
+      } else if (index < total) {
+        cell.textContent = ordered[index];
+        cell.setAttribute('aria-label', `${potLayerName(index)}: ${ordered[index]}`);
+      } else {
+        continue;
+      }
+      stack.append(cell);
+    }
+    inactiveStacks.append(stack);
   }
 }
 
@@ -895,6 +916,7 @@ function getDealerAgent() {
       getGameState: getVoiceSnapshot,
       executeTool: executeVoiceTool,
       onStatus: setVoiceStatus,
+    onTiming: recordVoiceLatency,
     });
   }
   return dealerAgent;
@@ -1107,6 +1129,7 @@ function makePlayers() {
     useBigBlind: gameSettings.useBigBlind,
     bettingLimit: gameSettings.bettingLimit,
     fixedLimitBet: gameSettings.fixedLimitBet,
+    fixedLimitRaiseCap: gameSettings.fixedLimitRaiseCap,
     ante: gameSettings.useAnte ? gameSettings.ante : 0,
   });
 }
@@ -1396,6 +1419,7 @@ function lockClockwiseSeatOrder() {
     useBigBlind: gameSettings.useBigBlind,
     bettingLimit: gameSettings.bettingLimit,
     fixedLimitBet: gameSettings.fixedLimitBet,
+    fixedLimitRaiseCap: gameSettings.fixedLimitRaiseCap,
   });
 }
 
@@ -1596,6 +1620,7 @@ function openAlterSettings() {
   const smallBlind = gameState?.smallBlind ?? gameSettings.smallBlind ?? 1;
   alterLimit.value = gameState?.bettingLimit || gameSettings.bettingLimit || 'no-limit';
   alterFixedBet.value = String(gameState?.fixedLimitBet ?? gameSettings.fixedLimitBet ?? Math.max(1, smallBlind * 2));
+  alterRaiseCap.value = String(gameState?.fixedLimitRaiseCap ?? gameSettings.fixedLimitRaiseCap ?? 4);
   alterSmallBlind.value = String(smallBlind);
   alterBigBlind.checked = Boolean(gameState?.useBigBlind ?? gameSettings.useBigBlind);
   alterBlindIncrease.value = String(gameState?.smallBlindIncrease ?? gameSettings.smallBlindIncrease ?? 0);
@@ -1617,6 +1642,7 @@ function saveAlterSettings() {
   if (!gameSettings || !gameState) return;
   const limit = alterLimit.value;
   const fixedBet = Math.max(1, Math.floor(Number(alterFixedBet.value) || 1));
+  const raiseCap = Math.max(1, Math.floor(Number(alterRaiseCap.value) || 4));
   const smallBlind = Math.max(0, Math.floor(Number(alterSmallBlind.value) || 0));
   const increase = Math.max(0, Math.floor(Number(alterBlindIncrease.value) || 0));
   const useBigBlind = alterBigBlind.checked;
@@ -1625,6 +1651,7 @@ function saveAlterSettings() {
 
   gameSettings.bettingLimit = limit;
   gameSettings.fixedLimitBet = fixedBet;
+  gameSettings.fixedLimitRaiseCap = raiseCap;
   gameSettings.smallBlind = smallBlind;
   gameSettings.smallBlindIncrease = increase;
   gameSettings.useBigBlind = useBigBlind;
@@ -1633,6 +1660,7 @@ function saveAlterSettings() {
 
   gameState.bettingLimit = limit;
   gameState.fixedLimitBet = fixedBet;
+  gameState.fixedLimitRaiseCap = raiseCap;
   gameState.smallBlind = smallBlind;
   gameState.smallBlindIncrease = increase;
   gameState.useBigBlind = useBigBlind;
@@ -2188,20 +2216,19 @@ function startNewHand({ narrate = true } = {}) {
 function connectVoiceForCurrentGame() {
   connectVoiceAgent()
     .then(async (agent) => {
+      // Starting the microphone is independent of the opening announcement.
+      // Waiting for a later "Microphone off" status made this setting miss its
+      // start whenever the opening speech lifecycle changed.
+      if (gameSettings.startMicrophoneAutomatically) {
+        await agent.startMicrophone();
+      }
       const shouldAnnounceDeal = !dealPrompt.hidden && gameState.phase === GamePhase.DEAL_HOLE_CARDS;
       if (shouldAnnounceDeal) {
-        startMicrophoneAfterSpeech = gameSettings.startMicrophoneAutomatically;
-        const result = await requestDealerNarration({
+        await requestDealerNarration({
           type: 'game_started',
           setup: getVoiceSnapshot().game,
           dealInstruction: dealMessage.textContent,
         });
-        if (gameSettings.startMicrophoneAutomatically && !result.speak) {
-          startMicrophoneAfterSpeech = false;
-          await agent.startMicrophone();
-        }
-      } else if (gameSettings.startMicrophoneAutomatically) {
-        await agent.startMicrophone();
       }
       updateRecordingButton();
     })
@@ -2295,7 +2322,7 @@ function lockSeatsAndStartGame() {
   if (gameSettings.debugPreset === 'normal') {
     startHand();
   } else {
-    gameState = createDebugGameState(gameState, gameSettings.debugPreset);
+    gameState = createDebugGameState(gameState, gameSettings.debugPreset, { potCount: gameSettings.debugPotCount });
     renderGameState();
   }
   updateUndoRedoButtons();
@@ -2360,13 +2387,15 @@ function cardsAreDealt(narrate = true) {
 playerCount.addEventListener('change', () => {
   drawPlayerNames();
   refreshChipAmountLabels();
-  useBigBlindCheckbox.checked = Number(playerCount.value) >= 6;
+  useBigBlindCheckbox.checked = true;
 });
 bettingLimitSelect.addEventListener('change', updateFixedLimitSetting);
 useAnteCheckbox.addEventListener('change', updateAnteSetting);
 differentStacksCheckbox.addEventListener('change', updateStartingMoneyMode);
 debugFeaturesCheckbox.addEventListener('change', updateDebugFeatures);
 debugPresetSelect.addEventListener('change', selectDebugPreset);
+debugPotCountInput.addEventListener('change', selectDebugPreset);
+debugPotCountInput.addEventListener('input', selectDebugPreset);
 enableAudioFileInputCheckbox.addEventListener('change', updateDebugFeatures);
 voiceCustomizationButton.addEventListener('click', () => {
   setupScreen.hidden = true;
@@ -2547,6 +2576,7 @@ form.addEventListener('submit', (event) => {
     ante: useAnteCheckbox.checked ? Number(anteInput.value) : 0,
     bettingLimit: bettingLimitSelect.value,
     fixedLimitBet: Number(fixedLimitBetInput.value),
+    fixedLimitRaiseCap: Number(fixedLimitRaiseCapInput.value) || 4,
     dealerNumber: Number(dealerSelect.value),
     playerNames: [...playerNames.querySelectorAll('input')].map((input) => input.value),
     startMicrophoneAutomatically: startMicrophoneAutomaticallyCheckbox.checked,
@@ -2555,6 +2585,7 @@ form.addEventListener('submit', (event) => {
     chipDenominations: selectedChipDenominations(),
     voice: selectedVoiceSettings(),
     debugPreset: debugFeaturesCheckbox.checked ? debugPresetSelect.value : 'normal',
+    debugPotCount: debugFeaturesCheckbox.checked ? potCountValue() : 1,
     enableAudioFileInput: debugFeaturesCheckbox.checked && enableAudioFileInputCheckbox.checked,
   };
   saveLastGameSettings();

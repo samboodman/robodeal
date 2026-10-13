@@ -13,6 +13,7 @@ import {
   winnerQuestions,
   winnersFromDecision,
 } from './decisions.js';
+import { decisionsToText } from './decisionsToText.js';
 
 const prompts = JSON.parse(readFileSync(new URL('./Prompts.json', import.meta.url), 'utf8'));
 
@@ -135,7 +136,12 @@ function announcementFacts(sourceEvent) {
     };
   }
   if (sourceEvent.type === 'state_transition') {
-    return { event: 'state_transition', action: sourceEvent.action, state: compactState(sourceEvent.stateAfter) };
+    return {
+      event: 'state_transition',
+      action: sourceEvent.action,
+      actor: sourceEvent.stateBefore?.currentPlayer?.name ?? null,
+      state: compactState(sourceEvent.stateAfter),
+    };
   }
   return { event: sourceEvent.type };
 }
@@ -144,18 +150,39 @@ function decide(apiKey, body, fetchImplementation) {
   return createDecisionsResponse(apiKey, body, fetchImplementation);
 }
 
+function narrationFor(facts) {
+  if (facts == null) return null;
+  if (Object.hasOwn(facts, 'event')) {
+    const eventSentence = decisionsToText.event[facts.event];
+    return eventSentence ? eventSentence(facts) : null;
+  }
+  if (facts.rejected) {
+    const rejection = decisionsToText.rejected[facts.error] || decisionsToText.rejected.UNKNOWN_ERROR_CODE;
+    return rejection(facts);
+  }
+  if (Object.hasOwn(facts, 'winners')) return decisionsToText.winner(facts);
+  if (facts.requested) {
+    const actor = facts.actor || 'The player';
+    const action = String(facts.requested).toLowerCase().replaceAll('_', ' ');
+    const amount = Number.isFinite(facts.chips_moved) ? ` for ${facts.chips_moved}` : '';
+    const pot = Number.isFinite(facts.pot_after) ? `. The pot is ${facts.pot_after}.` : '.';
+    return `${actor} ${action}${amount}${pot}`;
+  }
+  return null;
+}
+
 export async function runDealerTurn(apiKey, payload, fetchImplementation = fetch) {
   const { sourceEvent, gameState, transcript, toolOutput, toolName } = payload || {};
 
   if (sourceEvent && sourceEvent.type !== 'voice_utterance') {
-    return { speak: true, kind: 'announcement', utterance: narrationContent(announcementFacts(sourceEvent)) };
+    return { speak: true, kind: 'announcement', utterance: narrationFor(announcementFacts(sourceEvent)) };
   }
 
   if (toolOutput) {
     return {
       speak: true,
       kind: 'clarification',
-      utterance: narrationContent(rejectionFacts(gameState, toolOutput)),
+      utterance: narrationFor(rejectionFacts(gameState, toolOutput)),
       rejectedTool: toolName ?? null,
     };
   }
@@ -175,13 +202,7 @@ export async function runDealerTurn(apiKey, payload, fetchImplementation = fetch
   }
 
   if (action === PokerDecision.NARRATE_VALUES) {
-    const valuesDecision = await decide(apiKey, {
-      input: buildDecisionInput({ instructions, gameState, transcript }),
-      questions: valueQuestionsFor(gameState),
-    }, fetchImplementation);
-    const facts = answerFacts(selectedValueFacts(valuesDecision, gameState));
-    if (Object.keys(facts).length === 0) return { speak: false, kind: 'ignored', utterance: '' };
-    return { speak: true, kind: 'answer', utterance: narrationContent(facts), toolName: null };
+    return { speak: false, kind: 'ignored', utterance: '' };
   }
 
   if (action === PokerDecision.PICK_WINNER) {
@@ -197,7 +218,7 @@ export async function runDealerTurn(apiKey, payload, fetchImplementation = fetch
     return {
       speak: true,
       kind: 'action_result',
-      utterance: narrationContent(pickWinnerFacts(gameState, winners)),
+      utterance: narrationFor(pickWinnerFacts(gameState, winners)),
       toolName: call.name,
       toolArgs: call.args,
     };
@@ -208,7 +229,7 @@ export async function runDealerTurn(apiKey, payload, fetchImplementation = fetch
   return {
     speak: true,
     kind: 'action_result',
-    utterance: narrationContent(successFacts(gameState, action, call.name, call.args)),
+    utterance: narrationFor(successFacts(gameState, action, call.name, call.args)),
     toolName: call.name,
     toolArgs: call.args,
   };

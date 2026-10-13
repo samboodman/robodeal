@@ -191,12 +191,33 @@ function resolveBetting(state) {
   }
 
   if (hasBettingRoundFinished(state.players, state.highestRoundBet)) {
+    returnUncalledBet(state);
     state.actionPlayerId = null;
     state.phase = phaseAfterBetting(state);
     return;
   }
 
   state.actionPlayerId = nextPlayerFrom(state, state.actionPlayerId);
+}
+
+/**
+ * Returns the portion of the last wager that no other player matched to its
+ * bettor, per TDA rules. Without this an over-shove becomes a one-player side
+ * pot that would have to be awarded back by hand.
+ */
+function returnUncalledBet(state) {
+  const contenders = nonFoldedPlayers(state);
+  if (contenders.length < 2) return;
+  const ordered = [...contenders].sort((first, second) => second.roundBet - first.roundBet);
+  const bettor = ordered[0];
+  const matched = ordered[1].roundBet;
+  const uncalled = bettor.roundBet - matched;
+  if (uncalled <= 0) return;
+  bettor.chips += uncalled;
+  bettor.roundBet -= uncalled;
+  bettor.handContribution -= uncalled;
+  state.highestRoundBet = Math.max(0, ...contenders.map((player) => player.roundBet));
+  refreshPots(state);
 }
 
 function assertBettingTurn(state, action) {
@@ -210,6 +231,7 @@ function assertBettingTurn(state, action) {
 function prepareNextBettingRound(state) {
   state.highestRoundBet = 0;
   state.betsThisRound = 0;
+  state.shortRaiseAccumulator = 0;
   state.lastFullRaiseSize = minimumFullBetForRound(state);
   state.players.forEach((player) => {
     player.roundBet = 0;
@@ -245,6 +267,7 @@ export function createGameState({
   useBigBlind = false,
   bettingLimit = BettingLimit.NO_LIMIT,
   fixedLimitBet = Math.max(1, smallBlind * 2),
+  fixedLimitRaiseCap = MAX_BETS_PER_ROUND,
   ante = 0,
 }) {
   if (!Array.isArray(players) || players.length < 2) throw new Error('At least two players are required.');
@@ -252,6 +275,7 @@ export function createGameState({
   if (!players.some((player) => player.id === dealerId)) throw new Error('The dealer must be a player.');
   if (!Object.values(BettingLimit).includes(bettingLimit)) throw new Error('Betting limit is not supported.');
   if (!Number.isInteger(fixedLimitBet) || fixedLimitBet <= 0) throw new Error('Fixed-limit bet must be a positive integer.');
+  if (!Number.isInteger(fixedLimitRaiseCap) || fixedLimitRaiseCap < 1) throw new Error('Fixed-limit raise cap must be a positive integer.');
   if (!Number.isInteger(ante) || ante < 0) throw new Error('Ante must be a non-negative integer.');
 
   return {
@@ -272,6 +296,7 @@ export function createGameState({
     useBigBlind,
     bettingLimit,
     fixedLimitBet,
+    fixedLimitRaiseCap,
     ante,
     dealerId,
     firstDealerId: dealerId,
@@ -288,6 +313,7 @@ export function createGameState({
     handNumber: 0,
     potAwardIndex: 0,
     handWinnerIds: [],
+    shortRaiseAccumulator: 0,
   };
 }
 
@@ -330,8 +356,6 @@ export function getBettingBounds(state, playerId = state.actionPlayerId) {
 }
 
 const debugPresets = Object.freeze({
-  'two-pots': { phase: GamePhase.BETTING_RIVER, contributions: [25, 50, 50], chips: [0, 87, 88], actionPlayerId: 2, round: 4 },
-  'three-pots': { phase: GamePhase.BETTING_RIVER, contributions: [25, 50, 75, 75], chips: [0, 0, 87, 88], actionPlayerId: 3, round: 4 },
   'all-in-runout': { phase: GamePhase.ALL_IN_RUNOUT, contributions: [25, 50, 50], chips: [0, 0, 175], actionPlayerId: null, round: 1 },
   'deal-flop': { phase: GamePhase.DEAL_FLOP, contributions: [10, 10, 10], chips: [90, 90, 90], actionPlayerId: null, round: 1 },
   showdown: { phase: GamePhase.SHOWDOWN, contributions: [20, 20, 20], chips: [80, 80, 80], actionPlayerId: null, round: 4 },
@@ -339,9 +363,18 @@ const debugPresets = Object.freeze({
   'game-won': { phase: GamePhase.GAME_COMPLETE, contributions: [0, 0], chips: [200, 0], actionPlayerId: null, round: 4, winnerIds: [1] },
 });
 
+function multiplePotsPreset(potCount) {
+  const pots = Math.max(1, Math.min(20, Math.floor(Number(potCount) || 1)));
+  const contributions = [];
+  for (let level = 1; level <= pots - 1; level += 1) contributions.push(25 * level);
+  contributions.push(25 * pots, 25 * pots);
+  const chips = [...new Array(pots - 1).fill(0), 87, 88];
+  return { phase: GamePhase.BETTING_RIVER, contributions, chips, actionPlayerId: pots, round: 4 };
+}
+
 /** Creates a named, internally consistent state for localhost debug starts. */
-export function createDebugGameState(gameState, presetName) {
-  const preset = debugPresets[presetName];
+export function createDebugGameState(gameState, presetName, options = {}) {
+  const preset = presetName === 'multiple-pots' ? multiplePotsPreset(options.potCount) : debugPresets[presetName];
   if (!preset) return executeTransition(gameState, { type: Transition.START_HAND });
   if (gameState.phase !== GamePhase.SETUP) throw new Error('A debug starting point can only be created from setup.');
   if (gameState.players.length !== preset.chips.length) throw new Error(`${presetName} requires ${preset.chips.length} players.`);
@@ -367,6 +400,7 @@ export function createDebugGameState(gameState, presetName) {
     player.eliminated = preset.phase === GamePhase.GAME_COMPLETE && player.chips === 0;
   });
   state.betsThisRound = 0;
+  state.shortRaiseAccumulator = 0;
   refreshPots(state);
   return state;
 }
@@ -397,7 +431,7 @@ export function getAvailableActions(state) {
     minRaiseAdditionalChips: minimumBet,
     maxAdditionalChips: maximumBet,
   } = getBettingBounds(state, player.id);
-  const raiseCapReached = state.bettingLimit === BettingLimit.FIXED_LIMIT && state.betsThisRound >= MAX_BETS_PER_ROUND;
+  const raiseCapReached = state.bettingLimit === BettingLimit.FIXED_LIMIT && state.betsThisRound >= (state.fixedLimitRaiseCap ?? MAX_BETS_PER_ROUND);
   const mayRaise = player.canRaiseThisRound !== false && !raiseCapReached;
   const actions = [makeAction(Transition.FOLD)];
   if (callAmount === 0) actions.push(makeAction(Transition.CHECK));
@@ -434,6 +468,7 @@ export function executeTransition(gameState, action) {
     state.potAwardIndex = 0;
     state.handWinnerIds = [];
     state.betsThisRound = 0;
+    state.shortRaiseAccumulator = 0;
     state.players.forEach((player) => {
       player.folded = player.eliminated;
       player.roundBet = 0;
@@ -533,7 +568,7 @@ export function executeTransition(gameState, action) {
   }
   if (action.type === Transition.BET
     && state.bettingLimit === BettingLimit.FIXED_LIMIT
-    && state.betsThisRound >= MAX_BETS_PER_ROUND) {
+    && state.betsThisRound >= (state.fixedLimitRaiseCap ?? MAX_BETS_PER_ROUND)) {
     throw new Error('The fixed-limit raise cap for this round is reached.');
   }
 
@@ -548,16 +583,31 @@ export function executeTransition(gameState, action) {
   state.highestRoundBet = Math.max(state.highestRoundBet, player.roundBet);
 
   if (raiseSize > 0) {
+    const reopen = (candidate) => {
+      if (candidate.id !== player.id) candidate.canRaiseThisRound = true;
+    };
+    // Fixed-limit reopens on half a bet; no-limit/pot-limit on a full raise
+    // (TDA Rule 49). Several short raises can also add up to the threshold.
+    const reopenThreshold = state.bettingLimit === BettingLimit.FIXED_LIMIT
+      ? Math.ceil(state.lastFullRaiseSize / 2)
+      : state.lastFullRaiseSize;
     if (raiseSize >= state.lastFullRaiseSize) {
       state.betsThisRound += 1;
       state.lastFullRaiseSize = raiseSize;
-      state.players.forEach((candidate) => {
-        if (candidate.id !== player.id) candidate.canRaiseThisRound = true;
-      });
+      state.shortRaiseAccumulator = 0;
+      state.players.forEach(reopen);
     } else {
-      state.players.forEach((candidate) => {
-        if (candidate.id !== player.id && candidate.hasActedThisRound) candidate.canRaiseThisRound = false;
-      });
+      const accumulated = (state.shortRaiseAccumulator || 0) + raiseSize;
+      if (raiseSize >= reopenThreshold || accumulated >= reopenThreshold) {
+        state.betsThisRound += 1;
+        state.shortRaiseAccumulator = 0;
+        state.players.forEach(reopen);
+      } else {
+        state.shortRaiseAccumulator = accumulated;
+        state.players.forEach((candidate) => {
+          if (candidate.id !== player.id && candidate.hasActedThisRound) candidate.canRaiseThisRound = false;
+        });
+      }
     }
   }
 

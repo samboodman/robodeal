@@ -477,52 +477,73 @@ body {
 }
 .pot-value {
   color: #101010;
-  font-size: clamp(2.5rem, 11vw, 5.2rem);
+  font-size: clamp(2rem, 9vw, 3.2rem);
   font-weight: 850;
   line-height: 1;
 }
 .pot-column-title {
+  width: 100%;
   color: #557066;
-  font-size: clamp(0.55rem, 2.4vw, 0.72rem);
+  font-size: clamp(0.9rem, 4vw, 1.25rem);
   font-weight: 900;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.5px;
   line-height: 1.1;
   text-align: center;
 }
+/* Side pots: active pot on top, inactive stack grid below the divider. */
 .pot-display.split {
-  grid-template-columns: 1fr 1fr;
-  column-gap: 10px;
+  grid-template-rows: 1fr 1fr;
   place-items: stretch;
 }
-.pot-display.split .inactive-pots {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+.pot-display.split .active-pot {
+  grid-template-rows: auto auto;
   align-content: start;
   justify-items: center;
-  gap: 6px;
-  padding-right: 10px;
-  border-right: 1px solid #d4dfd8;
 }
-.pot-display.split .active-pot {
-  grid-template-rows: auto minmax(0, 1fr);
-  align-content: start;
-  gap: 6px;
-}
-.pot-display.split .pot-value {
-  font-size: clamp(1.3rem, 6.5vw, 2.6rem);
+.pot-display.split #inactive-pots {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+  justify-items: center;
+  border-top: 1px solid #d4dfd8;
+  padding-top: 2px;
 }
 .inactive-pots[hidden] {
   display: none;
 }
-.inactive-pot-values {
-  display: grid;
-  align-self: center;
-  justify-items: center;
-  gap: 0;
+.inactive-stacks {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.pot-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+}
+.inactive-pot {
   color: #d6a900;
-  font-size: clamp(0.9rem, 4.2vw, 1.5rem);
+  font-size: clamp(0.75rem, 3.2vw, 1.05rem);
   font-weight: 900;
   line-height: 1;
+}
+.inactive-pot-overflow {
+  color: #8a8a8a;
+}
+/* Inactive numbers: as big as the active pot with one, a little smaller for
+   two, and the minimum size for three or more. The active pot never shrinks. */
+.pot-display.split[data-inactive="1"] .inactive-pot {
+  font-size: clamp(2rem, 9vw, 3.2rem);
+}
+.pot-display.split[data-inactive="2"] .inactive-pot {
+  font-size: clamp(1.4rem, 6vw, 2.2rem);
 }
 .button-help {
   position: absolute;
@@ -755,19 +776,6 @@ body {
 .alter-names input {
   min-height: 44px;
 }
-.inactive-pot-values span.pot-layer-archiving {
-  animation: pot-archive-pulse 520ms ease both;
-}
-@keyframes pot-archive-pulse {
-  0% {
-    color: #101010;
-    transform: scale(1.7);
-  }
-  100% {
-    color: #d6a900;
-    transform: scale(1);
-  }
-}
 .pot-value.pot-value-entering {
   animation: pot-value-fade-in 580ms ease both;
 }
@@ -793,9 +801,6 @@ body {
   .game-screen.game-starting > .turn-control,
   .game-screen.game-starting > .winner-picker:not([hidden]) {
     animation: none !important;
-  }
-  .inactive-pot-values span.pot-layer-archiving {
-    animation: none;
   }
   .pot-value.pot-value-entering {
     animation-duration: 1ms;

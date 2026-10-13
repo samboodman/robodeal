@@ -45,6 +45,10 @@ Voice turns record a capped latency history in `window.__robodealLatencyHistory`
 
 Run `npm test` to execute the transition tests, including illegal-action guards, blinds, all-ins, all-in runouts, folds, pot awards, side-pot splits, and big-blind mode.
 
+### PHH state-machine validation
+
+Use `npm run validate-phh -- path/to/phh-directory --json` to recursively replay thousands of Poker Hand History (`.phh`) files through RoboDeal's current state machine. It validates the supported Hold'em variants (`NT`, `FT`, and `PO`) and reports invalid actions with the source action, phase, expected player, and state-machine error. Other PHH variants or structures RoboDeal cannot represent (such as straddles or non-uniform antes) are reported as unsupported rather than invalid.
+
 ## Run locally
 
 Create `.env.local` with `OPENAI_API_KEY=your_key_here`, then run:

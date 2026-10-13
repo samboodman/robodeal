@@ -22,6 +22,19 @@
             <option value="6">6 players</option>
             <option value="7">7 players</option>
             <option value="8">8 players</option>
+            <option value="9">9 players</option>
+            <option value="10">10 players</option>
+            <option value="11">11 players</option>
+            <option value="12">12 players</option>
+            <option value="13">13 players</option>
+            <option value="14">14 players</option>
+            <option value="15">15 players</option>
+            <option value="16">16 players</option>
+            <option value="17">17 players</option>
+            <option value="18">18 players</option>
+            <option value="19">19 players</option>
+            <option value="20">20 players</option>
+            <option value="21">21 players</option>
           </select>
           <div class="money-grid">
             <div class="small-blind-field">
@@ -34,7 +47,7 @@
             </div>
           </div>
           <label class="checkbox-setting" for="use-big-blind">
-            <input id="use-big-blind" name="useBigBlind" type="checkbox" />
+            <input id="use-big-blind" name="useBigBlind" type="checkbox" checked />
             Use big blind (double the small blind)
           </label>
           <label class="checkbox-setting" for="use-ante">
@@ -69,6 +82,9 @@
             <label for="fixed-limit-bet">Fixed-limit bet</label>
             <input id="fixed-limit-bet" name="fixedLimitBet" type="number" min="1" value="10" inputmode="numeric" required />
             <p class="field-note">Used before and on the flop. The turn and river use double this amount.</p>
+            <label for="fixed-limit-raise-cap">Raise cap per round</label>
+            <input id="fixed-limit-raise-cap" name="fixedLimitRaiseCap" type="number" min="1" value="4" inputmode="numeric" required />
+            <p class="field-note">House/tournament policy. Standard limit is a bet plus three raises (4).</p>
           </div>
 
           <div class="players-heading">
@@ -88,14 +104,17 @@
             <label for="debug-preset">Debug starting point</label>
             <select id="debug-preset" name="debugPreset">
               <option value="normal" selected>Normal game</option>
-              <option value="two-pots">Two pots — river</option>
-              <option value="three-pots">Three pots — river</option>
+              <option value="multiple-pots">Multiple pots — river</option>
               <option value="all-in-runout">All-in — deal remaining cards</option>
               <option value="deal-flop">Waiting to deal the flop</option>
               <option value="showdown">Choose a showdown winner</option>
               <option value="hand-won">Hand won — between hands</option>
               <option value="game-won">Game winner screen</option>
             </select>
+            <div id="debug-pot-count-setting" hidden>
+              <label for="debug-pot-count">Number of pots (1–20)</label>
+              <input id="debug-pot-count" name="debugPotCount" type="number" min="1" max="20" value="2" inputmode="numeric" />
+            </div>
             <label class="checkbox-setting" for="enable-audio-file-input">
               <input id="enable-audio-file-input" name="enableAudioFileInput" type="checkbox" />
               Allow audio file input while playing
@@ -258,13 +277,13 @@
             <section class="pot-panel" aria-label="Pot total">
               <p>Pot</p>
               <div id="pot-display" class="pot-display">
-                <div id="inactive-pots" class="inactive-pots" hidden>
-                  <span class="pot-column-title">inactive <span id="inactive-pot-noun">pot</span>:</span>
-                  <div id="inactive-pot-values" class="inactive-pot-values" aria-label="Inactive pots"></div>
-                </div>
                 <div class="active-pot">
                   <span id="active-pot-title" class="pot-column-title" hidden>active pot:</span>
                   <output id="pot-value" class="pot-value" aria-label="Pot">0</output>
+                </div>
+                <div id="inactive-pots" class="inactive-pots" hidden>
+                  <span class="pot-column-title">inactive <span id="inactive-pot-noun">pot</span>:</span>
+                  <div id="inactive-stacks" class="inactive-stacks" aria-label="Inactive pots"></div>
                 </div>
               </div>
             </section>
@@ -325,6 +344,8 @@
             </select>
             <label for="alter-fixed-bet">Fixed-limit bet</label>
             <input id="alter-fixed-bet" type="number" min="1" inputmode="numeric" />
+            <label for="alter-raise-cap">Raise cap per round</label>
+            <input id="alter-raise-cap" type="number" min="1" inputmode="numeric" />
             <label for="alter-small-blind">Small blind</label>
             <input id="alter-small-blind" type="number" min="0" inputmode="numeric" />
             <label for="alter-big-blind">Use big blind</label>
