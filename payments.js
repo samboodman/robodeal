@@ -4,9 +4,13 @@ import { createClient } from '@supabase/supabase-js';
 const STRIPE_API = 'https://api.stripe.com/v1';
 const PAYER_COOKIE = 'payer';
 
-export const PRICE_CENTS_PER_HOUR = 400;
+export const PRICE_CENTS = 1999;
+export const PRICE_SECONDS = 5 * 3600;
+export const CENTS_PER_SECOND = PRICE_CENTS / PRICE_SECONDS;
 export const INITIAL_FREE_HOURS = 2;
-const INITIAL_FREE_CENTS = INITIAL_FREE_HOURS * PRICE_CENTS_PER_HOUR;
+const INITIAL_FREE_CENTS = Math.round(INITIAL_FREE_HOURS * 3600 * CENTS_PER_SECOND);
+export const LIVE_SESSION_START_CENTS = Math.ceil(CENTS_PER_SECOND * 15);
+export const DEALER_TURN_CENTS = 1;
 
 let client = null;
 
@@ -81,16 +85,36 @@ export function retrieveIntent(id) {
 }
 
 export async function debitBalance(payerId, cents) {
+  const result = await debitIfAvailable(payerId, cents);
+  return result.balanceCents;
+}
+
+/**
+ * Atomically-ish debits only when the current balance still covers the charge.
+ * The compare-and-set update prevents two simultaneous requests from spending
+ * the same balance.
+ */
+export async function debitIfAvailable(payerId, cents, { reason = 'usage', ref = null } = {}) {
   const amount = Math.max(0, Math.floor(cents));
-  if (amount === 0) return getBalanceCents(payerId);
-  const current = await getBalanceCents(payerId);
-  const next = Math.max(0, current - amount);
-  const { error } = await db()
-    .from('balances')
-    .upsert({ payer_id: payerId, balance_cents: next, updated_at: new Date().toISOString() });
-  if (error) throw new Error(error.message);
-  await db().from('ledger').insert({ payer_id: payerId, delta_cents: -amount, reason: 'usage', ref: null });
-  return next;
+  if (amount === 0) return { debited: true, balanceCents: await getBalanceCents(payerId) };
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const current = await getBalanceCents(payerId);
+    if (current < amount) return { debited: false, balanceCents: current };
+    const next = current - amount;
+    const { data, error } = await db()
+      .from('balances')
+      .update({ balance_cents: next, updated_at: new Date().toISOString() })
+      .eq('payer_id', payerId)
+      .eq('balance_cents', current)
+      .select('balance_cents');
+    if (error) throw new Error(error.message);
+    if (!data?.length) continue;
+    const { error: ledgerError } = await db().from('ledger')
+      .insert({ payer_id: payerId, delta_cents: -amount, reason, ref });
+    if (ledgerError) throw new Error(ledgerError.message);
+    return { debited: true, balanceCents: next };
+  }
+  return { debited: false, balanceCents: await getBalanceCents(payerId) };
 }
 
 export async function zeroBalance(payerId) {

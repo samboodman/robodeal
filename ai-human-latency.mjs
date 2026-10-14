@@ -158,6 +158,9 @@ async function runFixture(url, name, options) {
     await page.route('**/api/balance', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ balanceCents: 1_000_000 }) }));
     await page.route('**/api/debit', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ balanceCents: 1_000_000 }) }));
     await page.goto(url, { waitUntil: 'domcontentloaded' });
+    // Localhost-only debug route: fund the payer so the server-side pay gate
+    // lets GPT-Live start (no-op on builds without the route).
+    await page.evaluate(async () => { try { await fetch('/api/debug/grant', { method: 'POST' }); } catch {} });
     await page.evaluate(() => { window.__robodealVoiceStages = {}; });
     const before = await page.evaluate(() => (window.__robodealLatencyHistory || []).length);
     await page.click('#setup-form button[type="submit"]');

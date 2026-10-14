@@ -142,7 +142,7 @@ function actionError(index, action, state, error) {
   };
 }
 
-function transitionForPlayerAction(state, actor, verb, amount) {
+function transitionForPlayerAction(state, actor, verb, amount, { bigBlindAnte = 0 } = {}) {
   const playerId = Number(actor.slice(1));
   if (verb === 'f') return { type: Transition.FOLD, playerId };
   if (verb === 'cc') {
@@ -155,7 +155,11 @@ function transitionForPlayerAction(state, actor, verb, amount) {
     const player = state.players.find((candidate) => candidate.id === playerId);
     if (!player) throw new Error('Unknown PHH player.');
     const additionalChips = total - player.roundBet;
-    const allIn = additionalChips === player.chips;
+    // This PHH source writes the big blind's all-in as the chips remaining
+    // after its combined blind/ante payment, rather than as a raise-to total.
+    const stackSizedBigBlindAnteAllIn = bigBlindAnte > 0 && total === player.chips;
+    const allIn = additionalChips === player.chips || stackSizedBigBlindAnteAllIn;
+    if (stackSizedBigBlindAnteAllIn) return { type: Transition.ALL_IN, playerId };
     return { type: allIn ? Transition.ALL_IN : Transition.BET, playerId, ...(allIn ? {} : { additionalChips }) };
   }
   return null;
@@ -198,7 +202,7 @@ export function validatePhh(text) {
           throw new Error('Board cards were dealt before the betting round was complete.');
         }
       } else if (/^p\d+$/.test(tokens[0]) && ['f', 'cc', 'cbr'].includes(tokens[1])) {
-        const transition = transitionForPlayerAction(state, tokens[0], tokens[1], tokens[2]);
+        const transition = transitionForPlayerAction(state, tokens[0], tokens[1], tokens[2], configuration);
         state = executeTransition(state, transition);
       } else if (/^p\d+$/.test(tokens[0]) && tokens[1] === 'sm') {
         // PHH may table all-in cards before the dealer runs the remaining board.

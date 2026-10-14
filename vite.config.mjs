@@ -2,18 +2,17 @@ import { defineConfig, loadEnv } from 'vite';
 import { readFileSync } from 'node:fs';
 import {
   apiError,
-  createLiveSession,
-  readJsonBody,
   sendJson,
 } from './openai-api.js';
-import { runDealerTurn } from './dealer-brain.js';
+import liveSessionHandler from './api/live-session.js';
+import dealerHandler from './api/dealer.js';
 import balanceHandler from './api/balance.js';
 import topupHandler from './api/topup.js';
 import topupStatusHandler from './api/topup-status.js';
 import debitHandler from './api/debit.js';
 import saveCardHandler from './api/save-card.js';
 import claimFreeHandler from './api/claim-free.js';
-import { ensurePayerId, zeroBalance } from './payments.js';
+import { creditTopup, ensurePayerId, zeroBalance } from './payments.js';
 
 const uiPrompts = JSON.parse(readFileSync(new URL('./Prompts.json', import.meta.url), 'utf8'));
 
@@ -22,27 +21,11 @@ function localOpenAIApi(apiKey) {
     name: 'robodeal-local-openai-api',
     configureServer(server) {
       server.middlewares.use('/api/live-session', async (request, response) => {
-        if (request.method !== 'POST') {
-          sendJson(response, 405, { error: 'Use POST to create a GPT-Live session.' });
-          return;
-        }
-        try {
-          sendJson(response, 201, await createLiveSession(apiKey, await readJsonBody(request)));
-        } catch (error) {
-          apiError(response, error, 'Local GPT-Live session creation failed');
-        }
+        await liveSessionHandler(request, response);
       });
 
       server.middlewares.use('/api/dealer', async (request, response) => {
-        if (request.method !== 'POST') {
-          sendJson(response, 405, { error: 'Use POST for a dealer turn.' });
-          return;
-        }
-        try {
-          sendJson(response, 200, await runDealerTurn(apiKey, await readJsonBody(request)));
-        } catch (error) {
-          apiError(response, error, 'Local dealer turn failed');
-        }
+        await dealerHandler(request, response);
       });
 
       server.middlewares.use('/api/ui-prompts', (request, response) => {
@@ -66,6 +49,18 @@ function localOpenAIApi(apiKey) {
           sendJson(response, 200, { balanceCents: await zeroBalance(payerId) });
         } catch (error) {
           apiError(response, error, 'Zero balance failed');
+        }
+      });
+
+      // Localhost-only: fund the payer so the app (and the latency tests) can
+      // start GPT-Live without going through Stripe.
+      server.middlewares.use('/api/debug/grant', async (request, response) => {
+        try {
+          const payerId = ensurePayerId(request, response);
+          const ref = `debug-grant:${Date.now()}`;
+          sendJson(response, 200, { balanceCents: await creditTopup(payerId, 100_000, ref, 'debug_grant') });
+        } catch (error) {
+          apiError(response, error, 'Grant balance failed');
         }
       });
     },
