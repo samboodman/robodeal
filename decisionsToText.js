@@ -1,3 +1,8 @@
+function formatList(arr) {
+  const formatter = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' });
+  return formatter.format(arr);
+}
+
 export const decisionsToText = {rejected: {CHIPS_OWED: (decisions) => {
     return `${decisions.details.actor.name} cannot make that bet; at least ${decisions.details.amountToCall} is required.`
 }, NOTHING_TO_CALL: (decisions) => {
@@ -42,5 +47,5 @@ export const decisionsToText = {rejected: {CHIPS_OWED: (decisions) => {
     const pot = Number.isFinite(decisions.pot_after) ? ` The pot is ${decisions.pot_after}.` : "";
     return `${decisions.actor ? `${decisions.actor} ` : ""}${action}${amount}.${pot}`
 }, winner: (decisions) => {
-    return `${decisions.winners.join(", ")} ${decisions.winners.length === 1 ? "was" : "were"} awarded ${decisions.pot_awarded}.`
+    return `${formatList(decisions.winners)} ${decisions.winners.length === 1 ? "was" : "were"} awarded ${decisions.pot_awarded}.`
 }}
