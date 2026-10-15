@@ -13,6 +13,7 @@ import topupStatusHandler from './api/topup-status.js';
 import debitHandler from './api/debit.js';
 import saveCardHandler from './api/save-card.js';
 import claimFreeHandler from './api/claim-free.js';
+import speechHandler from './api/speech.js';
 import { ensurePayerId, zeroBalance } from './payments.js';
 
 const uiPrompts = JSON.parse(readFileSync(new URL('./Prompts.json', import.meta.url), 'utf8'));
@@ -44,6 +45,8 @@ function localOpenAIApi(apiKey) {
           apiError(response, error, 'Local dealer turn failed');
         }
       });
+
+      server.middlewares.use('/api/speech', speechHandler);
 
       server.middlewares.use('/api/ui-prompts', (request, response) => {
         sendJson(response, 200, {

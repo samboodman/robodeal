@@ -74,6 +74,8 @@ export class VoiceAgent {
     outputTranscriptIdleMs = 800,
     outputAuthorizationDelayMs = 150,
     eagerEndOfTurnMs = 200,
+    speechFetch = (...args) => fetch(...args),
+    createPlaybackAudio = () => new Audio(),
   } = {}) {
     this.onDelegation = onDelegation;
     this.onSpeculativeDelegation = onSpeculativeDelegation;
@@ -126,6 +128,8 @@ export class VoiceAgent {
     this.pendingSpeechCount = 0;
     this.lastInputEndMs = null;
     this.eagerEndOfTurnMs = eagerEndOfTurnMs;
+    this.speechFetch = speechFetch;
+    this.createPlaybackAudio = createPlaybackAudio;
     this.eagerDelegated = false;
     this.eagerInFlight = false;
     this.vadContext = null;
@@ -133,6 +137,9 @@ export class VoiceAgent {
     this.vadSamples = null;
     this.vadTimer = null;
     this.lastVoiceAt = 0;
+    this.playbackAudio = null;
+    this.playbackUrl = null;
+    this.speechGeneration = 0;
   }
 
   get connected() {
@@ -162,6 +169,9 @@ export class VoiceAgent {
   async connect(voice = 'marin', { accent = 'neutral', pace = 'natural', preview = false } = {}) {
     this.disconnect();
     this.onStatus('Connecting…');
+    this.voice = voice;
+    this.accent = accent;
+    this.pace = pace;
     if (!window.RTCPeerConnection) throw new Error('This browser does not support WebRTC.');
 
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -236,34 +246,74 @@ export class VoiceAgent {
   }
 
   speak(text, delegationId = null, timing = null) {
-    // Commentary is an instruction to the live model, not dealer facts for it
-    // to turn into prose. The sentence itself stays owned by application code.
-    this.sendSpoken('session.commentary.append', `Say exactly this: ${text}`, delegationId, timing);
+    const sentence = String(text ?? '').trim();
+    if (!this.connected || !sentence) return;
+    this.stopExactSpeech(false);
+    const generation = this.speechGeneration;
+    this.pendingSpeechCount = 1;
+    this.pendingSpeechTelemetry = [{ ...(timing || {}), commentarySentAt: Date.now(), speechStarted: false }];
+    this.onStatus('Speaking…');
+    this.playExactSpeech(sentence, generation).catch((error) => {
+      if (generation !== this.speechGeneration) return;
+      this.finishExactSpeech(generation);
+      this.onStatus(`AI error: ${error.message}`);
+    });
   }
 
   instruct(text) {
-    this.sendSpoken('session.instructions.append', text, null, null);
-  }
-
-  sendSpoken(type, text, delegationId, timing) {
     if (!this.connected || !text) return;
-    this.pendingSpeechCount += 1;
-    this.pendingSpeechTelemetry.push({
-      ...(timing || {}),
-      commentarySentAt: Date.now(),
-      speechStarted: false,
-    });
-    this.outputAudioContext?.resume().catch(() => {});
-    this.outputTranscriptAuthorized = false;
-    this.setOutputGate(false);
-    this.onStatus('Speaking…');
     this.send({
-      type,
-      event_id: eventId('dealer'),
-      delegation_id: delegationId,
+      type: 'session.instructions.append',
+      event_id: eventId('instruction'),
+      delegation_id: null,
       content: clampAppend(text),
     });
-    this.scheduleOutputCompletion(this.outputResponseTimeoutMs);
+  }
+
+  async playExactSpeech(text, generation) {
+    const response = await this.speechFetch('/api/speech', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, voice: this.voice, accent: this.accent, pace: this.pace }),
+    });
+    if (!response.ok) throw new Error(await response.text() || 'Speech rendering failed.');
+    const audio = this.createPlaybackAudio();
+    const blob = await response.blob();
+    if (generation !== this.speechGeneration) return;
+    this.playbackAudio = audio;
+    this.playbackUrl = URL.createObjectURL(blob);
+    audio.src = this.playbackUrl;
+    audio.onplay = () => {
+      if (generation !== this.speechGeneration) return;
+      const telemetry = this.pendingSpeechTelemetry[0];
+      if (telemetry && !telemetry.speechStarted) {
+        telemetry.speechStarted = true;
+        this.onLatency({ ...telemetry, ttsSpeechStartMs: Date.now() - telemetry.commentarySentAt });
+      }
+    };
+    audio.onended = () => this.finishExactSpeech(generation);
+    await audio.play();
+  }
+
+  stopExactSpeech(updateStatus = true) {
+    this.speechGeneration += 1;
+    this.playbackAudio?.pause();
+    this.playbackAudio = null;
+    if (this.playbackUrl) URL.revokeObjectURL(this.playbackUrl);
+    this.playbackUrl = null;
+    this.pendingSpeechCount = 0;
+    this.pendingSpeechTelemetry = [];
+    if (updateStatus) this.onStatus(this.idleStatus());
+  }
+
+  finishExactSpeech(generation) {
+    if (generation !== this.speechGeneration) return;
+    this.playbackAudio = null;
+    if (this.playbackUrl) URL.revokeObjectURL(this.playbackUrl);
+    this.playbackUrl = null;
+    this.pendingSpeechCount = 0;
+    this.pendingSpeechTelemetry = [];
+    this.onStatus(this.idleStatus());
   }
 
   returnDelegation(result, delegationId) {
@@ -424,6 +474,7 @@ export class VoiceAgent {
   }
 
   disconnect() {
+    this.stopExactSpeech(false);
     this.microphoneStream?.getTracks().forEach((track) => track.stop());
     this.microphoneStream = null;
     this.channel?.close();
@@ -507,17 +558,22 @@ export class VoiceAgent {
   }
 
   setOutputGate(open) {
+    // GPT-Live is used for microphone transcription and delegation only. Its
+    // generative audio can paraphrase or speak unsolicited text, so it never
+    // reaches the speakers; exact app narration uses playExactSpeech instead.
+    void open;
     if (this.outputGate && this.outputAudioContext) {
       const { gain } = this.outputGate;
       gain.cancelScheduledValues?.(this.outputAudioContext.currentTime);
-      gain.setValueAtTime(open ? 1 : 0, this.outputAudioContext.currentTime);
-      if (this.audio) this.audio.muted = false;
+      gain.setValueAtTime(0, this.outputAudioContext.currentTime);
+      if (this.audio) this.audio.muted = true;
       return;
     }
-    if (this.audio) this.audio.muted = !open;
+    if (this.audio) this.audio.muted = true;
   }
 
   silenceOutputForUserSpeech() {
+    this.stopExactSpeech(false);
     this.pendingSpeechCount = 0;
     this.pendingSpeechTelemetry = [];
     this.outputCompletionsAwaitingDrain = 0;
@@ -741,46 +797,11 @@ export class VoiceAgent {
       return;
     }
     if (event.type === 'session.output_transcript.delta') {
-      if (this.pendingSpeechCount === 0) {
-        this.setOutputGate(false);
-        return;
-      }
-      this.outputTranscript += event.delta || '';
-      if (!this.outputTranscriptAuthorized && isBackchannelPrefix(this.outputTranscript)) {
-        this.setOutputGate(false);
-        this.scheduleOutputCompletion(this.outputTranscriptIdleMs);
-        return;
-      }
-      this.outputTranscriptAuthorized = true;
-      this.setOutputGate(true);
-      const speechTelemetry = this.pendingSpeechTelemetry.find((timing) => !timing.speechStarted);
-      if (speechTelemetry) {
-        speechTelemetry.speechStarted = true;
-        const latency = {
-          ...speechTelemetry,
-          gptLiveSpeechStartMs: Date.now() - speechTelemetry.commentarySentAt,
-        };
-        delete latency.commentarySentAt;
-        delete latency.speechStarted;
-        const backendMs = Number.isFinite(latency.totalBackendMs)
-          ? latency.totalBackendMs
-          : [latency.queueMs, latency.decisionsMs, latency.javascriptMs]
-            .filter(Number.isFinite)
-            .reduce((total, duration) => total + duration, 0);
-        latency.estimatedEndOfSpeechToAudioMs = [
-          latency.liveTurnDetectionMs,
-          latency.transcriptBufferMs,
-          backendMs,
-          latency.gptLiveSpeechStartMs,
-        ].filter(Number.isFinite).reduce((total, duration) => total + duration, 0);
-        this.onLatency(latency);
-      }
-      this.onStatus('Speaking…');
-      this.scheduleOutputCompletion(this.outputTranscriptIdleMs);
+      this.setOutputGate(false);
       return;
     }
     if (event.type === 'session.output_transcript.done') {
-      this.completeOutputResponse();
+      this.setOutputGate(false);
       return;
     }
     if (event.type === 'session.output_audio.done') {

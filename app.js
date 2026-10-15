@@ -1003,7 +1003,7 @@ async function previewVoice() {
   });
   try {
     await voicePreviewAgent.connect(voiceChoice.value, { preview: true });
-    voicePreviewAgent.instruct(uiPrompts.previewGreeting.replace('{{LINE}}', uiPrompts.voicePreviewText));
+    voicePreviewAgent.speak(uiPrompts.previewGreeting.replace('{{LINE}}', uiPrompts.voicePreviewText));
     window.setTimeout(() => {
       voicePreviewAgent?.disconnect();
       voicePreviewStatus.textContent = '';

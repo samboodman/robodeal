@@ -84,6 +84,41 @@ export async function createDecisionsResponse(apiKey, requestBody, fetchImplemen
   return parseDecisionsResponse(response);
 }
 
+export async function createSpeech(apiKey, { text, voice = 'marin', accent = 'neutral', pace = 'natural' }, fetchImplementation = fetch) {
+  if (!apiKey) throw new Error('The server is missing OPENAI_API_KEY.');
+  if (typeof text !== 'string' || text.length === 0 || text.length > 4096) {
+    throw new Error('Speech text must contain between 1 and 4096 characters.');
+  }
+  const response = await fetchImplementation('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini-tts',
+      input: text,
+      voice,
+      instructions: `Speak in a ${accent} accent at a ${pace} pace. Read the supplied text exactly; do not add, remove, or reword anything.`,
+      response_format: 'wav',
+    }),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    let error;
+    try {
+      error = JSON.parse(errorText);
+    } catch {
+      error = null;
+    }
+    throw new Error(error?.error?.message || errorText || `Speech rendering failed with ${response.status}.`);
+  }
+  return {
+    audio: Buffer.from(await response.arrayBuffer()),
+    contentType: response.headers.get('content-type') || 'audio/wav',
+  };
+}
+
 export async function readJsonBody(request) {
   if (request.body && typeof request.body === 'object') return request.body;
   if (typeof request.body === 'string') return JSON.parse(request.body || '{}');

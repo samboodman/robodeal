@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   buildDecisionsRequest,
   buildLiveSessionRequest,
+  createSpeech,
   parseDecisionsResponse,
 } from './openai-api.js';
 import { DECISIONS_MODEL } from './decisions.js';
@@ -47,6 +48,31 @@ test('parses Decisions answers and rejects malformed responses', () => {
   assert.deepEqual(parseDecisionsResponse({ answers }), { answers });
   assert.throws(() => parseDecisionsResponse({}), /no answers/);
   assert.throws(() => parseDecisionsResponse(null), /no answers/);
+});
+
+test('renders the exact application text with the speech endpoint', async () => {
+  let request;
+  const result = await createSpeech('test-key', {
+    text: 'Abby checked.',
+    voice: 'marin',
+    accent: 'neutral',
+    pace: 'natural',
+  }, async (_url, options) => {
+    request = JSON.parse(options.body);
+    return new Response(new Uint8Array([1, 2, 3]), {
+      headers: { 'Content-Type': 'audio/wav' },
+    });
+  });
+
+  assert.deepEqual(request, {
+    model: 'gpt-4o-mini-tts',
+    input: 'Abby checked.',
+    voice: 'marin',
+    instructions: 'Speak in a neutral accent at a natural pace. Read the supplied text exactly; do not add, remove, or reword anything.',
+    response_format: 'wav',
+  });
+  assert.equal(result.contentType, 'audio/wav');
+  assert.deepEqual([...result.audio], [1, 2, 3]);
 });
 
 test('the Decisions prompt describes the classification job', () => {

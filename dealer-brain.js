@@ -161,13 +161,7 @@ function narrationFor(facts) {
     return rejection(facts);
   }
   if (Object.hasOwn(facts, 'winners')) return decisionsToText.winner(facts);
-  if (facts.requested) {
-    const actor = facts.actor || 'The player';
-    const action = String(facts.requested).toLowerCase().replaceAll('_', ' ');
-    const amount = Number.isFinite(facts.chips_moved) ? ` for ${facts.chips_moved}` : '';
-    const pot = Number.isFinite(facts.pot_after) ? `. The pot is ${facts.pot_after}.` : '.';
-    return `${actor} ${action}${amount}${pot}`;
-  }
+  if (facts.requested) return decisionsToText.action(facts);
   return null;
 }
 
