@@ -1,11 +1,11 @@
-const decisionsToText = {rejected: {CHIPS_OWED: (decisions) => {
+export const decisionsToText = {rejected: {CHIPS_OWED: (decisions) => {
     return `that bet is not allowed, ${decisions.details.actor.name} needs at least ${decisions.details.amountToCall} to bet`
 }, NOTHING_TO_CALL: (decisions) => {
     return `${decisions.details.actor.name} may not call there is nothing owed. Check instead`
 }, ALL_IN_NOT_LEGAL: (decisions) => {
     return `${decisions.details.actor.name} may not go all in the maximum additional bet is ${decisions.details.maximumAdditionalBet}`
 }, ILLEGAL_BET_OR_RAISE: (decisions) => {
-    return ` may not bet ${decisions.details.requestedTotal ?? decisions.details.requestedRaise} the betting limit is ${decisions.details.bettingLimit}`
+    return ` may not bet ${decisions.details.requestedTotal} the betting limit is ${decisions.details.bettingLimit}`
 }, UNKNOWN_ACTION: (decisions) => {
     return `${decisions.details.requestedTool} is not a valid action in robodeal`
 }, TOOL_EXECUTION_FAILED: (decisions) => {
@@ -25,7 +25,7 @@ const decisionsToText = {rejected: {CHIPS_OWED: (decisions) => {
 }, BETTING_ACTION_UNAVAILABLE: () => {
     return "the betting action is unavailable"
 }, UNKNOWN_ERROR_CODE: () => {
-    return "that action has failed on a unknown error code"
+    return "that action has failed on a unprogrammed error code"
 }}, event: {game_started: (decisions) => {
     return `game is ${decisions.setup.variant}, ${decisions.setup.ante.enabled ? `ante is ${decisions.setup.ante.amount}, ` : ""} small blind is ${decisions.setup.small_blind}, ${decisions.setup.big_blind.enabled ? `big blind is ${decisions.setup.big_blind.amount}, ` : "big blind is disabled, "} ${decisions.setup.dealer} is the dealer, ${decisions.setup.small_blind_player} is the small blind${decisions.setup.big_blind.enabled ? `, ${decisions.setup.big_blind_player} is the big blind` : ""}. Deal 2 face down hole cards to each player press OK or say "cards are dealt" when done`
 }, new_hand_started: () => {
@@ -35,21 +35,3 @@ const decisionsToText = {rejected: {CHIPS_OWED: (decisions) => {
 }}, winner: (decisions) => {
     return `${decisions.winners.join(", ")} ${decisions.winners.length === 1 ? "was" : "were"} awarded ${decisions.pot_awarded}`
 }}
-
-export function pickDecisionToTextFunction(decisions) {
-    let output;
-    if (decisions.rejected === true) {
-        if (decisions.error === "ILLEGAL_RAISE" || decisions.error === "ILLEGAL_BET_TOTAL") {
-            output = decisionsToText.rejected.ILLEGAL_BET_OR_RAISE;
-        } else {
-            output = decisionsToText.rejected[decisions.error] ?? decisionsToText.rejected.UNKNOWN_ERROR_CODE;
-        };
-    } else if (Object.hasOwn(decisions, "event")) {
-        output = decisionsToText.event[decisions.event];
-    } else if (decisions.requested === "pickWinner") {
-        output = decisionsToText.winner;
-    } else {
-        output = undefined;
-    }
-    return output;
-};

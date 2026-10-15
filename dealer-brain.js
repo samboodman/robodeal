@@ -13,7 +13,7 @@ import {
   winnerQuestions,
   winnersFromDecision,
 } from './decisions.js';
-import { pickDecisionToTextFunction } from './decisionsToText.js';
+import { decisionsToText } from './decisionsToText.js';
 
 const prompts = JSON.parse(readFileSync(new URL('./Prompts.json', import.meta.url), 'utf8'));
 
@@ -152,8 +152,15 @@ function decide(apiKey, body, fetchImplementation) {
 
 function narrationFor(facts) {
   if (facts == null) return null;
-  const toText = pickDecisionToTextFunction(facts);
-  if (toText) return toText(facts);
+  if (Object.hasOwn(facts, 'event')) {
+    const eventSentence = decisionsToText.event[facts.event];
+    return eventSentence ? eventSentence(facts) : null;
+  }
+  if (facts.rejected) {
+    const rejection = decisionsToText.rejected[facts.error] || decisionsToText.rejected.UNKNOWN_ERROR_CODE;
+    return rejection(facts);
+  }
+  if (Object.hasOwn(facts, 'winners')) return decisionsToText.winner(facts);
   if (facts.requested) {
     const actor = facts.actor || 'The player';
     const action = String(facts.requested).toLowerCase().replaceAll('_', ' ');

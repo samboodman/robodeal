@@ -1,6 +1,5 @@
 import { apiError, readJsonBody, sendJson } from '../openai-api.js';
 import { ensurePayerId, createTopupIntent } from '../payments.js';
-import { enforceRateLimit } from '../rate-limit.js';
 
 const MIN_CENTS = 500;
 const MAX_CENTS = 100000;
@@ -12,7 +11,6 @@ export default async function handler(request, response) {
   }
   try {
     const payerId = ensurePayerId(request, response);
-    if (!enforceRateLimit(request, response, { name: 'topup', limit: 5, windowMs: 10 * 60_000, subject: payerId })) return;
     const body = await readJsonBody(request);
     const amountCents = Math.floor(Number(body.amountCents));
     if (!Number.isInteger(amountCents) || amountCents < MIN_CENTS || amountCents > MAX_CENTS) {

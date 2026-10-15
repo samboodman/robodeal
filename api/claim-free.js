@@ -1,6 +1,5 @@
 import { apiError, readJsonBody, sendJson } from '../openai-api.js';
 import { ensurePayerId, claimFreeGrant } from '../payments.js';
-import { enforceRateLimit } from '../rate-limit.js';
 
 export default async function handler(request, response) {
   if (request.method !== 'POST') {
@@ -9,7 +8,6 @@ export default async function handler(request, response) {
   }
   try {
     const payerId = ensurePayerId(request, response);
-    if (!enforceRateLimit(request, response, { name: 'claim-free', limit: 5, windowMs: 10 * 60_000, subject: payerId })) return;
     const body = await readJsonBody(request);
     const setupIntentId = String(body.setupIntentId || '');
     if (!setupIntentId) {

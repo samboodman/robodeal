@@ -1727,7 +1727,7 @@ async function refreshBalance() {
   } catch {}
 }
 
-const SELL_CENTS_PER_SECOND = 1999 / (5 * 3600);
+const SELL_CENTS_PER_SECOND = 400 / 3600;
 let meteringTimer = null;
 let meteringStartedAt = 0;
 let meteringBilledCents = 0;
@@ -1761,9 +1761,7 @@ async function meteringTick() {
 
 function startMetering() {
   meteringStartedAt = Date.now();
-  // The server already charges the 15 seconds billed by GPT-Live session
-  // initialization. Start local display metering after that reservation.
-  meteringBilledCents = 2;
+  meteringBilledCents = 0;
   window.clearInterval(meteringTimer);
   meteringTimer = window.setInterval(meteringTick, 1000);
 }
